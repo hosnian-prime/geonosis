@@ -172,6 +172,11 @@ specs: JWS, JWE, JWK, JWKS.
 
 **KMS** — Key Management Service. See [`12-security-crypto.md`](./12-security-crypto.md).
 
+**Komino** — Geonosis's planned embedded, Infinispan-class
+distributed cache. Gossip-clustered between Geonosis pods,
+replacing the Redis dependency in a future v1.x release. The
+`Cache` trait is the seam.
+
 ## L
 
 **LDAP** — Lightweight Directory Access Protocol. Used as a
@@ -205,6 +210,18 @@ external user.
 ## O
 
 **OIDC** — OpenID Connect.
+
+**Organization** — A sub-realm grouping of users with shared
+branding, default IdP routing, per-org roles, invitations, and
+domain claims. Realms host many organizations; users may belong to
+0..N organizations. See [`15-organizations.md`](./15-organizations.md).
+
+**Org domain** — A DNS domain claimed and verified by an
+Organization. Optionally drives auto-join when a user signs in with
+an email under that domain.
+
+**Org membership** — A user's join into an Organization, with org-
+scoped roles and a state (Active / Invited / Suspended).
 
 **OAuth 2.1** — Tightened version of OAuth 2.0; baseline for new
 deployments.
@@ -305,6 +322,11 @@ and name fields, indexed with GIN.
 
 **User** — A person (or a brokered/federated identity) within a
 realm.
+
+**User Profile** — A per-realm declarative schema describing which
+user attributes exist, who can read/write them, and how they are
+validated. Drives registration, account-console, and admin forms.
+See [`16-user-profile.md`](./16-user-profile.md).
 
 ## V
 
