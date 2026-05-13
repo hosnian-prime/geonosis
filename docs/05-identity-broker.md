@@ -36,11 +36,11 @@ the server release.
 
 ### Supported IdP protocols (v0.1 core)
 
-| Protocol | v0.1 | Notes |
-|---|---|---|
-| OpenID Connect | ✅ generic | Discovery URL or static metadata |
-| OAuth 2.0 (non-OIDC, e.g. GitHub) | ✅ via `broker-adapter` plugin | Plugin supplies userinfo mapping + auth flow quirks |
-| SAML 2.0 (Geonosis as SP) | ✅ generic | We consume SAML responses; we do not yet issue them |
+| Protocol | `IdpKind` | v0.1 | Notes |
+|---|---|---|---|
+| OpenID Connect | `Oidc` | ✅ generic | Discovery URL or static metadata |
+| OAuth 2.0 (non-OIDC, e.g. GitHub) | `Oidc` + `adapter_urn=...` | ✅ via `broker-adapter` plugin | Plugin presents OIDC-shaped assertions to the core after a vendor-specific exchange |
+| SAML 2.0 (Geonosis as SP) | `Saml` | ✅ generic | We consume SAML responses; we do not yet issue them |
 
 ### First-party adapter plugins (v0.1)
 
@@ -68,7 +68,7 @@ struct IdentityProvider {
     realm_id: RealmId,
     alias: String,                     // "google" — appears in /broker/{alias}/...
     display_name: String,
-    kind: IdpKind,                     // Oidc | OAuth2 | Saml
+    kind: IdpKind,                     // Oidc | Saml — non-OIDC OAuth2 is wrapped by a broker-adapter plugin
     config: IdpConfig,
     trust: IdpTrust,                   // discovery URL / static signing keys
     first_login_flow: FlowId,          // what to do when this is the user's first SSO via this IdP
@@ -76,6 +76,7 @@ struct IdentityProvider {
     mapper_bindings: Vec<MapperBinding>,
     sync_mode: SyncMode,               // Import | ForceFetch
     link_only: bool,                   // if true, never auto-create users
+    adapter_urn: Option<String>,       // broker-adapter SPI plugin URN — Some(...) for vendor quirks
     enabled: bool,
 }
 ```

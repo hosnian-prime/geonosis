@@ -77,6 +77,363 @@ A misbehaving module hits a limit → host returns
 the flow handles per the node's failure semantics (typically:
 quarantine the provider after N consecutive failures).
 
+## Provider registry & override patterns
+
+This section is the **central principle** of Geonosis's extension
+model. It is what lets operators **replace** any built-in subsystem
+with their own, not just **add** new providers alongside them.
+
+### The principle: built-ins are plugins
+
+Every customizable subsystem in Geonosis is mediated by a **Provider
+trait**. The trait has both:
+
+- **Rust-native implementations** (the "built-ins" we ship — e.g.
+  `LocalUserStorage`, `BuiltinPasswordAuthn`, `BuiltinGroupsMapper`,
+  the LDAP federation source).
+- **WASM-backed implementations** dispatched via wit-bindgen
+  (operator-supplied modules).
+
+They live in **the same per-realm registry** under stable
+**provider URNs**. The registry is a priority-sorted list of
+enabled providers. Built-ins and WASM impls are indistinguishable
+to the dispatcher.
+
+Concretely, in Rust:
+
+```rust
+#[async_trait]
+pub trait UserStorageProvider: Send + Sync {
+    fn urn(&self) -> &str;                         // stable id
+    fn capabilities(&self) -> ProviderCapabilities;
+
+    async fn find_by_username(
+        &self,
+        realm: RealmId,
+        username: &str,
+        config: &Bytes,
+        cx: &ProviderContext,
+    ) -> Result<LookupOutcome<ExternalUser>, ProviderError>;
+
+    async fn find_by_id(/* ... */)    -> Result<LookupOutcome<ExternalUser>, ProviderError>;
+    async fn find_by_email(/* ... */) -> Result<LookupOutcome<ExternalUser>, ProviderError>;
+
+    async fn validate_credential(/* ... */) -> Result<ValidationResult, ProviderError>;
+    async fn search(/* ... */) -> Result<SearchPage, ProviderError>;
+
+    // Optional write capabilities (return Unsupported if read-only)
+    async fn create_user(/* ... */) -> Result<ExternalUser, ProviderError>;
+    async fn update_user(/* ... */) -> Result<ExternalUser, ProviderError>;
+    async fn delete_user(/* ... */) -> Result<(), ProviderError>;
+}
+
+pub enum LookupOutcome<T> {
+    Found(T),
+    NotFound,         // "I don't handle this user; dispatcher: try next"
+}
+
+pub struct ProviderRegistry<T: ?Sized> {
+    realm_id: RealmId,
+    /// priority-asc; lower priority value = higher precedence.
+    /// Both built-ins and WASM providers live here.
+    providers: Vec<RegisteredProvider<T>>,
+}
+
+pub struct RegisteredProvider<T: ?Sized> {
+    pub urn: String,
+    pub priority: i32,
+    pub enabled: bool,
+    pub config: Bytes,
+    pub inner: Arc<T>,
+    pub origin: ProviderOrigin,                    // Builtin | Wasm { module_id, alias }
+}
+```
+
+The built-in `LocalUserStorage` is just another `Arc<dyn
+UserStorageProvider>` in the registry, registered at realm seed
+time with `priority = 1000` and `enabled = true`. A WASM custom
+store registered with `priority = 100` runs **before** the local
+store; if it returns `NotFound`, the dispatcher moves on to the
+local store.
+
+### Dispatch semantics (fixed per interface)
+
+Each interface declares **one** dispatch mode. The mode is part of
+the interface contract — operators don't pick.
+
+| Interface | Dispatch | Semantics |
+|---|---|---|
+| `user-storage` | **FirstMatch** | Run providers in priority order until one returns `Found`. |
+| `authn` | **NamedSelect** | A flow node names the provider by URN; no chain. |
+| `mapper` | **Chain** | All enabled providers run in priority order; each transforms the claim set. |
+| `event-listener` | **ChainFireForget** | All enabled fire-and-forget in priority order; errors logged but do not stop the chain. |
+| `policy` | **FirstDecision** | First non-`Abstain` decision wins. |
+| `broker-adapter` | **NamedSelect** | An IdP names its adapter by URN. |
+| `user-profile-validator` | **NamedAttach** | Bound to specific attributes by name. |
+| KMS (`KeyManagementService`) | **Single** | One active backend per realm. |
+
+`NamedSelect` means *the configuration explicitly names which
+provider to invoke*. Override here is "operator points the binding
+at a different URN". No priority ordering at runtime.
+
+### The three override patterns, expressed via the registry
+
+Every override an operator can perform in our reference IAM maps
+to one of three operations on the registry:
+
+#### 1. Augment (add alongside built-ins)
+
+The default, simplest case. Install a WASM provider; it joins the
+priority list. Built-ins remain enabled.
+
+Example: a custom `geonosis:event` listener that streams audit
+events to a SIEM. Just add it.
+
+#### 2. Replace (disable the built-in, add a custom one)
+
+Two equivalent ways to express this:
+
+- **Soft replace**: install a custom provider with a more
+  precedent priority and have it return `Found` for every relevant
+  query. (Works but the built-in still wastes a query when the
+  custom returns `NotFound`.)
+- **Explicit replace**: set the new binding's
+  `replaces = Some("builtin:user-storage:local")`. The registry
+  enforces: as long as the replacement binding is enabled, the
+  target binding is treated as `enabled = false` regardless of its
+  stored flag.
+
+Use `replaces` when the intent is "the built-in is no longer
+authoritative; do not consult it".
+
+#### 3. Decorate (run before; conditionally fall through)
+
+The provider acts as middleware: do some work, then either return
+`Found` (short-circuit) or `NotFound` (delegate to the rest of
+the chain).
+
+In Rust this requires no special middleware abstraction —
+`NotFound` is already the "delegate" signal. The chain dispatcher
+does the rest. A WASM author writes:
+
+```rust
+fn find_by_username(realm, username, cfg, cx) -> LookupOutcome<ExternalUser> {
+    if !cx.matches(cfg.handled_prefix(username)) {
+        return LookupOutcome::NotFound;       // not mine — delegate
+    }
+    let user = my_external_call(realm, username)?;
+    LookupOutcome::Found(user)
+}
+```
+
+For interfaces where the next-in-chain call must happen mid-logic
+(true Tower-style middleware), the WIT contract exposes a host
+function `host.dispatch_next(args) -> result`. This is reserved for
+the `mapper` interface, where transforming a claim set before/after
+the chain is a real use case. Other interfaces don't need it.
+
+### Provider URN scheme
+
+All providers — built-in and WASM — have a stable URN. The
+dispatcher, the admin UI, the audit log, and the cache key all
+agree on this string.
+
+```
+builtin:{interface-short}:{provider-name}[:{instance-alias}]
+wasm:{module-alias}:{export-name}
+```
+
+Examples:
+
+| URN | What |
+|---|---|
+| `builtin:user-storage:local` | The Postgres-backed local user store |
+| `builtin:user-storage:ldap:corp-ad` | An LDAP/AD federation source aliased `corp-ad` (one per source) |
+| `builtin:authn:password` | The password authenticator |
+| `builtin:authn:otp-totp` | TOTP authenticator |
+| `builtin:authn:webauthn` | WebAuthn authenticator |
+| `builtin:authn:idp-redirect` | Built-in broker redirect authenticator |
+| `builtin:mapper:claim-from-attribute` | Default attribute-to-claim mapper |
+| `builtin:mapper:realm-role` | Default `realm_access.roles` mapper |
+| `builtin:mapper:client-role` | Default `resource_access` mapper |
+| `builtin:mapper:groups` | Default `groups` claim mapper |
+| `builtin:event:postgres-audit` | Built-in audit-event writer |
+| `builtin:event:webhook` | Built-in webhook event sink |
+| `builtin:policy:default-scope-policy` | The default scope-grant policy |
+| `builtin:broker-adapter:oidc-generic` | Generic OIDC IdP adapter |
+| `builtin:broker-adapter:saml-generic` | Generic SAML 2.0 SP adapter |
+| `wasm:acme-custom-store:user-storage` | A third-party WASM user-storage module |
+| `wasm:spi-google:broker-adapter` | The first-party Google broker-adapter plugin |
+
+URNs are case-folded, `[a-z0-9:-]+`, max 128 chars. The
+`builtin:` namespace is **reserved** — WASM modules cannot register
+under it. This prevents a malicious uploader from impersonating a
+built-in.
+
+### The `SpiBinding` row, revisited
+
+```rust
+pub struct SpiBinding {
+    pub id: SpiBindingId,
+    pub realm_id: RealmId,
+    pub interface: WitInterfaceName,        // e.g. "geonosis:user-storage@0.1.0"
+    pub provider_urn: String,               // stable id (built-in or wasm)
+    pub priority: i32,                      // smaller = earlier
+    pub enabled: bool,
+    pub config: serde_json::Value,
+    pub replaces: Option<String>,           // forcibly disables this URN
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+```
+
+Realm seed inserts the built-in bindings. Subsequent operator
+edits adjust `priority`, flip `enabled`, set `config`, or add
+WASM bindings with their own URN.
+
+### Loading the registry
+
+At realm load (or on `NOTIFY`-triggered invalidation):
+
+```rust
+async fn build_user_storage_registry(realm: &Realm) -> ProviderRegistry<dyn UserStorageProvider> {
+    let bindings = storage.list_spi_bindings(realm.id, "geonosis:user-storage@0.1.0").await?;
+    let mut providers = Vec::new();
+    let mut replaced: HashSet<&str> = HashSet::new();
+
+    for binding in &bindings {
+        if let Some(target) = &binding.replaces {
+            if binding.enabled { replaced.insert(target.as_str()); }
+        }
+    }
+
+    for binding in bindings {
+        if !binding.enabled { continue; }
+        if replaced.contains(binding.provider_urn.as_str()) { continue; }
+
+        let provider: Arc<dyn UserStorageProvider> = match binding.origin() {
+            ProviderOrigin::Builtin => builtin_factory(&binding.provider_urn, &binding.config)?,
+            ProviderOrigin::Wasm    => wasm_factory(&binding.provider_urn, &binding.config).await?,
+        };
+
+        providers.push(RegisteredProvider {
+            urn: binding.provider_urn,
+            priority: binding.priority,
+            enabled: true,
+            config: binding.config.into(),
+            inner: provider,
+            origin: binding.origin(),
+        });
+    }
+
+    providers.sort_by_key(|p| p.priority);
+    ProviderRegistry { realm_id: realm.id, providers }
+}
+```
+
+The registry itself is cached (see [`09-cache-invalidation.md`](./09-cache-invalidation.md))
+under `spi/{realm}`; admin edits issue a NOTIFY and pods rebuild
+their registry within the usual envelope.
+
+### Admin UI affordances
+
+The admin UI presents one **integrated list per interface** with
+both built-ins and WASM providers, an explicit visual marker for
+built-ins, drag-to-reorder for priority, and a per-row "replace"
+indicator showing which built-in (if any) is shadowed.
+
+Disabling the last enabled user-storage provider raises a
+**confirmation modal** ("no user storage will be active; logins
+will fail until you re-enable or add a provider"). The admin API
+returns `409 conflict` if the operator confirms-then-disables-all.
+
+### Worked example: replacing the local user store with a REST-based store
+
+Operator goal: keep users in their existing company-internal user
+service (REST API), bypass the built-in Postgres-backed
+`app_user` table entirely for one realm.
+
+1. Operator builds a WASM module against the
+   `geonosis:user-storage@0.1.0` WIT contract. Module exports the
+   six required functions; uses `host.http-client` for outbound
+   calls. Build target `wasm32-wasip2`.
+2. Operator uploads the module via admin API or
+   `geoctl spi install --realm acme --module ... --alias acme-internal-store`.
+3. Operator adds a binding:
+   ```yaml
+   interface: geonosis:user-storage@0.1.0
+   provider_urn: wasm:acme-internal-store:user-storage
+   priority: 100
+   enabled: true
+   replaces: builtin:user-storage:local
+   config:
+     base_url: "https://users.acme.internal"
+     auth_header_secret: { secret_ref: "INTERNAL_USERS_API_KEY" }
+   ```
+4. On save, NOTIFY fans out. Every pod rebuilds its user-storage
+   registry: `builtin:user-storage:local` is excluded (replaced);
+   the WASM provider is the only enabled entry.
+5. Subsequent logins resolve users via the WASM provider's
+   `find_by_username` / `validate_credential` calls. The
+   `app_user` table sees no traffic.
+6. To roll back: disable the WASM binding (or re-enable
+   `builtin:user-storage:local` by clearing `replaces`). The
+   change propagates in under 100 ms via NOTIFY.
+
+### Worked example: chaining a captcha BEFORE the built-in password authenticator
+
+1. Operator builds a `geonosis:authn` provider performing captcha
+   validation; uploads as `wasm:acme-captcha:authn`.
+2. In the realm's `browser` flow, the password node is replaced by
+   a `sequence` of:
+   - `wasm:acme-captcha:authn` step (configured to require captcha)
+   - `builtin:authn:password` step
+3. No registry override — the flow editor names the providers
+   by URN. The dispatcher mode for `authn` is `NamedSelect`, so
+   priority is irrelevant; the flow's ordering wins.
+
+### Why this design (the trade-offs)
+
+- **Built-ins-as-plugins** means the operator's mental model is
+  one list, not "built-in vs. extension". The admin UI is simpler.
+- **`replaces`** is enforced by the registry, not by external
+  convention. Replacing a built-in cannot be done by accident, and
+  cannot leave both the built-in and a custom provider racing.
+- **Dispatch mode is per-interface, not per-binding**. Operators
+  configure priority/enabled/config; the dispatch behavior is a
+  contract. This prevents the "I set this to FirstMatch and now
+  events stopped firing" class of misconfiguration.
+- **No runtime cross-language inheritance**. A WASM module can't
+  subclass a built-in; it implements the WIT contract. Decoration
+  is expressed by a higher-priority provider returning `NotFound`
+  when it doesn't handle the case. This is honest in the type
+  system.
+- **`Single`-dispatch interfaces** still benefit from the registry
+  because swapping the active provider becomes an audited admin
+  action with `replaces`, not a hidden config flag.
+
+### Backwards-compatibility & migration
+
+WIT contracts are versioned (`@0.1.0`, `@0.2.0`). The host MAY
+support two adjacent versions of the same interface concurrently.
+A binding declares the version it targets; the registry handles
+both. When a WIT version is deprecated and removed, bindings on
+the old version surface a `deprecated` warning in the admin UI
+during the grace window.
+
+### Open
+
+- **Middleware host call** (`host.dispatch_next`) for the `mapper`
+  interface — designed; implementation pencilled for Phase 4
+  with the SPI host work. Other interfaces don't need it in v0.1.
+- **Cross-realm built-in defaults**: should an operator be able to
+  set a cluster-wide "all new realms get this WASM by default"?
+  Considered, deferred to v0.2 (it's a master-realm-level binding
+  policy).
+- **Provider hot-rollback**: if a newly-installed WASM provider
+  causes errors, fall back to the previous binding state. v0.2
+  candidate; v0.1 has explicit disable.
+
 ## Compilation cache
 
 Modules are stored as `*.wasm` bytecode in object storage (or DB blob
@@ -115,7 +472,7 @@ interface authenticator {
 }
 
 world authn-provider {
-  import host: geonosis:host/v0.1.0;
+  import host: geonosis:host@0.1.0;
   export authenticator;
 }
 ```
@@ -144,22 +501,57 @@ interface mapper {
 }
 ```
 
-### `geonosis:federation@0.1.0`
+### `geonosis:user-storage@0.1.0`
 
-Custom user storage source.
+The unified user-storage contract. Both **the built-in local
+store** and **operator-supplied custom stores** (REST, SCIM, LDAP,
+mainframe IMS, anything) implement this interface. Dispatch mode:
+**FirstMatch**.
 
 ```wit
-interface user-source {
-  find-by-username: func(realm: string, username: string)
-      -> result<option<external-user>, error>;
-  find-by-id: func(realm: string, id: string)
-      -> result<option<external-user>, error>;
+package geonosis:user-storage@0.1.0;
+
+interface user-storage-provider {
+  use types.{external-user, user-draft, user-patch, credential,
+             validation-result, search-query, search-page,
+             credential-info, error};
+
+  describe: func() -> provider-info;
+
+  // Lookup (read)
+  find-by-username: func(realm: string, username: string) -> result<lookup-outcome, error>;
+  find-by-id:       func(realm: string, id: string)       -> result<lookup-outcome, error>;
+  find-by-email:    func(realm: string, email: string)    -> result<lookup-outcome, error>;
+
+  // Credential validation
   validate-credential: func(realm: string, id: string, credential: credential)
       -> result<validation-result, error>;
-  search: func(realm: string, query: search-query)
-      -> result<search-page, error>;
+  list-credentials: func(realm: string, id: string)
+      -> result<list<credential-info>, error>;
+
+  // Optional admin / write capabilities
+  create-user: func(realm: string, draft: user-draft) -> result<external-user, error>;
+  update-user: func(realm: string, id: string, patch: user-patch) -> result<external-user, error>;
+  delete-user: func(realm: string, id: string) -> result<_, error>;
+
+  search: func(realm: string, query: search-query) -> result<search-page, error>;
+}
+
+variant lookup-outcome {
+  not-found,                          // delegate to next provider in chain
+  found(external-user),
+}
+
+world user-storage-provider-world {
+  import host: geonosis:host@0.1.0;
+  export user-storage-provider;
 }
 ```
+
+Providers that don't support a write operation return
+`error.kind=unsupported` instead of implementing it. The admin UI
+honors capability flags from `describe()` to grey out unsupported
+actions.
 
 ### `geonosis:event@0.1.0`
 
@@ -221,7 +613,7 @@ interface broker-adapter {
 }
 
 world broker-adapter-provider {
-  import host: geonosis:host/v0.1.0;   // logging, http-client, secrets
+  import host: geonosis:host@0.1.0;   // logging, http-client, secrets
   export broker-adapter;
 }
 ```
@@ -367,7 +759,7 @@ Recommended operator practice (documented in
 
 For every plugin call we emit a tracing span with:
 
-- `spi.interface`, `spi.provider_alias`, `spi.module_sha256`
+- `spi.interface`, `spi.provider_urn`, `spi.module_sha256`
 - `spi.fuel_consumed`, `spi.memory_peak_bytes`
 - `spi.outcome` (`success` / `error_kind`)
 

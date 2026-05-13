@@ -11,11 +11,12 @@ target is: **trivial cases are trivial, complex cases are possible**.
 
 ## Why a graph, not a list
 
-Keycloak's "ordered list with `REQUIRED / ALTERNATIVE / OPTIONAL /
-DISABLED`" model is loved for simple cases and resented for complex
-ones. Branching ("if user logged in via Google in the last 24h, skip
-MFA"), parallel choices ("MFA: pick TOTP or WebAuthn"), and post-step
-side effects all bend the list model.
+The classic IAM model — an ordered list of steps tagged
+`REQUIRED / ALTERNATIVE / OPTIONAL / DISABLED` — is loved for simple
+cases and resented for complex ones. Branching ("if user logged in
+via Google in the last 24h, skip MFA"), parallel choices ("MFA: pick
+TOTP or WebAuthn"), and post-step side effects all bend the list
+model out of shape.
 
 We pay the modest extra complexity of a graph because:
 
@@ -229,7 +230,7 @@ Saving a flow:
 2. **Validate** (acyclic, connected, terminating, all node providers
    resolved, all template aliases existent in the bound theme).
 3. **Insert** `auth_flow` row with new `version`.
-4. `pg_notify('geonosis.invalidate', '{"kind":"flow","id":"<id>"}')`.
+4. `pg_notify('geonosis_invalidate', '{"kind":"flow","id":"<id>"}')`.
 5. Each pod: invalidate cache entry. New executions compile fresh.
 
 Compilation produces a `CompiledFlow` (graph indexed by `NodeId`,

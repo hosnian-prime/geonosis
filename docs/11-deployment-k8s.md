@@ -26,18 +26,18 @@ and rollout discipline.
             └──┬───┘        └──┬───┘        └──┬───┘
                │               │               │
                └──────────┬────┴───────────────┘
-                          ▼
-                  ┌────────────────────┐
-                  │  Postgres primary  │
-                  │  + read replicas   │  (managed RDS/Cloud SQL/etc.)
-                  └────────────────────┘
                           │
-                          ▼
-                  ┌────────────────────┐
-                  │ Object store       │
-                  │ (S3/GCS) for WASM  │
-                  │ module bytecode    │
-                  └────────────────────┘
+              ┌───────────┼───────────┐
+              ▼           ▼           ▼
+       ┌───────────┐ ┌──────────┐ ┌──────────────┐
+       │ Postgres  │ │  Redis   │ │ Object store │
+       │ primary + │ │ standalo-│ │ (S3/GCS) for │
+       │ replicas  │ │ ne / HA  │ │ WASM bytecode│
+       └───────────┘ └──────────┘ └──────────────┘
+       system of      hot cache    plugin storage
+       record         + pub/sub
+                      (replaceable
+                       by Komino)
 ```
 
 Optional:
@@ -45,6 +45,10 @@ Optional:
 - **External KMS** for signing keys (HashiCorp Vault transit, AWS KMS,
   GCP KMS) — see [`12-security-crypto.md`](./12-security-crypto.md).
 - **OTel collector** sidecar or DaemonSet.
+- **No-Redis variant**: small or air-gapped deployments may remove
+  Redis from the topology and configure the server with the
+  `LocalCache` backend; see
+  [`09-cache-invalidation.md`](./09-cache-invalidation.md).
 
 ## Helm chart
 
@@ -76,10 +80,20 @@ database:
   poolMax: 32
 
 cache:
-  budgetMiB: 256
-
-cluster:
-  notifyChannel: geonosis_invalidate
+  backend: redis           # redis | local | komino
+  budgetMiBL1: 256         # L1 in-process budget per pod
+  redis:
+    url: ""                # required if backend=redis, via secret
+    mode: standalone       # standalone | sentinel | cluster
+    sentinel:
+      master: ""
+      nodes: []
+    tls: true
+    pubsubChannel: geo:invalidate
+  local:
+    notifyChannel: geonosis_invalidate
+  komino:
+    enabled: false         # v1.x; ignored in v0.1
 
 spi:
   moduleStore: postgres    # or "s3"; if "s3", configure bucket below
@@ -166,6 +180,31 @@ Numbers indicative; real sizing depends on flow complexity, hot
 SPI calls, JWT signing alg, etc. The bench harness in
 `crates/geonosis-bench` produces the load profile we tune against.
 
+## Redis requirements
+
+When `cache.backend=redis` (default):
+
+- Redis **6.2+** (or compatible: Dragonfly, KeyDB) — uses
+  `SET ... EX/PX/NX/XX`, `WAIT`, pub/sub.
+- TLS required in production. The chart accepts `tls.caBundle` and
+  `tls.certificate` references.
+- High-availability options:
+  - **Standalone** for dev / small installs.
+  - **Sentinel** for HA: declare master name + sentinel list under
+    `cache.redis.sentinel`.
+  - **Cluster** for sharded HA: declare seeds; client uses
+    `redis-rs` cluster mode.
+- Sizing: hot cache fits in ≤ 2 GiB for ≤ 10 realms with ≤ 100 k
+  users each in our benchmarks. Add headroom for rate-limit counters
+  and session pub/sub backlog.
+- Maxmemory policy: **`allkeys-lru`**. Geonosis tolerates eviction —
+  evicted entries cause a Postgres fallback read.
+- Persistence: **not required.** Geonosis treats Redis as ephemeral.
+  Operators may still enable RDB snapshots for warmer restarts.
+
+For `cache.backend=local`, Redis is unnecessary; Postgres
+`LISTEN`/`NOTIFY` handles invalidation.
+
 ## Postgres requirements
 
 - Postgres **15 or newer** (uses `MERGE`, `gen_random_uuid`,
@@ -186,16 +225,19 @@ release may add replica-aware read for admin lists.
 
 - Pod-to-Postgres: TLS required in production. SSL `verify-full`
   by default.
+- Pod-to-Redis: TLS required in production.
 - Pod-to-S3 (if configured): TLS, signature v4. IRSA/Workload Identity
   if available.
-- Pod-to-pod: not required. The cluster has no peer-to-peer protocol.
+- Pod-to-pod: not required in v0.1. A future Komino-backed
+  deployment introduces a gossip protocol between Geonosis pods;
+  that change carries its own NetworkPolicy guidance.
 - Pod-to-Ingress: HTTP/1.1 or HTTP/2.
 - `NetworkPolicy` template:
 
   - Ingress: from ingress controller only, port 8080 (HTTP) and 8443
     (HTTPS optional).
-  - Egress: to Postgres CIDR, S3 endpoints, KMS endpoints, OTel
-    collector. Nothing else.
+  - Egress: to Postgres CIDR, Redis CIDR, S3 endpoints, KMS endpoints,
+    OTel collector. Nothing else.
 
 ## Secrets
 

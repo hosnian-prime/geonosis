@@ -1,192 +1,392 @@
 # 14 — Roadmap
 
-A milestone-based plan rather than a calendar. Each phase has a
-concrete exit criterion. Time estimates are rough orders of magnitude
-for a small focused team (2–3 engineers).
+The authoritative phase-distribution document. Every feature
+discussed in any other doc is placed in v0.1, v0.2, or v0.3, with a
+brief "how" pointer. The target: **by v0.3, the platform covers
+substantially the entire feature surface of incumbent enterprise
+IAMs**, plus several differentiators.
 
-## Phase 0 — Foundation (≈ 4–6 weeks)
+This is a milestone-based plan, not a calendar. Time estimates are
+rough orders of magnitude for a focused team of 2–3 engineers.
 
-**Goal:** a server that boots, serves the discovery doc, and signs
-its first JWT against a Postgres-backed realm.
+## v0.1 — Foundation + critical differentiators (≈ 6–8 months)
 
-Exit criteria:
+The goal of v0.1 is to ship a platform that, even at "first release",
+covers the everyday IAM needs of a B2B SaaS or enterprise team **and**
+includes the differentiators (visual graph flows, WASM SPI override,
+Organizations, Agent identity, SAML IdP role) that justify migration
+from incumbents.
 
-- [ ] Workspace skeleton with crates listed in
-      [`01-architecture.md`](./01-architecture.md).
-- [ ] Postgres schema baseline migration (realm, user, client,
-      credential, key_material, session, code_grant, refresh_token,
-      audit_event).
-- [ ] `RealmStorage` + `ClientStorage` traits + Postgres impl with
-      RLS enforcement.
-- [ ] `geonosis-crypto` with software JWS sign/verify for RS256,
-      ES256, EdDSA.
-- [ ] `/realms/{slug}/.well-known/openid-configuration` + JWKS
-      endpoints.
-- [ ] Boot/migration/healthcheck endpoints; `/-/started`,
-      `/-/ready`, `/-/healthy`.
-- [ ] Cache + listener loop (no SPI yet).
-- [ ] CI: build, test, lint, audit, sqlx-prepare.
+### v0.1 — Core protocol surface
 
-## Phase 1 — Local authentication (≈ 6–8 weeks)
+| Feature | Doc | How |
+|---|---|---|
+| OIDC 1.0 + OAuth 2.1 endpoints | [`03`](./03-protocols-oidc.md) | `geonosis-protocol-oidc` + `geonosis-protocol-oauth` crates |
+| PKCE-mandatory authorize + token | [`03`](./03-protocols-oidc.md) | Default policy; `plain` rejected |
+| Refresh-token rotation + family reuse detection | [`03`](./03-protocols-oidc.md) | `family_id` lineage; reuse burns the family |
+| FAPI 1 Baseline conformance | [`03`](./03-protocols-oidc.md) | OpenID Foundation suite in CI from Phase 1 |
+| Token Exchange (RFC 8693) | [`03`](./03-protocols-oidc.md) + [`18`](./18-agent-identity.md) | First implementation lands with Agent identity |
+| Device Authorization grant (RFC 8628) | [`03`](./03-protocols-oidc.md) | Polling endpoint; interval hard-coded 5 s |
+| PAR (RFC 9126) + JAR (RFC 9101) | [`03`](./03-protocols-oidc.md) | Pushed authorization + signed request objects |
+| Token revocation (RFC 7009) + introspection (RFC 7662) | [`03`](./03-protocols-oidc.md) | `/oauth2/revoke` + `/oauth2/introspect` |
+| SAML 2.0 SP role (consuming SAML IdPs) | [`05`](./05-identity-broker.md) | `geonosis-broker` |
+| **SAML 2.0 IdP role (issuing assertions)** | [`20`](./20-saml-idp.md) | `geonosis-protocol-saml-idp` crate, NEW push to v0.1 |
+| Per-realm signing keys (RS / ES / EdDSA) | [`12`](./12-security-crypto.md) | `KeyMaterial` with state-machine; software keys in v0.1 |
+| JWS + JWE | [`12`](./12-security-crypto.md) | `josekit`; algorithm allowlist |
+| Built-in flows: browser, direct-grant, reset-credentials, registration, first-broker-login, client-authentication, **step-up** | [`06`](./06-auth-flows.md) | Graph DSL; per-version snapshots |
+| ACR policy (per-realm authn-strength) | [`12`](./12-security-crypto.md) | Sender-constraint + AMR boolean over levels |
 
-**Goal:** a real user can log in with username/password via the
-browser, receive id/access tokens, and refresh.
+### v0.1 — Identity & user surface
 
-Exit criteria:
+| Feature | Doc | How |
+|---|---|---|
+| Users + Credentials + Groups + Roles | [`02`](./02-data-model.md) | Postgres schema; hierarchical groups; composite roles |
+| **Role attributes** | [`02`](./02-data-model.md) | `Role.attributes` consumed by built-in mappers |
+| **Organizations** (B2B SaaS sub-realm) | [`15`](./15-organizations.md) | Full feature: domains, invitations, memberships, per-org IdPs, per-org roles, branding, `org` token claim |
+| **User Profile** declarative schema | [`16`](./16-user-profile.md) | Per-realm attribute schema, validators (incl. WASM custom), `Reject` default unmanaged policy |
+| LDAP/AD federation | [`04`](./04-federation-ldap.md) | `builtin:user-storage:ldap:{alias}` provider, AD tombstone-as-disable |
+| Identity brokering (OIDC + SAML SP) | [`05`](./05-identity-broker.md) | Generic adapters + first-party plugins for Google, GitHub, Apple, Microsoft |
+| **Agent identity** (AI / M2M delegation) | [`18`](./18-agent-identity.md) | First-class `Agent` entity; Token Exchange path; capability URN namespace; audit category |
+| `required_actions` + `required_flow` | [`06`](./06-auth-flows.md) | Admin-set per-user gates; evaluated at flow Start |
+| Full-text user search (tsvector) | [`02`](./02-data-model.md) | Generated `search_vector` column + GIN index |
+| Pairwise subject identifiers per client | [`02`](./02-data-model.md) | `Client.pairwise_sub_algorithm` |
+| Realm-level password policy DSL | [`02`](./02-data-model.md) | `PasswordRule` enum |
+| OTP policy + WebAuthn policy | [`02`](./02-data-model.md) | Per-realm; supports passwordless config |
+| Brute-force protection | [`02`](./02-data-model.md) | Per-user lockout, configurable backoff |
 
-- [ ] Flow executor + the built-in flows (browser, direct-grant,
-      reset-credentials, registration, **step-up**).
-- [ ] Authenticators: `password`, `otp` (TOTP), `cookie`, `consent`.
-- [ ] Argon2id password hashing + parameter upgrade-on-login.
-- [ ] PKCE-mandated `/authorize` + `/token` (`authorization_code`,
-      `refresh_token`, `client_credentials`).
-- [ ] Refresh-token rotation with family reuse detection.
-- [ ] Session model + browser SSO cookie.
-- [ ] Per-pod rate limiter on `/authorize` and `/token`.
-- [ ] `acr_policy` evaluation + `acr_values` step-up routing.
-- [ ] `required_actions` and `required_flow` evaluation at flow Start.
-- [ ] User search backed by the generated `tsvector` column.
-- [ ] Audit events for the common login actions.
-- [ ] Conformance: passes a self-hosted run of the OIDC Basic
-      certification suite.
+### v0.1 — Built-in authenticators
 
-## Phase 2 — Admin UI v1 (≈ 6–8 weeks)
+`password`, `otp` (TOTP), `cookie`, `consent`, **`webauthn`
+(assertion-as-step; full passkey lifecycle v0.2)**, `recovery-code`,
+`magic-link`, `phone-otp`, `idp-redirect`, `require-action`,
+`risk-score` (returns a discrete decision; full anomaly detection
+v0.3). Spec in [`06`](./06-auth-flows.md).
 
-**Goal:** the binary's admin UI lets an operator create a realm,
-manage users, clients, and roles, and view audit events.
+### v0.1 — WASM SPI
 
-Exit criteria:
+| WIT interface | Purpose | Doc |
+|---|---|---|
+| `geonosis:authn@0.1.0` | Custom authenticators | [`07`](./07-spi-wasm.md) |
+| `geonosis:mapper@0.1.0` | Claim transformations (token, id, SAML, userinfo) | [`07`](./07-spi-wasm.md) |
+| `geonosis:event@0.1.0` | Event listeners | [`07`](./07-spi-wasm.md) |
+| `geonosis:policy@0.1.0` | Policy decisions (scope grants, agent capabilities) | [`07`](./07-spi-wasm.md) |
+| `geonosis:user-storage@0.1.0` | User-storage providers (replaces `federation`) | [`07`](./07-spi-wasm.md) |
+| `geonosis:broker-adapter@0.1.0` | Vendor IdP quirks | [`07`](./07-spi-wasm.md) |
+| `geonosis:user-profile-validator@0.1.0` | Custom attribute validators | [`16`](./16-user-profile.md) |
+| `geonosis:host@0.1.0` | Host capabilities exposed to plugins | [`07`](./07-spi-wasm.md) |
 
-- [ ] Leptos admin app with SSR + auth via master-realm tokens.
-- [ ] CRUD pages for: realms, users, clients, roles, groups,
-      sessions.
-- [ ] Audit event explorer.
-- [ ] REST API `/admin/v1/...` mirroring the UI; OpenAPI doc
-      generated.
-- [ ] Basic theme overlay (login-template substitution) with hot
-      reload.
-- [ ] Internationalization plumbing; English + Turkish bundles ship.
-- [ ] CLI (`geoctl`) parity for realms / clients / users /
-      keys / audit.
+**Provider registry + built-ins-as-plugins** ([`07`](./07-spi-wasm.md)):
+every built-in registers as a `SpiBinding` with a `builtin:`
+URN; operators can replace, disable, or chain extras around any
+built-in via the same admin UI surface as third-party plugins.
 
-## Phase 3 — Federation & broker (≈ 6–8 weeks)
+Authoring SDK: **Rust** only in v0.1 (`geonosis-spi-api`).
 
-**Goal:** real users can come from LDAP/AD, and "Sign in with
-Google/GitHub/corporate Okta" works.
+### v0.1 — Admin UI + theming
 
-Exit criteria:
+| Feature | Doc | How |
+|---|---|---|
+| Embedded Leptos SSR + island hydration | [`08`](./08-admin-ui.md) | `geonosis-admin-ui` + `geonosis-ui-kit` |
+| Slot-based component override | [`08`](./08-admin-ui.md) | `Surface` trait; built-in + WASM-backed implementations |
+| File-based theme overlay (template substitution) | [`08`](./08-admin-ui.md) | Filesystem watcher; hot reload |
+| Internationalization (FTL bundles, RTL-day-one) | [`08`](./08-admin-ui.md) | `geonosis-i18n` |
+| CRUD pages: realms, users, clients, roles, groups, orgs, sessions, agents | [`08`](./08-admin-ui.md) | Form-post-first; flow editor is the only hydrated island |
+| Visual flow editor (graph canvas) | [`06`](./06-auth-flows.md) + [`08`](./08-admin-ui.md) | YAML/JSON round-trip; dry-run with synthetic context |
+| Audit event explorer | [`13`](./13-observability.md) | Filter by realm / actor / action / time |
+| Theme sandbox threat model | [`08`](./08-admin-ui.md) | CSP + escape-by-default + no template I/O primitives |
+| WCAG 2.1 AA + day-one RTL | [`08`](./08-admin-ui.md) | CSS logical properties only (CI lint) |
 
-- [ ] LDAP federation with pass-through bind and on-demand mirror.
-- [ ] AD-specific helpers (objectGUID, sAMAccountName), tombstone-
-      as-disable behavior.
-- [ ] Identity broker core: generic OIDC adapter + generic SAML SP
-      adapter.
-- [ ] `geonosis:broker-adapter@0.1.0` WIT contract.
-- [ ] First-party adapter plugins: `spi-google`, `spi-github`,
-      `spi-apple`, `spi-microsoft` — shipped from
-      `geonosis/spi-plugins` repo, default-enabled in Helm values.
-- [ ] First-broker-login flow with mapper bindings.
-- [ ] Connection pool & circuit-breaker for federation sources.
+### v0.1 — Cluster / cache / cluster-state
 
-## Phase 4 — SPI v1 (≈ 6 weeks)
+| Feature | Doc | How |
+|---|---|---|
+| `Cache` trait | [`09`](./09-cache-invalidation.md) | Hides backend; supports Redis (default), LocalCache (no-Redis), Komino (v1.x) |
+| Default impl: Redis (KV + pub/sub fan-out) | [`09`](./09-cache-invalidation.md) | `geonosis-cache::redis`; Sentinel/Cluster supported |
+| Alternative impl: LocalCache (in-process LRU + Postgres LISTEN/NOTIFY) | [`09`](./09-cache-invalidation.md) | `geonosis-cache::local`; for small/air-gapped installs |
+| L1 in-process LRU (Moka) | [`09`](./09-cache-invalidation.md) | 1-second TTL; collapses hot-path round-trips |
+| Single-flight per-key dedupe | [`09`](./09-cache-invalidation.md) | L1 + L2 lease-based |
+| Per-pod rate limiter | [`12`](./12-security-crypto.md) | Token bucket; cluster-wide variant in v0.2 |
+| Postgres row-level security | [`02`](./02-data-model.md) | `tenant_isolation` policy per realm |
 
-**Goal:** operators can ship custom WASM authenticators, mappers, and
-event listeners.
+### v0.1 — Deployment
 
-Exit criteria:
+| Feature | Doc | How |
+|---|---|---|
+| Helm chart for K8s | [`11`](./11-deployment-k8s.md) | `deploy/helm/geonosis/` |
+| Health probes (`/-/started`, `/-/ready`, `/-/healthy`) | [`11`](./11-deployment-k8s.md) | DB pool / listener / SPI registry health |
+| PodDisruptionBudget + topologySpreadConstraints + NetworkPolicy | [`11`](./11-deployment-k8s.md) | Defaults in chart |
+| Rolling update strategy `maxUnavailable: 0` | [`11`](./11-deployment-k8s.md) | preStop drain hook 15 s |
+| Expand-contract migration discipline | [`10`](./10-zero-downtime-migrations.md) | CI lint, schema-version compatibility window |
+| Operator-driven Postgres backup runbook | [`11`](./11-deployment-k8s.md) | + master-key derivation note |
 
-- [ ] Wasmtime host (`geonosis-spi-host`) with epoch interruption,
-      fuel, memory caps.
-- [ ] WIT worlds: `geonosis:authn`, `geonosis:mapper`,
-      `geonosis:event`, `geonosis:policy`, with `geonosis:host`
-      interface.
-- [ ] `geonosis-spi-api` crate (Rust authoring SDK).
-- [ ] Module upload via admin API + persistence (Postgres `bytea`
-      first; S3 backend behind a feature flag).
-- [ ] Compiled-module cache (`*.cwasm`) under
-      `/var/cache/geonosis/spi/`.
-- [ ] Quarantine + retry policies for misbehaving plugins.
-- [ ] Reference plugin: a simple "captcha" authenticator and a
-      "claim-prefix" mapper.
+### v0.1 — Observability
 
-## Phase 5 — Flow editor v1 (≈ 6 weeks)
+| Feature | Doc | How |
+|---|---|---|
+| OTel logs + metrics + traces from day-0 | [`13`](./13-observability.md) | `tracing` + `tracing-opentelemetry` |
+| Tail-sampled OTLP exports for errors / slow requests | [`13`](./13-observability.md) | Sampler at collector |
+| Prometheus `/metrics` endpoint | [`13`](./13-observability.md) | `geonosis_*` namespace |
+| Audit events to Postgres + webhook | [`13`](./13-observability.md) | Two sinks built-in |
+| Shipped Grafana dashboards + PrometheusRule alerts | [`13`](./13-observability.md) | `deploy/grafana/`, `deploy/prometheus-rules/` |
 
-**Goal:** operators edit auth flows visually; flows hot-reload.
+### v0.1 — Developer experience
 
-Exit criteria:
+| Feature | Doc | How |
+|---|---|---|
+| **5-minute quickstart** | [`21`](./21-dx-package.md) | Single Docker compose; bootstrap realm; 3 cURL commands |
+| **Next.js example app** | [`21`](./21-dx-package.md) | `examples/nextjs-app/` |
+| **axum resource-server example** | [`21`](./21-dx-package.md) | `examples/axum-resource-server/` |
+| **10 task-oriented recipes** | [`21`](./21-dx-package.md) | `docs/recipes/` |
+| `geoctl` operator CLI | [`08`](./08-admin-ui.md) | parity with admin UI for realms/clients/users/orgs/keys/audit/spi |
+| YAML/JSON flow export/import | [`06`](./06-auth-flows.md) | `geoctl flows ...` |
+| Plugin packaging convention | [`07`](./07-spi-wasm.md) | `geoctl spi install` + signed manifests |
 
-- [ ] Graph editor (Leptos island) reading/writing YAML/JSON DSL.
-- [ ] Inline validation (graph cycles, missing providers, etc.).
-- [ ] Versioned flow storage; in-flight executions complete on the
-      original version.
-- [ ] Dry-run with synthetic context to preview branch decisions.
-- [ ] All built-in authenticators surfaced with config schemas.
+### v0.1 — Cross-cutting
 
-## Phase 6 — Production readiness (≈ 6 weeks)
+- Single binary (`geonosis-server`), no JVM.
+- Multi-pod K8s native.
+- Hot reload: config, themes, WASM plugins, key rotations — all
+  without restarts.
+- All entities partitionable / scopable by `realm_id`; RLS as
+  defense-in-depth.
+- `master` realm bootstrap.
 
-**Goal:** confidence to run in real production at small/medium scale.
+---
 
-Exit criteria:
+## v0.2 — Enterprise B2B + ecosystem expansion (≈ 4–6 months after v0.1)
 
-- [ ] Helm chart + Operator-friendly Deployment templates.
-- [ ] Documented Postgres requirements, sizing, alerting rules.
-- [ ] Backup & restore runbook (master key included).
-- [ ] Schema migration discipline enforced in CI (the
-      [`10-zero-downtime-migrations.md`](./10-zero-downtime-migrations.md)
-      lints).
-- [ ] OIDC Basic + FAPI 1 Baseline conformance suite passing.
-- [ ] Load test fixture (`crates/geonosis-bench`) with target
-      profiles (steady-state, spike, MFA-heavy).
-- [ ] Security audit pass (in-house: threat model recheck + crypto
-      surface review). External audit before v1.0.
+The goal of v0.2 is parity with established enterprise IAMs on
+features that enterprise procurement teams check off explicitly,
+plus the ecosystem assets (SDKs, account console, KMS) that move
+adoption from "we evaluated it" to "we deployed it".
 
-## Phase 7 — v0.2 candidates
+### v0.2 — Protocols
 
-Picked in order of operator demand. Not committed.
+| Feature | Doc | How |
+|---|---|---|
+| **SCIM 2.0 inbound + outbound** | [`19`](./19-scim.md) | `geonosis-protocol-scim` (inbound) + `builtin:event:scim-outbound` (outbound) |
+| **WebAuthn passkey lifecycle** | [`08`](./08-admin-ui.md) + [`16`](./16-user-profile.md) | Self-service enrollment / removal / cross-device sync / recovery in account console |
+| **DPoP** sender-constrained tokens | [`03`](./03-protocols-oidc.md) | RFC 9449; per-realm choice |
+| **mTLS-bound tokens** | [`03`](./03-protocols-oidc.md) | RFC 8705; per-realm choice |
+| JARM signed response_mode=jwt | [`03`](./03-protocols-oidc.md) | Per-client opt-in |
+| Token Exchange GA (full RFC 8693 surface) | [`03`](./03-protocols-oidc.md) | All token type combinations |
+| Device polling interval per-realm | [`03`](./03-protocols-oidc.md) | Replace v0.1's hard-coded 5 s |
+| Self-service passkey enrollment flow | [`06`](./06-auth-flows.md) | Built-in flow `passkey-enroll` |
 
-- **Geonosis-as-IdP for SAML** (sign-side).
-- **WebAuthn** as a first-class authenticator with passkey lifecycle.
-- **Sender-constrained tokens**: DPoP + mTLS, per-realm choice.
-- **Token Exchange** (RFC 8693).
-- **KMS backends**: HashiCorp Vault Transit (first), then AWS KMS
-  and GCP KMS.
-- **SPI authoring SDKs**: Go (TinyGo) and JavaScript/TypeScript
-  (ComponentizeJS) alongside the existing Rust SDK.
-- **Cluster-wide rate limiting** (Redis or DB).
-- **Account console** (self-service end-user portal).
-- **Kerberos / SPNEGO** browser SSO via the `geonosis-spi-kerberos`
-  plugin.
-- **Attribute search**: per-realm allow-listed JSONB GIN indices on
-  `app_user.attributes`.
-- **K8s Operator CRDs**.
-- **Audit event compaction** per family.
-- **Multi-region active-active** plan (deferred design).
+### v0.2 — Crypto
 
-## What we explicitly defer to v1.0+
+| Feature | Doc | How |
+|---|---|---|
+| **BYOK upload** (PEM/JWK/DER → wrapped or KMS-imported) | [`12`](./12-security-crypto.md) | Admin UI + `geoctl keys import` |
+| **HashiCorp Vault Transit** KMS backend | [`12`](./12-security-crypto.md) | First external KMS implementation |
+| AWS KMS backend | [`12`](./12-security-crypto.md) | Asymmetric KMS keys; IRSA-compatible auth |
+| GCP KMS backend | [`12`](./12-security-crypto.md) | Workload Identity auth |
 
-- **UMA 2.0** authorization services.
-- **Self-issued OP**.
-- **CIBA**.
-- **GUI plugin authoring**.
-- **Visual builder for login pages** (themes remain file/code-based).
-- **Migration importers** (Keycloak realm export → Geonosis).
+### v0.2 — End-user surface
+
+| Feature | Doc | How |
+|---|---|---|
+| **Account console** | [`08`](./08-admin-ui.md) | New `geonosis-account-ui` crate; SSR + island; profile editing, session list, MFA enrollment, brokered-identity linking, org memberships, agent management |
+| **GDPR self-service** (export + delete) | [`13`](./13-observability.md) | `/account/me/export` (ZIP), `/account/me/delete` (cooling-off + audit anonymize), admin-API equivalents |
+| Phone OTP enrollment in account console | [`08`](./08-admin-ui.md) | Plugin-provided SMS sender (Twilio / MessageBird / SNS) via mapper config |
+| Account-console attribute editing from User Profile schema | [`16`](./16-user-profile.md) | Forms generated from declared schema |
+
+### v0.2 — Operational
+
+| Feature | Doc | How |
+|---|---|---|
+| **Cluster-wide rate limiting** | [`12`](./12-security-crypto.md) | Redis-backed counters with sliding window |
+| Audit sinks: Kafka, cloud-native (CloudWatch / Stackdriver / Loki) | [`13`](./13-observability.md) | New `EventSinkKind` variants |
+| Audit event compaction | [`13`](./13-observability.md) | Per-token-family summary rows |
+| Migration progress UI in admin console | [`10`](./10-zero-downtime-migrations.md) | Backfill worker status + ETA |
+| IP truncation + UA redaction toggles | [`13`](./13-observability.md) | Surfaced in admin |
+| **Per-realm metering counters** | [`22`](./22-cloud-offering.md) | Audit pipeline counters; consumed by managed Cloud |
+| Test-mode realms | [`21`](./21-dx-package.md) | `geoctl realm create --kind test --auto-seed`; flagged in admin UI |
+
+### v0.2 — SPI ecosystem
+
+| Feature | Doc | How |
+|---|---|---|
+| **Go (TinyGo) authoring SDK** | [`07`](./07-spi-wasm.md) | `geonosis-spi-go` |
+| **JavaScript / TypeScript (ComponentizeJS) SDK** | [`07`](./07-spi-wasm.md) | `geonosis-spi-js` |
+| `geonosis:scim-mapper@0.1.0` SPI | [`19`](./19-scim.md) | Per-target transform on push |
+| `geonosis:scim-target-auth@0.1.0` SPI | [`19`](./19-scim.md) | Non-standard SCIM endpoint auth |
+| `geonosis:agent-attestation@0.1.0` SPI | [`18`](./18-agent-identity.md) | Validate actor-token attestations |
+| `geonosis:ui-component@0.1.0` SPI | [`08`](./08-admin-ui.md) | Admin form extension (e.g. embed a vendor dashboard widget) |
+| `spi-kerberos` first-party plugin | [`04`](./04-federation-ldap.md) | Kerberos / SPNEGO browser SSO |
+| `spi-okta`, `spi-onelogin` first-party plugins | [`05`](./05-identity-broker.md) | Vendor quirks |
+
+### v0.2 — DX
+
+| Feature | Doc | How |
+|---|---|---|
+| **`geonosis-verify` Rust crate published** | [`21`](./21-dx-package.md) | JWT validator + JWKS cache; DPoP/mTLS-aware; agent `act` unwrap |
+| OpenAPI spec generated for admin REST | [`08`](./08-admin-ui.md) | `utoipa` annotations |
+| **Admin SDKs (TS, Python, Go, Rust)** | [`21`](./21-dx-package.md) | Auto-generated from OpenAPI |
+| Postman / Bruno collection | [`21`](./21-dx-package.md) | Auto-exported from OpenAPI |
+| SvelteKit + FastAPI example apps | [`21`](./21-dx-package.md) | `examples/sveltekit-app/`, `examples/fastapi-resource-server/` |
+| Migration guides from incumbent IAMs (concept-mapping) | [`21`](./21-dx-package.md) | Docs only; no automated converter |
+| Recipes set 2 (next 10) | [`21`](./21-dx-package.md) | SCIM provisioning, passkey enrollment, agent setup, etc. |
+| Docs site (`docs.geonosis.dev`) + Algolia search | [`21`](./21-dx-package.md) | Docusaurus-style |
+
+### v0.2 — Cloud preparation (no Cloud code yet)
+
+- **Per-realm metering hooks** in audit pipeline (see Operational).
+- Cloud private preview with design-partner customers.
+- Compatibility checklist enforcement in CI (no cross-realm reads, etc.).
+
+---
+
+## v0.3 — Almost-everything done (≈ 6–8 months after v0.2)
+
+The goal of v0.3: a customer evaluating Geonosis against any
+incumbent finds **the feature they need is here**, with a small set
+of named exceptions (multi-region active-active and a few legacy
+protocols). Cloud GA happens here.
+
+### v0.3 — Protocols
+
+| Feature | Doc | How |
+|---|---|---|
+| **UMA 2.0 Authorization Services** | new `docs/23-uma.md` (to be written) | `geonosis-protocol-uma` crate |
+| **CIBA** (Client-Initiated Backchannel Auth) | [`03`](./03-protocols-oidc.md) | Polling + notification + push modes |
+| **OpenID Federation 1.0** | new `docs/24-openid-federation.md` (to be written) | Federation of federations; emerging spec |
+| **Verifiable Credentials / SD-JWT VC** issuance | new `docs/25-verifiable-credentials.md` (to be written) | `geonosis-protocol-vc` + `geonosis:vc-issuer@0.1.0` SPI |
+| mDL (mobile driving license) profile experimental | new doc | Best-effort interop with ISO 18013-5 wallets |
+| Step-up assurance levels (NIST 800-63-3 IAL/AAL) | [`12`](./12-security-crypto.md) | Emit `acr` values matching NIST levels |
+
+### v0.3 — Crypto
+
+| Feature | Doc | How |
+|---|---|---|
+| **PKCS#11 / HSM** backend | [`12`](./12-security-crypto.md) | Generic PKCS#11 driver; tested with SoftHSM + nCipher + YubiHSM |
+| Continuous authentication freshness for agents | [`18`](./18-agent-identity.md) | Attestation heartbeats with `agent-attestation` SPI |
+| Per-tenant ed25519 device-keys for binding | [`12`](./12-security-crypto.md) | Wraps DPoP-bound tokens with device attestation |
+
+### v0.3 — Agents
+
+| Feature | Doc | How |
+|---|---|---|
+| **Agent-to-agent delegation chains** | [`18`](./18-agent-identity.md) | Nested `act` chains with policy-driven capability reduction per hop |
+| Continuous attestation | [`18`](./18-agent-identity.md) | Heartbeat-driven freshness |
+| Agent cost-tracking built-in mappers | [`18`](./18-agent-identity.md) | OpenAI / Anthropic / Vertex usage scoped to agent + parent |
+| Agent rate-limit per-capability granularity | [`18`](./18-agent-identity.md) | `spend:daily` enforces hard ceilings |
+
+### v0.3 — Federation / broker
+
+| Feature | Doc | How |
+|---|---|---|
+| Cross-realm federation within one cluster | new `docs/26-cross-realm-federation.md` | Curated trust links between realms |
+| Additional first-party broker plugins | [`05`](./05-identity-broker.md) | `spi-aws-iam-identity-center`, `spi-salesforce`, `spi-servicenow`, `spi-slack`, `spi-discord` |
+| SAML attribute push to attribute authorities | [`20`](./20-saml-idp.md) | For federation-aware enterprises |
+| WebAuthn discoverable credentials default | [`08`](./08-admin-ui.md) | Passkeys before passwords in registration |
+
+### v0.3 — Adaptive / risk
+
+| Feature | Doc | How |
+|---|---|---|
+| Risk-score authenticator with heuristic anomaly detection | [`06`](./06-auth-flows.md) | Velocity, geo, device fingerprint, time-of-day; ML-free baseline |
+| Adaptive MFA flows | [`06`](./06-auth-flows.md) | Step-up triggered by risk score |
+| Mobile-app-friendly authn flows | [`06`](./06-auth-flows.md) | Deeplink-aware, biometric prompts via WebAuthn platform authenticators |
+| Phone-number-as-username | [`16`](./16-user-profile.md) | First-class for B2C use; SMS-OTP-driven login |
+
+### v0.3 — Operational
+
+| Feature | Doc | How |
+|---|---|---|
+| **K8s Operator with CRDs** | [`11`](./11-deployment-k8s.md) | `Realm`, `Client`, `WasmPlugin`, `IdentityProvider` CRDs |
+| Multi-region active-active **design** | new doc | Conflict resolution, write fences, audit ordering |
+| Migration importer from incumbent IAMs | [`14`](./14-roadmap.md) | Best-effort YAML converter |
+
+### v0.3 — DX
+
+| Feature | Doc | How |
+|---|---|---|
+| Spring Boot + Django example apps | [`21`](./21-dx-package.md) | `examples/spring-boot-app/`, `examples/django-app/` |
+| Interactive WASM-in-browser playground | [`21`](./21-dx-package.md) | Ephemeral Geonosis in a browser tab |
+| Test mode → migration mode | [`21`](./21-dx-package.md) | Promote a test-realm to a production-realm |
+| SDK parity across Rust + Go + TS + Python | [`21`](./21-dx-package.md) | All admin operations covered |
+
+### v0.3 — Cloud
+
+| Feature | Doc | How |
+|---|---|---|
+| **Geonosis Cloud GA** | [`22`](./22-cloud-offering.md) | First region (EU); SOC 2 in progress |
+| **Plugin marketplace** | [`22`](./22-cloud-offering.md) | Curated, one-click install per realm |
+| Backup browser UI | [`22`](./22-cloud-offering.md) | On top of `geoctl realm export` |
+| Geo-routing | [`22`](./22-cloud-offering.md) | Per-customer region selection |
+| Audit-log SIEM integrations | [`22`](./22-cloud-offering.md) | Splunk, Datadog, Elastic, S3 + Object Lock |
+
+---
+
+## v1.0 — GA, audit, polish
+
+After v0.3, the work shifts from "more features" to "production hardening":
+
+- External security audit.
+- FAPI 1 Advanced + FAPI 2.0 conformance.
+- Long-term stable HTTP API + WIT contracts.
+- Multi-region active-active **shipping** (not just design).
+- Komino retiring Redis dependency (separately tracked as
+  Komino phase below).
+
+## Komino — separately tracked (v1.x)
+
+[`09-cache-invalidation.md`](./09-cache-invalidation.md) §Komino.
+Replaces Redis with an embedded, gossip-clustered, Rust-native
+distributed cache. Independent of the feature-distribution above;
+proceeds when foundational work is mature enough to absorb the
+churn. Compatibility checklist:
+
+- API-equivalent to the existing `Cache` trait.
+- Helm chart toggle: `cache.backend=komino`.
+- Migration runbook: Redis → Komino with overlap window.
+- Benchmarks show ≤ 10% RPS regression vs. Redis at p99.
+
+---
+
+## Explicit non-goals (always)
+
+These are firm "we will not build this" commitments — listing them
+to prevent perpetual reopening:
+
+- **WS-Federation** passive requestor.
+- **SAML 1.x** in any role.
+- **CAS** server.
+- **OpenID 2.0** consumption (the old spec, not OIDC).
+- **Closed-source server.** Geonosis stays under an OSI license.
+- **Hostile dual-licensing** (BSL etc.) of the core server.
+- **Cloud-only protocol features.** Anything that speaks OIDC /
+  SAML / SCIM stays in OSS.
+- **Crippled OSS** as an upgrade funnel.
+
+---
+
+## How we'll know each phase is done
+
+| Phase | "Done" signal |
+|---|---|
+| v0.1 | OIDC Basic + FAPI 1 Baseline conformance suite passing in CI; the 5-minute quickstart works end-to-end against a fresh `compose.yml`; load test shows ≥ 5000 authorize req/s on a 4 vCPU pod with warm cache |
+| v0.2 | Account console fully usable for end-user self-service; SCIM 2.0 interop tested against Okta + Entra ID provisioning; `geonosis-verify` crate published; 4 admin SDKs published |
+| v0.3 | Cloud GA in first region; UMA 2.0 + CIBA + OpenID Federation conformance tests passing; plugin marketplace publicly available; migration importer works against a representative incumbent realm export |
+| v1.0 | External security audit passed; HTTP API stable contract; multi-region active-active shipped; Komino candidate replacing Redis in benchmarks |
 
 ## Risks and mitigations
 
 | Risk | Mitigation |
 |---|---|
-| Leptos SSR + island hydration immaturity bites us | Keep admin mostly form-post; islands are localized; fall back to plain forms anywhere reactivity is risky |
-| Wasmtime WASI 0.2 churn | Pin to a tested release; isolate the host crate so upgrades are auditable |
-| OIDC/FAPI conformance surface is large | Run the conformance suite in CI from Phase 1; treat regressions as P0 |
-| Schema migration discipline slips | CI lints + a "migration review" approval gate |
-| Postgres becomes the single point of contention | Bench from Phase 1; design replica-aware reads for v0.2 |
-| Crypto vendoring | `josekit` review + audit before any GA; consider migration to `rustcrypto` after |
+| Scope inflation pushes v0.1 past 8 months | This roadmap is the contract; cuts come from v0.2-bound items moving to v0.3, not v0.1 items slipping |
+| Leptos SSR + island hydration matures slower than expected | Most admin pages stay classical form-post; only flow editor + account console need hydration |
+| WASM SPI ecosystem stays sparse | First-party plugins (Google/GitHub/Apple/Microsoft, REST-user-storage, captcha) seed the marketplace; clear authoring guide + 5-min quickstart for plugin authors |
+| SAML IdP role complexity (XML-DSig surface) eats Phase 3 | Use vetted XML-DSig crate; cover with shipped interop fixtures from major SP libs |
+| Schema-migration discipline slips during enterprise-feature buildout | CI lint blocks merges; quarterly audit of past migrations |
+| Cloud planning crowds out OSS velocity | Strict separation: no Cloud code in OSS repo (see [`22`](./22-cloud-offering.md)) |
 
-## How we'll know it's working
+## How this roadmap is maintained
 
-- Every phase ships with a runnable demo and a recorded conformance
-  test run.
-- Every PR includes either a doc update or a "no docs change needed
-  because…" note.
-- A weekly load-test run is published to track regression in
-  authorize p99 and refresh throughput.
+- Every meaningful design decision lands in a doc under `docs/`.
+- This roadmap **reflects** those docs; if there's a contradiction,
+  the per-feature doc wins, and this roadmap gets a follow-up commit.
+- A quarterly "roadmap audit" PR cross-checks every item against
+  the corresponding doc and the GitHub issue tracker (when one
+  exists).

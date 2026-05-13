@@ -90,6 +90,40 @@ encryption key (DEK). The DEK itself is wrapped under the master key
 
 If the master key isn't present, the server refuses to start.
 
+### Bring-your-own-key (BYOK)
+
+Operators can supply pre-generated private keys instead of letting
+Geonosis generate them. Two paths, both v0.2:
+
+1. **UI upload, KMS-backed.** Admin pastes a PEM or JWK (or
+   uploads a file) for a chosen algorithm; the server wraps the
+   private material with the master key (or hands it off to the
+   configured KMS — `vault transit import`, AWS `ImportKeyMaterial`,
+   GCP `ImportJob`) and persists a `KeyMaterial` row with
+   `state=Active`. Verification public part is also stored as a
+   JWK.
+2. **CLI upload.** `geoctl keys import --realm acme --pem signing.pem
+   --alg RS256` does the same thing without UI.
+
+Important invariants enforced on import:
+
+- Key type matches the declared algorithm.
+- For RSA, modulus ≥ 2048 bits; for ECDSA, allowed curves only
+  (P-256/P-384); EdDSA Ed25519.
+- An import sets `state=Active` only if there is no existing
+  Active key of the same algorithm. Otherwise the imported key
+  lands as `PreviousActive` and the admin promotes it explicitly.
+
+The wire format for upload accepts:
+
+- PEM (PKCS#8 for RSA/EC/Ed25519)
+- JWK (private)
+- DER (PKCS#8)
+- HSM handles via `pkcs11:` URI when the realm's KMS is PKCS#11
+
+v0.1 ships only **server-generated** keys; the upload paths land
+in v0.2 with the first external KMS backend (Vault Transit).
+
 ### External KMS
 
 `Kms(KmsUri)` indicates: sign by calling out to an external HSM/KMS.
@@ -134,9 +168,9 @@ locally so verification is always fast, signing-only takes the hit.
 - **No passphrase derivation in the server.** A passphrase-based
   master key invites operators to use weak passphrases. The repo
   ships a documented *recipe* (HKDF-SHA-256 with mandatory salt and
-  length) in `docs/runbooks/master-key-derivation.md` for operators
-  who need that workflow — they derive the 32-byte key out-of-band
-  and provide it as the env var like any other secret.
+  length) as comments in the `geoctl secrets generate-master-key`
+  subcommand — operators derive the 32-byte key out-of-band and
+  provide it as the env var like any other secret.
 - **Rotation**: a `geoctl secrets rewrap --new-key <path>` command
   reads every wrapped secret in the DB, decrypts with the old master,
   re-encrypts with the new, swaps in a transaction. Runtime supports
