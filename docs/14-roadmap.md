@@ -58,9 +58,12 @@ from incumbents.
 
 `password`, `otp` (TOTP), `cookie`, `consent`, **`webauthn`
 (assertion-as-step; full passkey lifecycle v0.2)**, `recovery-code`,
-`magic-link`, `phone-otp`, `idp-redirect`, `require-action`,
-`risk-score` (returns a discrete decision; full anomaly detection
-v0.3). Spec in [`06`](./06-auth-flows.md).
+`magic-link`, `phone-otp` (authenticator in v0.1; SMS dispatch via
+an event-listener-style SPI plugin; first-party `spi-twilio` ships
+v0.1, self-service end-user enrollment lands with the account
+console in v0.2), `idp-redirect`, `require-action`, `risk-score`
+(returns a discrete decision; full anomaly detection v0.3).
+Spec in [`06`](./06-auth-flows.md).
 
 ### v0.1 — WASM SPI
 
@@ -73,6 +76,7 @@ v0.3). Spec in [`06`](./06-auth-flows.md).
 | `geonosis:user-storage@0.1.0` | User-storage providers (replaces `federation`) | [`07`](./07-spi-wasm.md) |
 | `geonosis:broker-adapter@0.1.0` | Vendor IdP quirks | [`07`](./07-spi-wasm.md) |
 | `geonosis:user-profile-validator@0.1.0` | Custom attribute validators | [`16`](./16-user-profile.md) |
+| `geonosis:ui-component@0.1.0` | Server-side UI component overrides for admin / login | [`08`](./08-admin-ui.md) |
 | `geonosis:host@0.1.0` | Host capabilities exposed to plugins | [`07`](./07-spi-wasm.md) |
 
 **Provider registry + built-ins-as-plugins** ([`07`](./07-spi-wasm.md)):
@@ -212,7 +216,6 @@ adoption from "we evaluated it" to "we deployed it".
 | `geonosis:scim-mapper@0.1.0` SPI | [`19`](./19-scim.md) | Per-target transform on push |
 | `geonosis:scim-target-auth@0.1.0` SPI | [`19`](./19-scim.md) | Non-standard SCIM endpoint auth |
 | `geonosis:agent-attestation@0.1.0` SPI | [`18`](./18-agent-identity.md) | Validate actor-token attestations |
-| `geonosis:ui-component@0.1.0` SPI | [`08`](./08-admin-ui.md) | Admin form extension (e.g. embed a vendor dashboard widget) |
 | `spi-kerberos` first-party plugin | [`04`](./04-federation-ldap.md) | Kerberos / SPNEGO browser SSO |
 | `spi-okta`, `spi-onelogin` first-party plugins | [`05`](./05-identity-broker.md) | Vendor quirks |
 
@@ -332,7 +335,7 @@ After v0.3, the work shifts from "more features" to "production hardening":
 
 ## Komino — separately tracked (v1.x)
 
-[`09-cache-invalidation.md`](./09-cache-invalidation.md) §Komino.
+[`09-cache-invalidation.md`](./09-cache-invalidation.md) §KominoCache.
 Replaces Redis with an embedded, gossip-clustered, Rust-native
 distributed cache. Independent of the feature-distribution above;
 proceeds when foundational work is mature enough to absorb the

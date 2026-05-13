@@ -302,7 +302,21 @@ from token lifetime.
 can replace.
 
 **SPI** — Service Provider Interface. Our extension mechanism, backed
-by WASM components. Built-in implementations and operator-supplied
+by WASM components.
+
+**Provider registry / SPI registry** — Two names for the same
+construct: a per-realm priority-ordered list of `SpiBinding` rows
+holding both built-in and WASM providers under stable URNs. The
+implementation crate is `geonosis-spi-host`; the cache class is
+`Spi`; cache key prefix is `spi/{realm}`. See
+[`07-spi-wasm.md`](./07-spi-wasm.md) §Provider registry & override
+patterns.
+
+**FlowExecutor** — The trait + concrete service that advances a
+flow one step per request. Defined in
+[`06-auth-flows.md`](./06-auth-flows.md) §Executor; depends on
+`FlowState`, `CompiledFlow`, the provider registry, and the cache.
+Each HTTP request advances at most one step. Built-in implementations and operator-supplied
 WASM implementations live in the same per-realm registry under
 **provider URNs**; the operator can disable any built-in, replace
 it via `replaces`, or chain extras around it. See the registry
@@ -346,7 +360,7 @@ agent-issued tokens; can be nested when an agent re-delegates.
 **Tombstone (AD)** — An LDAP entry in the deleted-objects container
 representing a logically-deleted user. Geonosis treats tombstones
 as disable signals, not delete signals — see
-[`04-federation-ldap.md`](./04-federation-ldap.md) §AD-specific.
+[`04-federation-ldap.md`](./04-federation-ldap.md) §AD-specific behaviors.
 
 **`tsvector`** — Postgres full-text search type. `app_user`
 has a generated `search_vector` column built from username, email,

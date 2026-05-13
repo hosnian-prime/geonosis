@@ -35,32 +35,46 @@ but the schema and types are shared.
 Each realm exposes a SCIM endpoint. For B2B SaaS scenarios, each
 organization can expose its own SCIM endpoint scoped to its members.
 
+Each inbound SCIM endpoint is authenticated by a `Client` of kind
+`ScimClient`. The client's scope (full-realm vs. per-org) is set on
+the client itself; a per-org SCIM client cannot mutate data outside
+the bound organization (enforced both at route handler and RLS).
+
 ```
-GET    /realms/{slug}/scim/v2/ServiceProviderConfig
-GET    /realms/{slug}/scim/v2/ResourceTypes
-GET    /realms/{slug}/scim/v2/Schemas
+GET    /realms/{slug}/scim/v2/ServiceProviderConfig                    [public]
+GET    /realms/{slug}/scim/v2/ResourceTypes                            [public]
+GET    /realms/{slug}/scim/v2/Schemas                                  [public]
 
-GET    /realms/{slug}/scim/v2/Users
-POST   /realms/{slug}/scim/v2/Users
-GET    /realms/{slug}/scim/v2/Users/{id}
-PUT    /realms/{slug}/scim/v2/Users/{id}
-PATCH  /realms/{slug}/scim/v2/Users/{id}
-DELETE /realms/{slug}/scim/v2/Users/{id}
+GET    /realms/{slug}/scim/v2/Users                                    [ScimClient (realm-scoped)]
+POST   /realms/{slug}/scim/v2/Users                                    [ScimClient]
+GET    /realms/{slug}/scim/v2/Users/{id}                               [ScimClient]
+PUT    /realms/{slug}/scim/v2/Users/{id}                               [ScimClient]
+PATCH  /realms/{slug}/scim/v2/Users/{id}                               [ScimClient]
+DELETE /realms/{slug}/scim/v2/Users/{id}                               [ScimClient]
 
-GET    /realms/{slug}/scim/v2/Groups
-POST   /realms/{slug}/scim/v2/Groups
-GET    /realms/{slug}/scim/v2/Groups/{id}
-PUT    /realms/{slug}/scim/v2/Groups/{id}
-PATCH  /realms/{slug}/scim/v2/Groups/{id}
-DELETE /realms/{slug}/scim/v2/Groups/{id}
+GET    /realms/{slug}/scim/v2/Groups                                   [ScimClient]
+POST   /realms/{slug}/scim/v2/Groups                                   [ScimClient]
+GET    /realms/{slug}/scim/v2/Groups/{id}                              [ScimClient]
+PUT    /realms/{slug}/scim/v2/Groups/{id}                              [ScimClient]
+PATCH  /realms/{slug}/scim/v2/Groups/{id}                              [ScimClient]
+DELETE /realms/{slug}/scim/v2/Groups/{id}                              [ScimClient]
 
-POST   /realms/{slug}/scim/v2/Bulk
-POST   /realms/{slug}/scim/v2/.search
-GET    /realms/{slug}/scim/v2/Me                    # current authenticated subject
+POST   /realms/{slug}/scim/v2/Bulk                                     [ScimClient]
+POST   /realms/{slug}/scim/v2/.search                                  [ScimClient]
+GET    /realms/{slug}/scim/v2/Me                                       [authenticated subject]
 
-# Per-organization variant
-GET    /realms/{slug}/orgs/{alias}/scim/v2/Users
+# Per-organization variant — ScimClient must be bound to {alias}
+GET    /realms/{slug}/orgs/{alias}/scim/v2/Users                       [ScimClient (org-scoped to {alias})]
 ... etc
+
+# Admin endpoints for managing SCIM clients + targets
+GET    /admin/v1/realms/{slug}/scim/clients                            [realm-admin]
+POST   /admin/v1/realms/{slug}/scim/clients                            [realm-admin]
+POST   /admin/v1/realms/{slug}/scim/clients/{id}/secret/rotate         [realm-admin]
+GET    /admin/v1/realms/{slug}/scim/targets                            [realm-admin]
+POST   /admin/v1/realms/{slug}/scim/targets                            [realm-admin]
+POST   /admin/v1/realms/{slug}/scim/targets/{id}/test                  [realm-admin]
+POST   /admin/v1/realms/{slug}/scim/targets/{id}/full-sync             [realm-admin]
 ```
 
 ## Authentication for inbound SCIM
@@ -151,7 +165,7 @@ Outbound flow:
   reconcile.
 - **Deletion**: a SCIM DELETE on a user runs the same erasure flow
   as `/account/me/delete` from [`13-observability.md`](./13-observability.md)
-  §GDPR — audit events are anonymized, not deleted.
+  §End-user privacy & GDPR — audit events are anonymized, not deleted.
 
 ## Operational surface
 
@@ -181,6 +195,16 @@ Built-in providers:
 - `builtin:scim:inbound` — the inbound SCIM handler, mounted as the
   axum router for `/scim/v2/*` paths.
 
+## Non-goals
+
+- **SCIM 1.1** — not implemented.
+- **Provisioning to non-SCIM endpoints** — handled by a generic
+  outbound webhook (built-in) + the operator's translation logic,
+  or a custom WASM event listener.
+- **Re-provisioning on schema-only changes** — schema edits do not
+  trigger re-sync; only data changes do. Operators can manually
+  trigger full sync per target.
+
 ## Phase
 
 - **v0.2**: full inbound + outbound. ServiceProviderConfig,
@@ -190,15 +214,18 @@ Built-in providers:
   "where this user is provisioned out to" in their profile);
   cross-tenant SCIM federation patterns.
 
-## Non-goals
+## Decisions and open items
 
-- **SCIM 1.1** — not implemented.
-- **Provisioning to non-SCIM endpoints** — handled by a generic
-  outbound webhook (built-in) + the operator's translation logic, or
-  a custom WASM event listener.
-- **Re-provisioning on schema-only changes** — schema edits do not
-  trigger re-sync; only data changes do. Operators can manually
-  trigger full sync per target.
+- **Filter grammar coverage**: full RFC 7644 §3.4.2.2 grammar in
+  v0.2 (`eq/ne/co/sw/ew/pr/gt/ge/lt/le/and/or/not`, sub-attribute
+  paths).
+- **Bulk limit**: 1000 ops per request; op-level transactions.
+- **Pagination cap**: 200 items per page.
+- **`id` immutability**: enforced.
+- **Schema-mapping editor**: per-attribute SCIM-path overrides
+  live in the realm's User Profile annotations (`scim.path`).
+- **Schema-only edit triggers re-sync**: non-goal; only data
+  changes do.
 
 ## SOLID notes
 

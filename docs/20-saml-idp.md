@@ -24,16 +24,28 @@ Geonosis as the assertion issuer.
 ## URL surface
 
 ```
-GET    /realms/{slug}/protocol/saml/descriptor                     # SP-facing IdP metadata XML
-POST   /realms/{slug}/protocol/saml/sso                            # SP-initiated AuthnRequest (HTTP-POST)
-GET    /realms/{slug}/protocol/saml/sso                            # SP-initiated (HTTP-Redirect)
-POST   /realms/{slug}/protocol/saml/slo                            # SLO (HTTP-POST)
-GET    /realms/{slug}/protocol/saml/slo                            # SLO (HTTP-Redirect)
-POST   /realms/{slug}/protocol/saml/artifact                       # Artifact resolution (v0.2)
+GET    /realms/{slug}/protocol/saml/descriptor                     [public]  # SP-facing IdP metadata XML
+POST   /realms/{slug}/protocol/saml/sso                            [public]  # SP-initiated AuthnRequest (HTTP-POST)
+GET    /realms/{slug}/protocol/saml/sso                            [public]  # SP-initiated (HTTP-Redirect)
+POST   /realms/{slug}/protocol/saml/slo                            [public]  # SLO (HTTP-POST)
+GET    /realms/{slug}/protocol/saml/slo                            [public]  # SLO (HTTP-Redirect)
+POST   /realms/{slug}/protocol/saml/artifact                       [public]  # Artifact resolution (v0.2)
 
-# IdP-initiated entry point:
-GET    /realms/{slug}/clients-saml/{client_alias}/unsolicited
+# IdP-initiated entry point: requires an authenticated session in the realm
+GET    /realms/{slug}/clients-saml/{client_alias}/unsolicited       [authenticated user]
+
+# Admin surface for managing SAML SP clients
+GET    /admin/v1/realms/{slug}/saml/clients                        [realm-admin]
+POST   /admin/v1/realms/{slug}/saml/clients                        [realm-admin]
+GET    /admin/v1/realms/{slug}/saml/clients/{alias}                [realm-admin]
+PUT    /admin/v1/realms/{slug}/saml/clients/{alias}                [realm-admin]
+DELETE /admin/v1/realms/{slug}/saml/clients/{alias}                [realm-admin]
 ```
+
+The public-binding endpoints are reachable without prior
+authentication — that's how a SAML AuthnRequest from any registered
+SP gets routed. Identity verification happens *after* the SP is
+identified (by `Issuer`) and any signature requirement is enforced.
 
 ## SP as a Client
 
@@ -183,6 +195,37 @@ Inbound `<AuthnRequest>` validation enforces:
 Any failure → audit event `saml.authnrequest.rejected` + a
 SAML-compliant error response.
 
+## Non-goals
+
+- **SAML 1.1 / SAML 1.0** — out of scope.
+- **WS-Federation** — out of scope.
+- **SAML attribute push to third parties** — that's SCIM; see
+  [`19-scim.md`](./19-scim.md).
+- **OAuth-style consent screens for SAML** — SAML's audience binding
+  is the consent surface; we don't add a parallel UI step.
+
+## Phase
+
+- **v0.1**: full IdP role as scoped above. Conformance: SAML 2.0 SP
+  Initiated + IdP Initiated SSO + SLO interop testing against
+  major SP libraries (saml2-js, python-saml, ruby-saml, .NET
+  Microsoft.IdentityModel).
+- **v0.2**: Artifact binding. ECP profile. Holder-of-Key subject
+  confirmation.
+
+## Decisions and open items
+
+- **Multiple Active signing keys** are permitted in SAML realms
+  (unlike OIDC, where there's exactly one Active per algorithm).
+  Reason: SP metadata caching tolerates several certs better than
+  it tolerates abrupt rotation.
+- **NameID `persistent`** stores a per-(user, SP) ULID; never
+  recoverable to plaintext user id.
+- **AuthnRequest replay window**: ±5 minutes; dedupe stored in
+  Postgres with TTL.
+- **Artifact binding**: v0.2.
+- **Holder-of-Key subject confirmation**: v0.2.
+
 ## SOLID notes
 
 - **Single Responsibility**: SAML IdP code lives in
@@ -203,19 +246,3 @@ SAML-compliant error response.
   `KeyManagementService` trait — software keys, Vault Transit (v0.2),
   AWS KMS (v0.2), GCP KMS (v0.2), PKCS#11 (v0.3) all work without
   any SAML code change.
-
-## Phase
-
-- **v0.1**: full IdP role as scoped above. Conformance: SAML 2.0 SP
-  Initiated + IdP Initiated SSO + SLO interop testing against
-  major SP libraries (saml2-js, python-saml, ruby-saml, .NET
-  Microsoft.IdentityModel).
-- **v0.2**: Artifact binding. ECP profile. Holder-of-Key subject
-  confirmation.
-
-## Non-goals
-
-- **SAML 1.1 / SAML 1.0** — out of scope.
-- **WS-Federation** — out of scope.
-- **SAML attribute push to third parties** — that's SCIM; see
-  [`19-scim.md`](./19-scim.md).

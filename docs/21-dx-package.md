@@ -206,3 +206,18 @@ the underlying choices follow SOLID:
 - **AI-generated integration code** — out of scope here; if we
   ship anything like that it goes through the same recipe
   format.
+
+## Decisions and open items
+
+- **Quickstart Docker image** bundles Postgres for first-run
+  convenience; production Helm chart never does. Bootstrap
+  realm creation is gated by `GEONOSIS_BOOTSTRAP_QUICKSTART=1`.
+- **`geonosis-verify` crate** publishes independently of the
+  server binary so resource servers don't track server release
+  cadence.
+- **SDKs** are auto-generated from the OpenAPI spec; we don't
+  hand-maintain language-specific clients beyond template tuning.
+- **Example app repos**: stay in-tree under `examples/`; bumped
+  in lockstep with the server release.
+- **Recipe count promise**: 10 in v0.1 (the most common operator
+  tasks), 10 more in v0.2, growing organically thereafter.
