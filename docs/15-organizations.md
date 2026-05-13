@@ -44,9 +44,9 @@ Summary:
 Each endpoint's required role gate is listed inline. **realm-admin**
 is the master-realm-issued admin token (or a single-realm install's
 `realm-admin` client); **org-admin** is a member of the org holding
-either the realm-defined `organization-admin` role or an `OrgRole`
-flagged with `is_admin=true`; **user** is the authenticated user
-themselves.
+an `OrgRole` with `permissions` that include `OrgPermission::Admin`
+(typically the built-in `owner` or `admin` roles); **user** is the
+authenticated user themselves.
 
 ```
 GET    /admin/v1/realms/{slug}/orgs                                   [realm-admin]
@@ -73,10 +73,22 @@ GET    /admin/v1/realms/{slug}/orgs/{alias}/idps                      [realm-adm
 POST   /admin/v1/realms/{slug}/orgs/{alias}/idps                      [realm-admin]                # bind realm IdP to org
 DELETE /admin/v1/realms/{slug}/orgs/{alias}/idps/{idp_alias}          [realm-admin]
 
-GET    /admin/v1/realms/{slug}/orgs/{alias}/roles                     [realm-admin | org-admin]
-POST   /admin/v1/realms/{slug}/orgs/{alias}/roles                     [realm-admin | org-admin]
-PUT    /admin/v1/realms/{slug}/orgs/{alias}/roles/{name}              [realm-admin | org-admin]
-DELETE /admin/v1/realms/{slug}/orgs/{alias}/roles/{name}              [realm-admin | org-admin]
+GET    /admin/v1/realms/{slug}/orgs/{alias}/roles                     [realm-admin | org-admin(ManageRoles)]
+POST   /admin/v1/realms/{slug}/orgs/{alias}/roles                     [realm-admin | org-admin(ManageRoles)]
+PUT    /admin/v1/realms/{slug}/orgs/{alias}/roles/{name}              [realm-admin | org-admin(ManageRoles)]
+DELETE /admin/v1/realms/{slug}/orgs/{alias}/roles/{name}              [realm-admin | org-admin(ManageRoles)]
+
+# Consent management
+GET    /admin/v1/realms/{slug}/orgs/{alias}/consent-policies          [realm-admin | org-admin(ManageConsent)]
+POST   /admin/v1/realms/{slug}/orgs/{alias}/consent-policies          [realm-admin | org-admin(ManageConsent)]
+PUT    /admin/v1/realms/{slug}/orgs/{alias}/consent-policies/{id}     [realm-admin | org-admin(ManageConsent)]
+DELETE /admin/v1/realms/{slug}/orgs/{alias}/consent-policies/{id}     [realm-admin | org-admin(ManageConsent)]
+GET    /admin/v1/realms/{slug}/orgs/{alias}/consent-grants            [realm-admin | org-admin(ManageConsent)]
+DELETE /admin/v1/realms/{slug}/orgs/{alias}/consent-grants/{id}       [realm-admin | org-admin(ManageConsent)]
+
+# System-level user consent management
+GET    /admin/v1/realms/{slug}/users/{id}/consents                    [realm-admin]
+DELETE /admin/v1/realms/{slug}/users/{id}/consents/{client_id}        [realm-admin]
 ```
 
 A **background job** sweeps `OrgInvitation` rows past their
@@ -156,9 +168,45 @@ Okta hosting multiple customer orgs).
 
 ## Per-organization roles
 
-Roles scoped to an org are separate from realm roles. They appear in
-tokens under a dedicated `org_access` claim when the user is
-authenticated in an organization context:
+Roles scoped to an org are separate from realm roles. Unlike a simple
+admin flag, organization members can hold **any number of org-level
+roles** with distinct permissions. This lets operators model structures
+like `owner`, `admin`, `billing`, `member`, `viewer`, or any custom
+role appropriate for their B2B use case.
+
+### Built-in org roles
+
+Every new organization is seeded with three built-in roles (operators
+can rename, extend, or remove them):
+
+| Role | Default permissions | Purpose |
+|---|---|---|
+| `owner` | `Admin`, `InviteMembers`, `ManageDomains`, `ManageIdps`, `ManageRoles`, `ManageConsent` | Full control; at least one owner required |
+| `admin` | `Admin`, `InviteMembers`, `ManageDomains`, `ManageRoles` | Day-to-day admin without org deletion rights |
+| `member` | (none) | Default role for new members; access controlled by clients |
+
+### Org permissions
+
+Each `OrgRole` carries a set of `OrgPermission` flags that the admin
+API checks when evaluating access:
+
+```rust
+pub enum OrgPermission {
+    Admin,                  // full org management (implies all below)
+    InviteMembers,          // invite / remove members
+    ManageDomains,          // add / verify / remove org domains
+    ManageIdps,             // bind / unbind realm IdPs to the org
+    ManageRoles,            // create / edit / delete org roles
+    ManageConsent,          // manage org-level consent policies
+    ViewMembers,            // list members (all roles get this implicitly)
+    Custom(String),         // operator-defined; evaluated by policy SPI
+}
+```
+
+### Token claim
+
+Org roles appear in tokens under a dedicated `org` claim when the
+user is authenticated in an organization context:
 
 ```json
 {
@@ -210,6 +258,90 @@ theme parameters; no separate template files.
 - **Deleting an org**: hard delete; member roles unassigned; users
   not deleted.
 
+## Consent management
+
+Geonosis provides **two levels** of consent management: system-wide
+(realm-level) and per-organization.
+
+### Realm-level consent
+
+When a client's `ConsentPolicy.consent_required=true`, the user is
+shown a consent screen during `/authorize` listing the requested
+scopes and the client's identity. Consent decisions are persisted as
+`ConsentGrant` records so users are not re-prompted for the same
+client + scope set.
+
+Users can view and revoke their consents:
+
+- **Admin API**: `GET/DELETE /admin/v1/realms/{slug}/users/{id}/consents`
+- **Account console** (v0.2): self-service consent list + revoke
+
+Realm admins can also revoke consents on behalf of users.
+
+### Organization-level consent
+
+Organization admins can define **org consent policies** that
+pre-approve or restrict scope grants for their members when
+interacting with specific clients. This is critical for B2B SaaS
+where the customer organization (not individual users) controls what
+data their employees share with third-party applications.
+
+```rust
+pub struct OrgConsentPolicy {
+    pub id: OrgConsentPolicyId,
+    pub organization_id: OrganizationId,
+    pub realm_id: RealmId,
+    pub client_id: ClientId,              // which client this policy governs
+    pub mode: OrgConsentMode,
+    pub pre_approved_scopes: Vec<ScopeName>,  // scopes that don't require user prompt
+    pub blocked_scopes: Vec<ScopeName>,       // scopes the org forbids regardless of user consent
+    pub require_admin_approval: bool,         // new scope requests need org-admin sign-off
+    pub created_by: UserId,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+pub enum OrgConsentMode {
+    UserDecides,        // default — user sees the consent screen normally
+    OrgPreApproved,     // pre_approved_scopes skip the consent screen
+    OrgManaged,         // all consent decisions are made by org admin; users don't see a consent screen
+}
+```
+
+#### URL surface (org consent)
+
+```
+GET    /admin/v1/realms/{slug}/orgs/{alias}/consent-policies           [realm-admin | org-admin(ManageConsent)]
+POST   /admin/v1/realms/{slug}/orgs/{alias}/consent-policies           [realm-admin | org-admin(ManageConsent)]
+PUT    /admin/v1/realms/{slug}/orgs/{alias}/consent-policies/{id}      [realm-admin | org-admin(ManageConsent)]
+DELETE /admin/v1/realms/{slug}/orgs/{alias}/consent-policies/{id}      [realm-admin | org-admin(ManageConsent)]
+GET    /admin/v1/realms/{slug}/orgs/{alias}/consent-grants             [realm-admin | org-admin(ManageConsent)]
+DELETE /admin/v1/realms/{slug}/orgs/{alias}/consent-grants/{id}        [realm-admin | org-admin(ManageConsent)]
+```
+
+#### Consent evaluation order
+
+When a user in an org context hits a consent-required client:
+
+1. Check if the org has an `OrgConsentPolicy` for this client.
+2. If `OrgManaged` → apply org decision directly (no user prompt).
+3. If `OrgPreApproved` → skip prompt for `pre_approved_scopes`;
+   prompt for remaining scopes (minus `blocked_scopes`).
+4. If `UserDecides` (or no org policy) → standard user consent
+   screen, but `blocked_scopes` are still removed.
+5. Persist the result as a `ConsentGrant` linked to both user and
+   org.
+
+#### Audit events (consent)
+
+| Action | Detail |
+|---|---|
+| `consent.granted` | user, client, scopes, org (if applicable) |
+| `consent.revoked` | user (or admin), client, scopes |
+| `org.consent.policy.created` | by, client, mode |
+| `org.consent.policy.updated` | by, fields-changed |
+| `org.consent.policy.deleted` | by, client |
+
 ## Non-goals
 
 - **Cross-realm orgs** — out of scope. An org belongs to exactly one
@@ -220,13 +352,16 @@ theme parameters; no separate template files.
 
 ## Permissions
 
-- A realm admin manages all orgs in the realm.
-- An **organization admin** (member with the realm-defined
-  "organization-admin" role, OR an `OrgRole` flagged as admin) can:
-  - invite/remove members, manage domains, bind IdPs, set
-    org-level roles.
+- A **realm admin** manages all orgs in the realm.
+- An **organization admin** (member holding an `OrgRole` whose
+  `permissions` include `OrgPermission::Admin` — typically the
+  built-in `owner` or `admin` roles) can:
+  - invite/remove members, manage domains, bind IdPs, create/edit
+    org-level roles, manage org-level consent policies.
   - cannot create new clients, modify realm settings, or affect
     other orgs.
+- Members with narrower permissions (e.g. `InviteMembers` only) can
+  perform just that action without full admin access.
 - These permissions are mediated by the same admin-API auth as
   everything else; the audit log records `admin.org.*` actions.
 
@@ -246,6 +381,11 @@ theme parameters; no separate template files.
 | `org.domain.added` | domain |
 | `org.domain.verified` | domain, method |
 | `org.idp.bound` | idp_alias |
+| `org.consent.policy.created` | by, client, mode |
+| `org.consent.policy.updated` | by, fields-changed |
+| `org.consent.policy.deleted` | by, client |
+| `consent.granted` | user, client, scopes, org (if applicable) |
+| `consent.revoked` | user (or admin), client, scopes |
 
 ## Tests
 

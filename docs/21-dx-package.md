@@ -20,7 +20,7 @@ as a first-class deliverable, not a documentation afterthought.
 
 ## The 5-minute quickstart (v0.1)
 
-The single-page document `docs/quickstart/README.md` (published at
+The single-page document [`docs/recipes/01-quickstart-docker.md`](./recipes/01-quickstart-docker.md) (published at
 GA) walks a developer through:
 
 1. `docker run` Geonosis with a one-shot bootstrap realm + admin user.

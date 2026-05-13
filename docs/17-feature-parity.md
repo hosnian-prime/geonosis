@@ -282,6 +282,19 @@ events, SPI surface, admin API, account console.
 | Branding (logo, color, banner) | ✅ | `OrganizationBranding` |
 | Token `org` claim | ✅ | claim shape spec'd |
 | Auto-join on verified domain | ✅ | `OrganizationPolicy.auto_join_on_domain_match` |
+| Per-org role permissions (owner/admin/member/custom) | ✅ | `OrgRole.permissions: Vec<OrgPermission>` |
+
+## Consent management
+
+| Feature | Status | Where |
+|---|---|---|
+| Per-client consent screen | ✅ | `ConsentPolicy.consent_required` on `Client` |
+| Persisted consent grants | ✅ | `ConsentGrant` entity |
+| Admin consent revocation | ✅ | admin API `/users/{id}/consents` |
+| User self-service consent revocation | ✅ | account console (v0.2 for UI; API in v0.1) |
+| Org-level consent policies | ✅ | `OrgConsentPolicy` — pre-approve, block, or manage scopes per client |
+| Org-managed consent mode (skip user prompt) | ✅ | `OrgConsentMode::OrgManaged` |
+| Consent audit events | ✅ | `consent.granted`, `consent.revoked`, `org.consent.policy.*` |
 
 ## Sessions
 

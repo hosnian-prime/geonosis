@@ -42,6 +42,9 @@ listing which authentication methods completed (e.g. `["pwd","otp"]`).
 **Argon2id** — Password hashing function used for local user
 credentials.
 
+**ACS** — Assertion Consumer Service. The SAML SP endpoint that
+receives and processes SAML assertions from an IdP.
+
 **Audit event** — Append-only record of a security-relevant action,
 stored in `audit_event` and optionally shipped to external sinks.
 
@@ -58,6 +61,10 @@ Distinct from federation.
 behavior atop the core's generic OIDC/SAML adapters. First-party
 adapters: `spi-google`, `spi-github`, `spi-apple`,
 `spi-microsoft`.
+
+**Bearer-only client** — A `ClientKind` representing a resource server
+that never initiates authentication. It only validates tokens; it has
+no `redirect_uris`.
 
 **Browser flow** — The interactive login flow used by `/authorize`
 when `prompt!=none`.
@@ -83,6 +90,20 @@ applications).
 **Conformance** — Compliance with a standardized test suite. Our
 v0.1 target is OIDC Basic + FAPI 1 Baseline.
 
+**Consent grant** — A persisted record of a user's consent to share
+specific scopes with a client. Survives across sessions so users are
+not re-prompted. Revocable by the user or an admin.
+
+**Consent policy (org)** — An organization-level policy that
+pre-approves, blocks, or manages scope grants for org members
+interacting with a specific client. See
+[`15-organizations.md`](./15-organizations.md) §Consent management.
+
+**Circuit breaker** — A fault-tolerance pattern used in federation
+and SCIM outbound. After N consecutive failures, the source/target
+enters `CircuitOpen` state and stops attempts until a health probe
+succeeds.
+
 **Contract step** — The destructive half of an expand-contract
 migration.
 
@@ -107,6 +128,11 @@ mechanism for access tokens. v0.2.
 ## E
 
 **EdDSA** — JWS algorithm using Edwards-curve signatures (Ed25519).
+
+**Expand-contract** — Database migration discipline requiring two
+phases: an *expand* step adds new columns/tables (backward-compatible),
+then a *contract* step removes old ones after the code no longer uses
+them. See [`10-zero-downtime-migrations.md`](./10-zero-downtime-migrations.md).
 
 **Expand step** — The additive half of an expand-contract migration.
 
@@ -208,6 +234,9 @@ per-realm keys at rest.
 **Master realm** — Bootstrap realm whose admins can manage other
 realms. Always present.
 
+**MAU** — Monthly Active Users. The billing and metering unit for
+the Cloud offering. See [`22-cloud-offering.md`](./22-cloud-offering.md).
+
 **Mirroring (federation)** — Creating a local shadow record for an
 external user.
 
@@ -232,6 +261,15 @@ an email under that domain.
 
 **Org membership** — A user's join into an Organization, with org-
 scoped roles and a state (Active / Invited / Suspended).
+
+**Org permission** — A fine-grained permission flag on an `OrgRole`:
+`Admin`, `InviteMembers`, `ManageDomains`, `ManageIdps`,
+`ManageRoles`, `ManageConsent`, `ViewMembers`, `Custom(String)`.
+Replaces the simpler `is_admin` flag pattern.
+
+**Org role** — A role scoped to an Organization, carrying a set of
+`OrgPermission` flags. Built-in roles: `owner`, `admin`, `member`.
+Custom roles can combine permissions freely.
 
 **OAuth 2.1** — Tightened version of OAuth 2.0; baseline for new
 deployments.
@@ -282,6 +320,10 @@ client-scoped.
 **Rotation (key)** — Replacing the Active signing key with a new one.
 
 ## S
+
+**SLO** — Single Logout. The protocol for propagating a logout event
+across all service providers in a session. Supported for both OIDC
+(back-channel) and SAML (front-channel + back-channel).
 
 **SAML** — Security Assertion Markup Language. v0.1 supports BOTH
 consuming SAML IdPs (broker SP role) AND issuing SAML assertions
@@ -367,6 +409,16 @@ has a generated `search_vector` column built from username, email,
 and name fields, indexed with GIN.
 
 ## U
+
+**ULID** — Universally Unique Lexicographically Sortable Identifier.
+Geonosis uses ULIDs (Crockford base32-rendered) as primary keys for
+all entities. Lexicographic sort matches time order, useful for
+paginating audit logs. See [`02-data-model.md`](./02-data-model.md)
+§Identifier strategy.
+
+**UMA** — User-Managed Access 2.0. A fine-grained authorization
+protocol. Explicit non-goal for v0.1; planned for v0.3. See
+[`14-roadmap.md`](./14-roadmap.md).
 
 **User** — A person (or a brokered/federated identity) within a
 realm.

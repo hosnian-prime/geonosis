@@ -29,9 +29,9 @@ Management server written in Rust. It provides:
 The following are explicitly out of scope for the first release. They
 may be added later; their absence is by design, not oversight.
 
-- **SAML 2.0 service-provider role.** SAML brokering (consuming external
-  SAML IdPs) is in scope. Acting as a SAML IdP for downstream SPs is
-  v0.2+. XML-DSig and metadata generation deserve their own quarter.
+- **SAML 2.0 IdP role.** SAML brokering (consuming external SAML IdPs)
+  **and** acting as a SAML IdP for downstream SPs are both in v0.1 scope.
+  See [`20-saml-idp.md`](./20-saml-idp.md).
 - **UMA 2.0 fine-grained authorization.** Authorization Services is a
   large surface; v0.1 ships role/group-based authorization only.
 - **WebAuthn passkey enrollment UX.** WebAuthn assertion as a step in a
