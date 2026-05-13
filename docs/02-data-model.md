@@ -64,8 +64,30 @@ pub struct Realm {
     pub session_policy: SessionPolicy,
     pub token_policy: TokenPolicy,
     pub theme_binding: ThemeBinding,    // names of themes for login/email/admin
+    pub acr_policy: AcrPolicy,          // see 12-security-crypto.md
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+/// Per-realm rules that derive `acr` from authentication outcome (AMR / sender-constraint).
+/// Used to satisfy `acr_values` requests and to drive the `step-up` flow kind.
+pub struct AcrPolicy {
+    pub levels: Vec<AcrLevel>,          // ordered, ascending
+}
+
+pub struct AcrLevel {
+    pub value: String,                  // e.g. "0", "1", "2", "urn:mace:incommon:iap:silver"
+    pub display_name: String,
+    pub require: AcrRequirement,
+}
+
+/// Boolean expression over AMRs + sender-constraint.
+pub enum AcrRequirement {
+    Any,                                // any successful authn
+    AmrContains(Vec<Amr>),              // e.g. [pwd] for level 1, [pwd, otp] for level 2
+    AllOf(Vec<AcrRequirement>),
+    AnyOf(Vec<AcrRequirement>),
+    SenderConstrained(SenderConstraint),// dpop | mtls
 }
 
 pub struct User {
@@ -79,6 +101,7 @@ pub struct User {
     pub federation: Option<FederationLink>, // Some(...) when user is mirrored from LDAP/IdP
     pub attributes: BTreeMap<String, AttributeValue>,
     pub required_actions: Vec<RequiredAction>, // verify-email, update-password, ...
+    pub required_flow: Option<FlowAlias>,      // forces this flow on the next login (admin-set)
     pub enabled: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -270,12 +293,21 @@ CREATE TABLE app_user (
     federation      JSONB,
     attributes      JSONB NOT NULL DEFAULT '{}'::jsonb,
     required_actions TEXT[] NOT NULL DEFAULT '{}',
+    required_flow   TEXT,                  -- forces this flow alias on next login
     enabled         BOOLEAN NOT NULL DEFAULT TRUE,
+    -- Generated full-text search vector over username/email/name; see note below.
+    search_vector   tsvector GENERATED ALWAYS AS (
+        setweight(to_tsvector('simple', coalesce(username_lc, '')), 'A') ||
+        setweight(to_tsvector('simple', coalesce(email_lc, '')),    'B') ||
+        setweight(to_tsvector('simple', coalesce(name->>'given',  '')), 'C') ||
+        setweight(to_tsvector('simple', coalesce(name->>'family', '')), 'C')
+    ) STORED,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (realm_id, username_lc)
 );
 CREATE INDEX ON app_user (realm_id, email_lc);
+CREATE INDEX app_user_search_vector_idx ON app_user USING GIN (realm_id, search_vector);
 
 CREATE TABLE credential (
     id              TEXT PRIMARY KEY,
@@ -345,10 +377,20 @@ predicates.
 - **Soft delete by default** — only audit events are append-only;
   user delete is hard delete unless `retention_policy` says otherwise.
 
-## Open
+## Decisions and open items
 
-- **Search**: trigram index on `username_lc` + `email_lc` is the v0.1
-  plan. Full-text on attributes deferred.
-- **Audit retention**: default 90 days, configurable. Cold storage
-  off-host is v0.2.
-- **Schema for SAML-as-IdP**: deferred to when v0.2 lands.
+- **User search**: full-text via Postgres `tsvector` over
+  `username_lc`, `email_lc`, and `name` parts, generated as a
+  `STORED` column with weight per field. GIN index keyed by
+  `(realm_id, search_vector)`. The dictionary is `simple` by default
+  for language-independence; realms with majority-language users can
+  override to a specific dictionary (e.g. `english`, `turkish`) via
+  a per-realm config knob in v0.2.
+- **Attribute search**: not part of the base full-text vector; an
+  optional GIN index on `attributes` JSONB is added in v0.2 with a
+  per-realm allow-list of indexed keys.
+- **Audit retention**: 90 days default in Postgres, configurable per
+  realm; minimum 30 days. Cold storage off-host (S3 with
+  Object Lock) is v0.2.
+- **Schema for SAML-as-IdP** (Geonosis issuing SAML assertions):
+  deferred to v0.2.

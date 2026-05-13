@@ -11,13 +11,52 @@ at the protocol layer: we redirect the user to a third party, they
 authenticate there, we accept the resulting assertion, then we
 optionally create or link a local user record.
 
-## Supported IdP protocols
+## Two layers: generic core + adapter plugins
+
+Geonosis splits the broker surface in two:
+
+1. **Generic adapters** live in the core binary. They speak the
+   standards verbatim:
+   - **OIDC adapter** — RFC-compliant `code` flow with discovery,
+     JWKS, userinfo, JWS validation, PKCE.
+   - **SAML adapter** — SP role: AuthnRequest, ACS, signature/
+     encryption, NameID handling.
+2. **Vendor-specific behaviors** live in **first-party SPI
+   plugins** implementing `geonosis:broker-adapter@0.1.0`
+   (see [`07-spi-wasm.md`](./07-spi-wasm.md)). The plugin can hook
+   at well-defined points: URL building, callback parsing,
+   assertion validation, claim enrichment.
+
+Reason: every "Sign in with X" has subtle quirks (Apple's
+form_post + JWT + private email relay; GitHub's non-OIDC
+OAuth2 + custom `/user` endpoint; corporate Okta's group-claim
+formats). Putting them in a plugin keeps the core protocol
+adapter clean and lets us ship vendor packages out-of-cycle from
+the server release.
+
+### Supported IdP protocols (v0.1 core)
 
 | Protocol | v0.1 | Notes |
 |---|---|---|
-| OpenID Connect | ✅ | Discovery URL or static metadata |
-| OAuth 2.0 (non-OIDC, e.g. GitHub) | ✅ | Per-IdP `userinfo` adapter |
-| SAML 2.0 (Geonosis as SP) | ✅ (RP only) | We consume SAML responses; we do not yet issue them |
+| OpenID Connect | ✅ generic | Discovery URL or static metadata |
+| OAuth 2.0 (non-OIDC, e.g. GitHub) | ✅ via `broker-adapter` plugin | Plugin supplies userinfo mapping + auth flow quirks |
+| SAML 2.0 (Geonosis as SP) | ✅ generic | We consume SAML responses; we do not yet issue them |
+
+### First-party adapter plugins (v0.1)
+
+Shipped from the `geonosis/spi-plugins` repository as separately-versioned
+WASM components:
+
+| Plugin | Wraps | Notes |
+|---|---|---|
+| `spi-google` | OIDC | Hosted domain hint, account chooser, group claim |
+| `spi-github` | OAuth 2.0 | Custom `/user` + `/user/emails` userinfo composition |
+| `spi-apple` | OIDC + form_post | Private-relay email handling, first-name-only-on-first-login |
+| `spi-microsoft` | OIDC | tenant id segmenting, multi-tenant `common` quirks |
+
+These are first-party in the sense that we maintain them and they're
+included in the default Helm values; they are still plugins. Operators
+can update them independently of the server.
 
 Out of scope for v0.1: WS-Federation, CAS, OpenID 2.
 
@@ -222,10 +261,21 @@ Two flavors:
 - **Multi-step IdP chains** (IdP A redirects to IdP B) beyond the
   IdP's own behavior — we just consume what we're handed.
 
-## Open
+## Decisions and open items
 
-- **Profile of "Sign in with Apple"** — quirks around private email
-  relay, ship a built-in `apple` mapper.
-- **Login hint propagation** to IdPs — needs UX walkthrough.
-- **`acr_values` propagation downstream** when chained via broker —
-  default to the IdP's `acr` claim if present.
+- **Sign in with Apple** — handled by the `spi-apple` first-party
+  plugin (`geonosis:broker-adapter`); private-relay email is treated
+  as the `sub`'s primary email but flagged
+  `email_relay=true` in user attributes so consumers know.
+- **Sign in with GitHub** — `spi-github` plugin composes a userinfo
+  view from `/user` + `/user/emails`, surfacing the primary verified
+  email.
+- **Login hint propagation** — when an OIDC IdP advertises support
+  for `login_hint`, the core adapter forwards
+  `login_hint` from the inbound `/authorize`. Per-IdP behavior is
+  configurable in the adapter binding.
+- **Downstream `acr_values` propagation** — when a brokered login
+  delivers an IdP `acr`, the realm's `acr_policy`
+  (see [`12-security-crypto.md`](./12-security-crypto.md)) maps it
+  to the local ACR value; absent a mapping, downstream `acr` is the
+  AMR-derived level for the local session.

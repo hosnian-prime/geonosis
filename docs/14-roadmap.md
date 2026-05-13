@@ -34,8 +34,8 @@ browser, receive id/access tokens, and refresh.
 
 Exit criteria:
 
-- [ ] Flow executor + the four built-in flows (browser, direct-grant,
-      reset-credentials, registration).
+- [ ] Flow executor + the built-in flows (browser, direct-grant,
+      reset-credentials, registration, **step-up**).
 - [ ] Authenticators: `password`, `otp` (TOTP), `cookie`, `consent`.
 - [ ] Argon2id password hashing + parameter upgrade-on-login.
 - [ ] PKCE-mandated `/authorize` + `/token` (`authorization_code`,
@@ -43,6 +43,9 @@ Exit criteria:
 - [ ] Refresh-token rotation with family reuse detection.
 - [ ] Session model + browser SSO cookie.
 - [ ] Per-pod rate limiter on `/authorize` and `/token`.
+- [ ] `acr_policy` evaluation + `acr_values` step-up routing.
+- [ ] `required_actions` and `required_flow` evaluation at flow Start.
+- [ ] User search backed by the generated `tsvector` column.
 - [ ] Audit events for the common login actions.
 - [ ] Conformance: passes a self-hosted run of the OIDC Basic
       certification suite.
@@ -74,11 +77,15 @@ Google/GitHub/corporate Okta" works.
 Exit criteria:
 
 - [ ] LDAP federation with pass-through bind and on-demand mirror.
-- [ ] AD-specific helpers (objectGUID, sAMAccountName).
-- [ ] Identity broker: OIDC discovery-based IdPs + GitHub (OAuth2)
-      and Apple (special cases).
+- [ ] AD-specific helpers (objectGUID, sAMAccountName), tombstone-
+      as-disable behavior.
+- [ ] Identity broker core: generic OIDC adapter + generic SAML SP
+      adapter.
+- [ ] `geonosis:broker-adapter@0.1.0` WIT contract.
+- [ ] First-party adapter plugins: `spi-google`, `spi-github`,
+      `spi-apple`, `spi-microsoft` — shipped from
+      `geonosis/spi-plugins` repo, default-enabled in Helm values.
 - [ ] First-broker-login flow with mapper bindings.
-- [ ] SAML 2.0 SP role: AuthnRequest, ACS, SAML metadata download.
 - [ ] Connection pool & circuit-breaker for federation sources.
 
 ## Phase 4 — SPI v1 (≈ 6 weeks)
@@ -139,14 +146,20 @@ Picked in order of operator demand. Not committed.
 
 - **Geonosis-as-IdP for SAML** (sign-side).
 - **WebAuthn** as a first-class authenticator with passkey lifecycle.
-- **DPoP** sender-constraint.
+- **Sender-constrained tokens**: DPoP + mTLS, per-realm choice.
 - **Token Exchange** (RFC 8693).
-- **Vault Transit / AWS KMS / GCP KMS** backends.
+- **KMS backends**: HashiCorp Vault Transit (first), then AWS KMS
+  and GCP KMS.
+- **SPI authoring SDKs**: Go (TinyGo) and JavaScript/TypeScript
+  (ComponentizeJS) alongside the existing Rust SDK.
 - **Cluster-wide rate limiting** (Redis or DB).
 - **Account console** (self-service end-user portal).
-- **Kerberos / SPNEGO** browser SSO via SPI.
-- **Search by attribute** (full-text on user attributes).
+- **Kerberos / SPNEGO** browser SSO via the `geonosis-spi-kerberos`
+  plugin.
+- **Attribute search**: per-realm allow-listed JSONB GIN indices on
+  `app_user.attributes`.
 - **K8s Operator CRDs**.
+- **Audit event compaction** per family.
 - **Multi-region active-active** plan (deferred design).
 
 ## What we explicitly defer to v1.0+

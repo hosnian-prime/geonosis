@@ -110,10 +110,15 @@ trait KeyManagementService: Send + Sync {
 
 Implementations:
 
-- `SoftwareKms` (default): local AES-GCM envelope.
-- `VaultTransit` (v0.2): HashiCorp Vault Transit engine.
-- `AwsKmsBackend` (v0.2): AWS KMS asymmetric keys.
-- `GcpKmsBackend` (v0.2): Google Cloud KMS asymmetric keys.
+- `SoftwareKms` (default, v0.1): local AES-GCM envelope under
+  `GEONOSIS_MASTER_KEY`.
+- **`VaultTransit` (v0.2, first external backend)**: HashiCorp Vault
+  Transit engine. Asymmetric signing supported by Vault for the
+  algorithms we use (RS256/384/512, ES256/384, EdDSA). Chosen first
+  because Vault is the most commonly available self-hosted KMS and
+  is portable across clouds.
+- `AwsKmsBackend` (v0.2.x): AWS KMS asymmetric keys.
+- `GcpKmsBackend` (v0.2.x): Google Cloud KMS asymmetric keys.
 - `Pkcs11Backend` (v0.3): generic HSMs via PKCS#11.
 
 Hot path performance: software signing is ~50 µs; KMS-backed signing
@@ -123,8 +128,15 @@ locally so verification is always fast, signing-only takes the hit.
 ## Master key management
 
 - **Provisioning**: operator generates a 32-byte random and stores in
-  K8s Secret / external secret store. Geonosis does NOT generate the
-  master key itself on first boot (avoid surprise key creation).
+  K8s Secret / external secret store. Loaded into the process as
+  `GEONOSIS_MASTER_KEY` (base64-encoded). Geonosis does NOT generate
+  the master key itself on first boot (avoid surprise key creation).
+- **No passphrase derivation in the server.** A passphrase-based
+  master key invites operators to use weak passphrases. The repo
+  ships a documented *recipe* (HKDF-SHA-256 with mandatory salt and
+  length) in `docs/runbooks/master-key-derivation.md` for operators
+  who need that workflow — they derive the 32-byte key out-of-band
+  and provide it as the env var like any other secret.
 - **Rotation**: a `geoctl secrets rewrap --new-key <path>` command
   reads every wrapped secret in the DB, decrypts with the old master,
   re-encrypts with the new, swaps in a transaction. Runtime supports
@@ -132,6 +144,78 @@ locally so verification is always fast, signing-only takes the hit.
   (`MASTER_KEY_PRIMARY` + `MASTER_KEY_SECONDARY` env vars).
 - **Backup**: master key is the encryption boundary for the DB. Lose
   it, lose all stored signing keys. Operator runbook MUST cover this.
+
+## ACR policy (per realm)
+
+Authentication Context Class Reference (`acr`) is a token claim
+expressing **how strong** the authentication was. Each realm defines
+its `AcrPolicy`: an ordered list of levels with rules that translate
+authentication outcomes (AMR + sender-constraint) into a level
+identifier.
+
+### Why per-realm
+
+- Different operators use different ACR conventions (numeric `1/2/3`,
+  ISO/IEC 29115 LoA, custom URIs).
+- Step-up requirements differ ("MFA" means OTP here, WebAuthn there).
+- Brokered IdPs return their own ACR strings; per-realm mapping is
+  the natural place to normalize them.
+
+### Default policy
+
+A new realm starts with three levels (operator can rename / extend
+without limit):
+
+```yaml
+acr_policy:
+  levels:
+    - value: "0"
+      display_name: "Unauthenticated context"
+      require:
+        any: true
+    - value: "1"
+      display_name: "Single-factor"
+      require:
+        amr_contains: ["pwd"]
+    - value: "2"
+      display_name: "Multi-factor"
+      require:
+        all_of:
+          - amr_contains: ["pwd"]
+          - any_of:
+              - amr_contains: ["otp"]
+              - amr_contains: ["wbn"]   # WebAuthn
+    - value: "3"
+      display_name: "Hardware-bound"
+      require:
+        all_of:
+          - amr_contains: ["wbn"]
+          - sender_constrained: "dpop"
+```
+
+The executor picks the **highest** level whose `require` evaluates
+true given the current session AMRs and the access token's
+sender-constraint binding.
+
+### `acr_values` interaction
+
+When a client passes `acr_values="2 3"` on `/authorize`:
+
+1. The executor evaluates the current session's ACR.
+2. If neither 2 nor 3 is satisfied, the executor selects the
+   realm's `step-up` flow bound to the *lowest acceptable* requested
+   level (here, level 2).
+3. After step-up, ACR is re-evaluated; if it now satisfies a
+   requested level, the request proceeds and the `acr` claim
+   reflects the satisfied level. If not, the response is
+   `interaction_required` (or `login_required` per RFC).
+
+### Brokered IdP ACR mapping
+
+Per `IdentityProvider` config, operators may declare
+`acr_remap: { "google:enterprise" -> "2", "okta:phr" -> "3" }`.
+Mapping happens at the broker boundary; from there the local
+`acr_policy` takes over.
 
 ## Password storage (local users)
 
@@ -238,13 +322,10 @@ crate calls these libraries directly; the surface is reviewed.
 - **Bring-your-own-cipher** policy — no.
 - **Storing plaintext client secrets** for compatibility — no.
 
-## Open
+## Decisions and open items
 
-- **HSM/KMS backends**: which one ships in v0.2 first? Vault Transit
-  is leading because it's commonly available and supports the asym
-  algorithms we use.
-- **Master key derivation** from a passphrase — operationally nice
-  but reduces strength; default to raw bytes, document derivation
-  recipe.
-- **`acr_values` mapping** to authn strength — needs a small policy
-  table in v0.2.
+- **First external KMS backend**: HashiCorp Vault Transit, v0.2.
+- **Master key**: raw 32-byte env only; derivation recipe documented
+  separately as an operator runbook.
+- **ACR policy**: per-realm policy table in v0.1 (default policy
+  provided above; operators may extend).

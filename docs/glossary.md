@@ -19,6 +19,11 @@ verification").
 
 **Active key** — A `KeyMaterial` row currently used to sign new tokens.
 
+**ACR Policy** — Per-realm table of named `acr` levels and the
+authentication requirements (AMR set, sender-constraint) that satisfy
+each. Drives `acr_values` interpretation and step-up routing. See
+[`12-security-crypto.md`](./12-security-crypto.md) §ACR Policy.
+
 **Admin Console** — The embedded web UI used by realm/master admins.
 
 **AMR (`amr`)** — Authentication Methods References. Token claim
@@ -37,6 +42,12 @@ or factor.
 
 **Broker** — The subsystem that delegates login to an external IdP.
 Distinct from federation.
+
+**Broker adapter** — A WASM SPI plugin implementing
+`geonosis:broker-adapter@0.1.0` that supplies vendor-specific
+behavior atop the core's generic OIDC/SAML adapters. First-party
+adapters: `spi-google`, `spi-github`, `spi-apple`,
+`spi-microsoft`.
 
 **Browser flow** — The interactive login flow used by `/authorize`
 when `prompt!=none`.
@@ -226,8 +237,14 @@ themes.
 **Refresh token** — A long-lived token redeemable for a fresh access
 token at `/token`.
 
-**Required action** — A flag on a user that forces a flow detour the
-next time they log in (e.g. "verify email").
+**Required action** — A flag on a user that forces an additive flow
+detour the next time they log in (e.g. "verify email"). Multiple
+required actions can be active simultaneously.
+
+**Required flow** — A column on `app_user` naming a flow that
+**replaces** the client's normal browser flow on the next login.
+Cleared by the flow itself on success. Coexists with required
+actions.
 
 **RLS** — Row-Level Security in Postgres. Used as defense-in-depth
 against realm-cross-talk bugs.
@@ -254,6 +271,11 @@ can replace.
 **SPI** — Service Provider Interface. Our extension mechanism, backed
 by WASM components.
 
+**Step-up flow** — A flow kind triggered by an `/authorize` request
+asking for a stronger `acr` than the current session holds. The
+executor selects the realm's `step-up` flow whose binding targets
+the requested ACR level.
+
 **Subject (flow result)** — The authenticated principal a flow
 produces on success.
 
@@ -270,12 +292,26 @@ overrides, and metadata.
 **Token family** — Linked set of refresh tokens sharing a
 `family_id`. Used to detect rotation reuse.
 
+**Tombstone (AD)** — An LDAP entry in the deleted-objects container
+representing a logically-deleted user. Geonosis treats tombstones
+as disable signals, not delete signals — see
+[`04-federation-ldap.md`](./04-federation-ldap.md) §AD-specific.
+
+**`tsvector`** — Postgres full-text search type. `app_user`
+has a generated `search_vector` column built from username, email,
+and name fields, indexed with GIN.
+
 ## U
 
 **User** — A person (or a brokered/federated identity) within a
 realm.
 
 ## V
+
+**Vault Transit** — HashiCorp Vault's cryptographic-operations
+engine. The first external `KeyManagementService` backend shipped,
+in v0.2.
+
 
 **Version (flow)** — Monotonic counter that bumps on every flow save.
 In-flight executions complete on their original version.

@@ -211,10 +211,20 @@ Prometheus alerting rules cover:
 - **PII redaction beyond the listed toggles**. Operators integrate
   with a redaction-aware pipeline if needed.
 
-## Open
+## Decisions and open items
 
-- **Trace sampling for slow requests** — tail-based rule schema needs
-  to match the collector deployment.
-- **Audit event compaction** for hot replays (millions of
-  `token.refreshed`) — consider summary rows after N events on
-  the same family.
+- **Trace sampling**: `parentbased_traceidratio(0.01)` head-based
+  sampler in the SDK. **Tail-based** retention at the collector
+  picks up any trace where:
+  - a span has `error.kind` set, **or**
+  - the root span's duration exceeds the rolling p99 by 2×, **or**
+  - a span tagged `spi.outcome != success` is present.
+
+  This combination keeps the cost low while never losing a slow or
+  failed authorize. Operators can override the ratio via
+  `OTEL_TRACES_SAMPLER_ARG`.
+- **Audit event compaction**: deferred to v0.2. For v0.1 we accept
+  the cost of writing one row per `token.refreshed`. If a realm
+  truly drives millions of refreshes/hour and the audit storage
+  proves expensive, the v0.2 plan is a per-family summary row
+  flushed every N events or every T seconds.
