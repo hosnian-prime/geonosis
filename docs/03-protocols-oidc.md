@@ -200,7 +200,11 @@ Each client carries `auth_method`; mismatch returns `invalid_client`.
             Success │
                     ▼
        ┌────────────────────────────────────────┐
-       │  evaluate consent (if any required)    │
+       │  evaluate consent                      │
+       │   - check OrgConsentPolicy (if org ctx)│
+       │   - check existing ConsentGrant        │
+       │   - if new scopes: render consent page │
+       │   - persist ConsentGrant on approval   │
        └────────────┬───────────────────────────┘
                     │
                     ▼
@@ -299,9 +303,7 @@ enum of validated requests; only validated values cross into the core.
 
 ## Non-goals
 
-- **SAML SP endpoints** (issuing SAML responses) — v0.2.
 - **CIBA** — deferred.
-- **JARM signed response_mode=jwt** — v0.2.
 - **Self-issued OP** — out of scope.
 
 ## Decisions and open items

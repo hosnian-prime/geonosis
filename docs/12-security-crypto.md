@@ -48,7 +48,9 @@ Created → Active → PreviousActive → Disabled → (deleted after retention)
 - **Disabled** keys are removed from JWKS; verification fails for
   any `kid` matching disabled keys.
 - Per realm there's **exactly one Active** signing key per algorithm
-  family.
+  family for OIDC. Exception: SAML IdP signing permits multiple Active
+  keys for SP metadata caching tolerance (see
+  [`20-saml-idp.md`](./20-saml-idp.md) §Signing key rotation).
 
 Rotation is a single admin call:
 
@@ -219,12 +221,15 @@ acr_policy:
           - any_of:
               - amr_contains: ["otp"]
               - amr_contains: ["wbn"]   # WebAuthn
-    - value: "3"
-      display_name: "Hardware-bound"
-      require:
-        all_of:
-          - amr_contains: ["wbn"]
-          - sender_constrained: "dpop"
+    # Level 3 (Hardware-bound + sender-constrained) is available as a
+    # v0.2 extension once DPoP / mTLS lands. Operators can add it then:
+    #
+    # - value: "3"
+    #   display_name: "Hardware-bound"
+    #   require:
+    #     all_of:
+    #       - amr_contains: ["wbn"]
+    #       - sender_constrained: "dpop"
 ```
 
 The executor picks the **highest** level whose `require` evaluates

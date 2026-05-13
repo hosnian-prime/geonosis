@@ -29,6 +29,9 @@ each realm is an isolated identity universe.
      │                    └─────────────► ┌────────┐
      │                    │  N         M  │ Group  │
      │                    └─────────────► └────────┘
+     │                    │  1         N  ┌──────────────┐
+     │                    └─────────────► │ ConsentGrant │
+     │                                    └──────────────┘
      │                                    ┌──────────────┐
      │                    └─────────────► │ Organization │
      │                                    └──────────────┘
@@ -42,7 +45,10 @@ each realm is an isolated identity universe.
      │                   ├────────►│ OrgDomain        │
      │                   │         └──────────────────┘
      │                   │  N   M  ┌──────────────────┐
-     │                   └────────►│ OrgMembership    │
+     │                   ├────────►│ OrgMembership    │
+     │                   │         └──────────────────┘
+     │                   │  1   N  ┌──────────────────┐
+     │                   └────────►│ OrgConsentPolicy │
      │                             └──────────────────┘
      │   1     N  ┌──────────────┐
      ├───────────►│ Identity-    │
@@ -410,6 +416,7 @@ pub struct ConsentPolicy {
     pub consent_required: bool,
     pub display_on_consent_screen: bool, // show client info even when consent_required=false
     pub consent_screen_text: Option<String>,
+    pub consent_lifespan: Option<Duration>,  // None = until revoked; Some = re-prompt after expiry
 }
 
 pub struct Role {
@@ -498,12 +505,65 @@ pub struct OrgInvitation {
 }
 
 /// Roles scoped to an Organization (independent of realm roles).
+/// Each org is seeded with built-in roles: owner, admin, member.
+/// Operators can create custom roles with any combination of permissions.
 pub struct OrgRole {
     pub id: OrgRoleId,
     pub organization_id: OrganizationId,
     pub realm_id: RealmId,
-    pub name: String,                    // "owner", "admin", "billing", ...
+    pub name: String,                    // "owner", "admin", "billing", "member", ...
     pub description: Option<String>,
+    pub permissions: Vec<OrgPermission>, // see enum below
+    pub built_in: bool,                  // true for seeded roles (owner, admin, member)
+}
+
+pub enum OrgPermission {
+    Admin,                               // full org management (implies all below)
+    InviteMembers,                       // invite / remove members
+    ManageDomains,                       // add / verify / remove org domains
+    ManageIdps,                          // bind / unbind realm IdPs to the org
+    ManageRoles,                         // create / edit / delete org roles
+    ManageConsent,                       // manage org-level consent policies
+    ViewMembers,                         // list members (all roles get this implicitly)
+    Custom(String),                      // operator-defined; evaluated by policy SPI
+}
+
+// — Consent management —
+
+/// Per-user consent grant for a client + scope set.
+pub struct ConsentGrant {
+    pub id: ConsentGrantId,
+    pub realm_id: RealmId,
+    pub user_id: UserId,
+    pub client_id: ClientId,
+    pub organization_id: Option<OrganizationId>, // present when consent was in org context
+    pub granted_scopes: Vec<ScopeName>,
+    pub granted_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,       // None = until revoked
+    pub last_used_at: Option<DateTime<Utc>>,
+}
+
+/// Organization-level consent policy for a specific client.
+/// Lets org admins pre-approve, block, or manage consent decisions
+/// for their members.
+pub struct OrgConsentPolicy {
+    pub id: OrgConsentPolicyId,
+    pub organization_id: OrganizationId,
+    pub realm_id: RealmId,
+    pub client_id: ClientId,
+    pub mode: OrgConsentMode,
+    pub pre_approved_scopes: Vec<ScopeName>,
+    pub blocked_scopes: Vec<ScopeName>,
+    pub require_admin_approval: bool,
+    pub created_by: UserId,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+pub enum OrgConsentMode {
+    UserDecides,        // default — user sees consent screen normally
+    OrgPreApproved,     // pre_approved_scopes skip the consent screen
+    OrgManaged,         // all consent decisions made by org admin; users see no prompt
 }
 
 /// Declarative schema for user attributes within a realm. One per realm.
@@ -669,7 +729,7 @@ pub struct EventSink {
     pub id: EventSinkId,
     pub realm_id: RealmId,
     pub alias: String,
-    pub kind: EventSinkKind,             // Webhook | Kafka(v0.2) | Cloud(v0.2)
+    pub kind: EventSinkKind,             // Postgres | Webhook | Kafka(v0.2) | Cloud(v0.2)
     pub config: serde_json::Value,
     pub events_filter: Vec<String>,      // empty = all
     pub enabled: bool,
@@ -926,6 +986,7 @@ CREATE INDEX ON credential (user_id, kind);
 -- identity_provider, federation_source, auth_flow, key_material,
 -- session, code_grant, refresh_token, spi_binding, wasm_module,
 -- organization, org_domain, org_membership, org_invitation, org_role,
+-- consent_grant, org_consent_policy,
 -- user_profile, smtp_server, event_sink ...
 
 -- Append-only audit log; partitioned by month.
@@ -1021,6 +1082,8 @@ pub struct BrokerLinkId(pub Ulid);         // see 05-identity-broker.md
 pub struct BrokerAuthnStateId(pub Ulid);
 pub struct FlowStateId(pub Ulid);
 pub struct SamlPersistentIdRow(pub Ulid);  // see 20-saml-idp.md
+pub struct ConsentGrantId(pub Ulid);
+pub struct OrgConsentPolicyId(pub Ulid);
 
 /// Opaque base32-encoded 32-byte random; stored hashed where appropriate.
 pub struct SessionId(pub String);
@@ -1208,8 +1271,39 @@ pub struct OAuth2TokenSet {
     pub scope: Vec<String>,
 }
 
-pub struct OidcIdpConfig { /* per 05-identity-broker.md */ }
-pub struct SamlIdpConfig { /* per 05-identity-broker.md */ }
+/// See 05-identity-broker.md for field semantics.
+pub struct OidcIdpConfig {
+    pub issuer: String,
+    pub discovery_url: Option<String>,
+    pub authorization_endpoint: Option<String>,
+    pub token_endpoint: Option<String>,
+    pub userinfo_endpoint: Option<String>,
+    pub jwks_uri: Option<String>,
+    pub client_id: String,
+    pub client_auth: ClientAuthMethod,
+    pub client_secret: Option<Secret<String>>,
+    pub client_assertion_key: Option<KeyId>,
+    pub scopes: Vec<String>,
+    pub prompt: Option<String>,
+    pub response_mode: Option<String>,
+    pub pkce: PkceMode,
+    pub accept_unsigned_userinfo: bool,
+}
+
+/// See 05-identity-broker.md for field semantics.
+pub struct SamlIdpConfig {
+    pub entity_id: String,
+    pub sso_url: String,
+    pub slo_url: Option<String>,
+    pub signing_certs: Vec<X509Certificate>,
+    pub name_id_format: NameIdFormat,
+    pub want_assertions_signed: bool,
+    pub want_responses_signed: bool,
+    pub sp_signing_key: KeyId,
+    pub sp_encryption_key: Option<KeyId>,
+    pub binding_outbound: SamlBinding,
+    pub binding_inbound: SamlBinding,
+}
 ```
 
 ### Cryptographic / protocol types
@@ -1443,4 +1537,5 @@ pub struct Origin(pub String);
   realm; minimum 30 days. Cold storage off-host (S3 with
   Object Lock) is v0.2.
 - **Schema for SAML-as-IdP** (Geonosis issuing SAML assertions):
-  deferred to v0.2.
+  in v0.1 scope. See `SamlSpClientConfig`, `SamlPersistentId` above
+  and [`20-saml-idp.md`](./20-saml-idp.md).

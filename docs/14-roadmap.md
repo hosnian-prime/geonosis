@@ -42,7 +42,8 @@ from incumbents.
 |---|---|---|
 | Users + Credentials + Groups + Roles | [`02`](./02-data-model.md) | Postgres schema; hierarchical groups; composite roles |
 | **Role attributes** | [`02`](./02-data-model.md) | `Role.attributes` consumed by built-in mappers |
-| **Organizations** (B2B SaaS sub-realm) | [`15`](./15-organizations.md) | Full feature: domains, invitations, memberships, per-org IdPs, per-org roles, branding, `org` token claim |
+| **Organizations** (B2B SaaS sub-realm) | [`15`](./15-organizations.md) | Full feature: domains, invitations, memberships, per-org IdPs, per-org roles (owner/admin/member/custom with fine-grained permissions), branding, `org` token claim |
+| **Consent management** (system + org-level) | [`15`](./15-organizations.md) | Per-client consent screen, persisted `ConsentGrant`, org consent policies (pre-approve/block/manage scopes), consent audit trail |
 | **User Profile** declarative schema | [`16`](./16-user-profile.md) | Per-realm attribute schema, validators (incl. WASM custom), `Reject` default unmanaged policy |
 | LDAP/AD federation | [`04`](./04-federation-ldap.md) | `builtin:user-storage:ldap:{alias}` provider, AD tombstone-as-disable |
 | Identity brokering (OIDC + SAML SP) | [`05`](./05-identity-broker.md) | Generic adapters + first-party plugins for Google, GitHub, Apple, Microsoft |

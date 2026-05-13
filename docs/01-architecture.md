@@ -98,6 +98,10 @@ HTTP ─────────► │   │ axum router│──►│  middle
 | Auth flow | `geonosis-flow` | Graph executor + serializable DSL |
 | LDAP federation | `geonosis-federation-ldap` | Bind to external LDAP/AD; mirror users on demand |
 | Identity broker | `geonosis-broker` | OIDC and SAML brokering (acts as SP) |
+| SAML IdP | `geonosis-protocol-saml-idp` | Issuing SAML assertions to downstream SPs (acts as IdP) |
+| SAML types | `geonosis-saml-types` | Shared SAML schema types (used by both broker and IdP crates) |
+| SCIM protocol | `geonosis-protocol-scim` | SCIM 2.0 inbound provisioning endpoints (v0.2) |
+| SCIM types | `geonosis-scim-types` | Shared SCIM schema types |
 | Crypto | `geonosis-crypto` | JWT signing, key generation, KMS trait |
 | SPI host | `geonosis-spi-host` | Wasmtime + WIT bindings; per-realm sandbox |
 | SPI authoring SDK | `geonosis-spi-api` | Rust bindings for plugin authors; re-exports generated `wit-bindgen` glue |
@@ -144,7 +148,7 @@ HTTP ─────────► │   │ axum router│──►│  middle
 | WASM module bytecode | Object store + Postgres metadata | bounded staleness | invalidation event → recompile in pod |
 
 Rate-limit being per-pod is an explicit non-goal of v0.1: see
-[`13-observability.md`](./13-observability.md) for the trade-off.
+[`12-security-crypto.md`](./12-security-crypto.md) §Rate limiting for the trade-off.
 
 ## Per-pod lifecycle
 

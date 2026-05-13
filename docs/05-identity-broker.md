@@ -255,7 +255,7 @@ Two flavors:
 ## Non-goals
 
 - **Issuing SAML responses to downstream SPs** — that is Geonosis-as-IdP,
-  v0.2.
+  now in v0.1 scope. See [`20-saml-idp.md`](./20-saml-idp.md).
 - **WS-Federation passive requestor** — out of scope.
 - **OAuth 2.0 token exchange between Geonosis and IdP** — partial in
   v0.2.

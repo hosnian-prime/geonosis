@@ -31,9 +31,9 @@ A user mirrored from LDAP has:
 
 ```rust
 struct FederationLink {
-    source_id: FederationId,
+    source_urn: String,           // "builtin:user-storage:ldap:corp-ad" or "wasm:..."
     external_id: String,          // entryUUID or objectGUID
-    external_dn: String,
+    external_dn: Option<String>,  // LDAP only (always Some for LDAP sources)
     last_synced_at: DateTime<Utc>,
 }
 ```

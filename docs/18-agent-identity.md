@@ -71,7 +71,7 @@ pub struct Agent {
     pub vendor: Option<String>,
     pub version: Option<String>,
     pub parent_subject: ParentSubject,      // immutable; set at creation
-    pub capabilities: Vec<Capability>,      // see below
+    pub capabilities: Vec<AgentCapability>,  // see below
     pub allowed_scopes: Vec<ScopeName>,     // subset of parent's grantable scopes
     pub allowed_audiences: Vec<String>,     // resource servers this agent may target
     pub rate_limit: AgentRateLimit,
@@ -97,7 +97,7 @@ pub enum AgentKind {
     Custom(String),
 }
 
-pub struct Capability {
+pub struct AgentCapability {
     pub urn: String,                        // "tool:read-files", "data:tier-2", "model:gpt-4o"
     pub config: serde_json::Value,
 }
@@ -324,16 +324,15 @@ Three points are pluggable:
   WebAuthn keys. They authenticate via signed assertions.
 - **Mutable parent** — see above.
 - **Continuous authentication** (heartbeats, attestation freshness)
-  beyond `expires_at` — out of scope v0.1; v0.2 candidate.
+  beyond `expires_at` — out of scope v0.1; deferred to v0.3.
 
 ## Phase
 
 - **v0.1**: Agent entity, Token Exchange path, capability URN
   format, audit category, admin API CRUD.
 - **v0.2**: Account-console self-service. Attestation SPI.
-  Continuous-auth heartbeats.
 - **v0.3**: Agent-to-agent delegation chains with policy-driven
-  capability reduction at each hop.
+  capability reduction at each hop. Continuous-auth heartbeats.
 
 ## Decisions and open items
 
