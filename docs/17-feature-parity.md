@@ -86,7 +86,7 @@ events, SPI surface, admin API, account console.
 | HMAC for cookies / refresh hashing | ✅ | [`12-security-crypto.md`](./12-security-crypto.md) |
 | External KMS (Vault Transit) | 🟡 | v0.2; trait already there |
 | AWS KMS / GCP KMS / Pkcs11 | 🟡 / 🟡 / 🔵 | v0.2.x / v0.2.x / v0.3 |
-| BYOK upload | 🤔 | needs spec; v0.2 candidate |
+| BYOK upload (PEM/JWK/DER → KMS) | 🟡 | v0.2, UI + CLI, see [`12-security-crypto.md`](./12-security-crypto.md) |
 
 ## Realm settings → Sessions
 
@@ -109,7 +109,7 @@ events, SPI surface, admin API, account console.
 | Access Token Lifespan | ✅ | `TokenPolicy.access_token_lifespan` |
 | Authorization Code Lifespan | ✅ | `TokenPolicy.authorization_code_lifespan` |
 | Action Token Lifespans (admin- and user-initiated) | ✅ | `SessionPolicy.action_token_lifespan*` |
-| OAuth 2.0 device polling interval | 🤔 | hard-coded to 5 s in v0.1; configurable in v0.2 |
+| OAuth 2.0 device polling interval | 🟡 | hard-coded 5 s in v0.1; configurable per realm v0.2 |
 
 ## Realm settings → Security defenses
 
@@ -197,7 +197,7 @@ events, SPI surface, admin API, account console.
 | Client-level roles | ✅ | `Role.scope = ClientRole(...)` |
 | Composite roles | ✅ | `Role.composites` |
 | Default roles | ✅ | `Realm.default_roles` |
-| Role attributes | 🤔 | not in v0.1 type; consider for v0.2 |
+| Role attributes | ✅ | `Role.attributes: BTreeMap<String, AttributeValue>`; consumed by built-in mappers |
 
 ## Groups
 
@@ -327,7 +327,7 @@ events, SPI surface, admin API, account console.
 | Users / Clients / Roles / Groups / Sessions / Events | ✅ | same |
 | Organizations | ✅ | [`15-organizations.md`](./15-organizations.md) |
 | Bulk import / export | 🟡 | v0.2 (`geoctl realm export/import`) |
-| Incumbent-IAM import (realm export → Geonosis) | 🟡 | wishlist v0.2 / not committed |
+| Incumbent-IAM import (realm export → Geonosis) | 🚫 | non-goal; native YAML/JSON only. Conversion is operator-side scripting. |
 
 ## Account console (end-user portal)
 
@@ -340,7 +340,7 @@ events, SPI surface, admin API, account console.
 | Add/remove WebAuthn credentials | 🟡 | v0.2 |
 | Linked accounts (broker) | 🟡 | v0.2 |
 | Org memberships management | 🟡 | v0.2 |
-| GDPR data export / delete | 🤔 | v0.3 candidate |
+| GDPR data export / delete | 🟡 | v0.2; `/account/me/export`, `/account/me/delete`, admin-API equivalents. See [`13-observability.md`](./13-observability.md) §End-user privacy & GDPR |
 
 ## Tooling & operational features
 
@@ -351,7 +351,7 @@ events, SPI surface, admin API, account console.
 | Theme on disk | ✅ | files under `/themes/...`, watcher; templating engine is ours, not FreeMarker |
 | Templates: register, login, otp, idp, email | ✅ | naming follows common IAM conventions |
 | Operator CLI | ✅ | `geoctl` |
-| Realm import from incumbent IAMs | 🤔 | nice-to-have, not committed |
+| Realm import from incumbent IAMs | 🚫 | non-goal — see Realm export / import row above |
 | Master realm bootstrap | ✅ | inherent |
 | Mobile-friendly login | ✅ | responsive themes by default |
 | Database upgrade tool | ✅ | `geoctl migrate`, expand-contract |
