@@ -410,6 +410,7 @@ pub struct Role {
     pub name: String,                   // unique within scope
     pub description: Option<String>,
     pub composites: Vec<RoleId>,        // composite (parent → child) roles
+    pub attributes: BTreeMap<String, AttributeValue>, // role metadata, mapper-readable
 }
 
 pub struct Group {

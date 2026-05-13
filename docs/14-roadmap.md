@@ -46,6 +46,8 @@ Exit criteria:
 - [ ] `acr_policy` evaluation + `acr_values` step-up routing.
 - [ ] `required_actions` and `required_flow` evaluation at flow Start.
 - [ ] User search backed by the generated `tsvector` column.
+- [ ] Role attributes (`Role.attributes`) surfaced in admin UI and
+      consumed by built-in mappers.
 - [ ] Audit events for the common login actions.
 - [ ] Conformance: passes a self-hosted run of the OIDC Basic
       certification suite.
@@ -149,9 +151,10 @@ Exit criteria:
 - [ ] Security audit pass (in-house: threat model recheck + crypto
       surface review). External audit before v1.0.
 
-## Phase 7 — v0.2 candidates
+## Phase 7 — v0.2 committed work
 
-Picked in order of operator demand. Not committed.
+These features are committed for v0.2. The list grew as design
+discussions resolved open questions in their favor.
 
 - **Geonosis-as-IdP for SAML** (sign-side).
 - **WebAuthn** as a first-class authenticator with passkey lifecycle.
@@ -159,8 +162,19 @@ Picked in order of operator demand. Not committed.
 - **Token Exchange** (RFC 8693).
 - **KMS backends**: HashiCorp Vault Transit (first), then AWS KMS
   and GCP KMS.
+- **BYOK upload**: admin UI + CLI accept pre-generated keys (PEM /
+  JWK / DER), wrapped under master key or imported into KMS.
+- **Account console**: end-user portal with profile editing,
+  session list, MFA enrollment, brokered-identity linking, org
+  memberships.
+- **GDPR self-service**: `/account/me/export` (ZIP download) and
+  `/account/me/delete` (cooling-off then erasure + audit anonymize).
+  Admin-API equivalents for DPO-driven flows.
 - **SPI authoring SDKs**: Go (TinyGo) and JavaScript/TypeScript
   (ComponentizeJS) alongside the existing Rust SDK.
+- **Native realm export/import** via `geoctl realm export | import`.
+  Geonosis-native YAML/JSON only — converting from incumbent IAMs
+  is operator-side scripting, not built in.
 - **Cluster-wide rate limiting** (Redis or DB).
 - **Account console** (self-service end-user portal).
 - **Kerberos / SPNEGO** browser SSO via the `geonosis-spi-kerberos`
