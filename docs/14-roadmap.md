@@ -141,7 +141,7 @@ Authoring SDK: **Rust** only in v0.1 (`geonosis-spi-api`).
 | **5-minute quickstart** | [`21`](./21-dx-package.md) | Single Docker compose; bootstrap realm; 3 cURL commands |
 | **Next.js example app** | [`21`](./21-dx-package.md) | `examples/nextjs-app/` |
 | **axum resource-server example** | [`21`](./21-dx-package.md) | `examples/axum-resource-server/` |
-| **10 task-oriented recipes** | [`21`](./21-dx-package.md) | `docs/recipes/` |
+| **20 task-oriented recipes** | [`21`](./21-dx-package.md) | `docs/recipes/` |
 | `geoctl` operator CLI | [`08`](./08-admin-ui.md) | parity with admin UI for realms/clients/users/orgs/keys/audit/spi |
 | YAML/JSON flow export/import | [`06`](./06-auth-flows.md) | `geoctl flows ...` |
 | Plugin packaging convention | [`07`](./07-spi-wasm.md) | `geoctl spi install` + signed manifests |

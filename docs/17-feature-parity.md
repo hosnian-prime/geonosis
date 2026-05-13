@@ -388,7 +388,7 @@ events, SPI surface, admin API, account console.
 | Next.js + axum example apps | ✅ | v0.1 |
 | SvelteKit + FastAPI example apps | 🟡 | v0.2 |
 | Spring Boot + Django example apps | 🟡 | v0.3 |
-| 10 task-oriented recipes | ✅ | v0.1; grows in v0.2/v0.3 |
+| 20 task-oriented recipes | ✅ | v0.1; grows in v0.2/v0.3 |
 | `geonosis-verify` Rust crate | 🟡 | v0.2 |
 | OpenAPI spec for admin REST API | 🟡 | v0.2 |
 | Admin SDKs (TS, Python, Go, Rust) | 🟡 | v0.2; auto-generated |

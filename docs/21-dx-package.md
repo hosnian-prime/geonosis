@@ -171,7 +171,7 @@ Beyond the in-repo docs:
 | FastAPI example | | ✅ | |
 | Spring Boot example | | | ✅ |
 | Django example | | | ✅ |
-| Recipes set 1 (10 most common) | ✅ | grow | grow |
+| Recipes set 1 (20 most common) | ✅ | grow | grow |
 | `geonosis-verify` crate | | ✅ | DPoP/mTLS support polished |
 | OpenAPI + 4 SDKs | | ✅ | |
 | Test-mode realms | | ✅ | |
@@ -219,5 +219,5 @@ the underlying choices follow SOLID:
   hand-maintain language-specific clients beyond template tuning.
 - **Example app repos**: stay in-tree under `examples/`; bumped
   in lockstep with the server release.
-- **Recipe count promise**: 10 in v0.1 (the most common operator
+- **Recipe count promise**: 20 in v0.1 (the most common operator
   tasks), 10 more in v0.2, growing organically thereafter.

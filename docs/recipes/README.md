@@ -8,7 +8,7 @@ These are *companions* to the architecture docs in `docs/`. When a
 recipe touches a design decision, it links back to the canonical
 architecture doc rather than re-explaining it.
 
-## v0.1 set (10 recipes)
+## v0.1 set (20 recipes)
 
 | # | Recipe | What you'll do |
 |---|---|---|
@@ -22,6 +22,16 @@ architecture doc rather than re-explaining it.
 | 08 | [Issue an OAuth token for an AI agent](./08-issue-agent-token.md) | Token Exchange (RFC 8693) with the `act` chain |
 | 09 | [Set up a B2B Organization and invite members](./09-organization-setup.md) | Org, domain claim, IdP binding, invitation lifecycle |
 | 10 | [Expose Geonosis as a SAML IdP to a SaaS app](./10-saml-idp-for-app.md) | Register the SP, download metadata, complete SSO |
+| 11 | [Federate users from LDAP / Active Directory](./11-ldap-ad-federation.md) | Connect to corporate AD with LDAPS, sync users, map attributes |
+| 12 | [Add social login (Google / GitHub)](./12-social-login-google-github.md) | Broker through external IdPs with first-party adapter plugins |
+| 13 | [Configure TOTP enrollment and MFA policy](./13-totp-otp-enrollment.md) | Require TOTP on first login, generate recovery codes |
+| 14 | [Configure consent management (system + org-level)](./14-consent-management.md) | Per-client consent screens, org-level pre-approval and blocking |
+| 15 | [Configure organization roles and permissions](./15-org-roles-permissions.md) | Custom org roles with fine-grained permissions (billing, team-lead, etc.) |
+| 16 | [Configure a production password policy](./16-password-policy.md) | NIST 800-63B aligned policy: breach-list check, Argon2id tuning |
+| 17 | [Customize the login theme](./17-theme-customization.md) | Brand colors, logo, template overrides with hot reload |
+| 18 | [Export and import a realm configuration](./18-realm-export-import.md) | YAML export for version control and environment promotion |
+| 19 | [Stream events to a webhook endpoint](./19-webhook-event-sink.md) | HMAC-signed event delivery with retry and filtering |
+| 20 | [Write a custom token mapper in WASM](./20-custom-mapper-wasm.md) | Compute cross-entity claims (org + user) at token mint |
 
 ## v0.2 set (planned, not yet written)
 
