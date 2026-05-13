@@ -1,221 +1,276 @@
 # 09 — Cache & Cluster State
 
-The cluster has **no shared cache**. Each pod owns a private cache.
-Cross-pod consistency is reached via **Postgres `LISTEN` / `NOTIFY`**.
-This document explains how that holds together at scale.
+Caching is hidden behind the **`Cache` trait**. In v0.1 the default
+implementation is **Redis** (with Redis pub/sub for cluster-wide
+invalidation). An alternative implementation runs an in-process LRU
+with **Postgres `LISTEN`/`NOTIFY`** for invalidation — supported for
+small or air-gapped installs that don't want a Redis dependency.
 
-## Why no Redis / Infinispan
+In a future major release, the Redis dependency is replaced by
+**Komino**, an embedded Infinispan-class distributed cache gossip-
+clustered between Geonosis pods themselves. The `Cache` trait is
+the seam; this swap is intended to be invisible to callers.
 
-A shared cache is the natural place for IAM products to hide
-complexity — it ends up holding session state, rate-limit counters,
-cluster topology, and partial migration state. It's also where
-Keycloak's operational pain often originates (Infinispan split-brain,
-state-transfer pauses, eager initialization).
+## Why hide cache behind a trait
 
-We made an explicit bet: **the database is the cluster**. As long as
-the database is up, the cluster is consistent. When the database is
-down, no logins succeed *anywhere*, which is the simplest possible
-failure semantics. Adding a cache layer outside the DB is a future
-option, not a current dependency.
+- IAM products end up with cache choices as long-tail commitments.
+  Putting cache behind a trait means we can move (Redis → Komino)
+  without rewriting handlers.
+- It also keeps tests honest: a `NoopCache` impl forces every code
+  path to also be correct against a cold cache.
+- Multiple deployment shapes are supported: small (no Redis), normal
+  (Redis), future (Komino-clustered).
 
-## What we cache
-
-Each pod runs a Moka-based **bounded LRU** of roughly:
-
-| Class | Key | Eviction | TTL |
-|---|---|---|---|
-| Realm | `realm:{slug}` | LRU + NOTIFY | 30 min |
-| Client | `client:{realm}:{client_id}` | LRU + NOTIFY | 30 min |
-| Flow (compiled) | `flow:{id}:{version}` | LRU + NOTIFY | 30 min |
-| Theme overlay tree | `theme:{name}` | LRU + file-watch | 5 min |
-| SPI registry | `spi:{realm}` | LRU + NOTIFY | 30 min |
-| Active JWKS | `jwks:{realm}` | LRU + NOTIFY | 30 min |
-| Identity provider | `idp:{realm}:{alias}` | LRU + NOTIFY | 30 min |
-| Federation source | `fed:{realm}:{alias}` | LRU + NOTIFY | 30 min |
-| User (hot path) | `user:{id}` | LRU | **5 s** |
-
-The user cache is deliberately *short-TTL only*. We do NOT invalidate
-user cache via NOTIFY (would be very noisy under load). A 5-second
-staleness on a user record is acceptable; admin-side disables propagate
-through session revocation, not cache invalidation.
-
-We deliberately do **not** cache:
-
-- Sessions (always DB-resident; per-pod lookup).
-- Auth codes / refresh tokens (single-use, must be authoritative).
-- Audit events.
-
-## NOTIFY protocol
-
-A single Postgres channel: `geonosis_invalidate`.
-
-Payload is a JSON object:
-
-```json
-{
-  "kind": "client",         // entity class
-  "realm": "acme",
-  "id": "ulid-or-key"
-}
-```
-
-Writers (admin handlers, the cleanup job, federation sync) emit a
-`pg_notify` in the **same transaction** as the write. If the
-transaction rolls back, the notification is never sent.
-
-```sql
-SELECT pg_notify(
-  'geonosis_invalidate',
-  json_build_object(
-    'kind', 'client',
-    'realm', $1,
-    'id',    $2
-  )::text
-);
-```
-
-## Listener loop
-
-Each pod opens **one** dedicated DB connection for `LISTEN`. That
-connection is *not* part of the application pool; it lives in the
-`geonosis-cache` module:
-
-```rust
-async fn listener_loop(pool: PgPool, cache: Arc<CacheRegistry>) {
-    let mut conn = pool.acquire().await?;
-    conn.execute("LISTEN geonosis_invalidate").await?;
-    loop {
-        match conn.next_notification().await {
-            Ok(n) => cache.apply(&n.payload),
-            Err(e) => {
-                tracing::warn!(?e, "listener disconnected; resetting");
-                cache.drop_all_volatile();
-                // reconnect with backoff
-            }
-        }
-    }
-}
-```
-
-Properties:
-
-- **Single connection**, so there's no contention or ordering
-  surprise.
-- **Reconnect drops the volatile cache** — easier than reasoning
-  about missed notifications. Correctness > efficiency on the
-  reconnect path.
-- The pod's `/-/ready` probe fails while the listener is down. The
-  pool can still serve reads, but K8s steers traffic to other pods
-  until reconnection succeeds.
-
-## Coalescing
-
-Many writes target the same entity in a burst (e.g. realm config
-import touches many rows). We coalesce notifications **on receipt**:
-
-```rust
-struct CoalescingBuffer {
-    pending: HashSet<CacheKey>,
-    deadline: Instant,
-}
-```
-
-When the first notification arrives, set deadline to `now + 50 ms`.
-Add subsequent notifications to the set. At deadline, apply all in
-one pass. Bounded by entity count, not by burst size.
-
-## Watcher: filesystem
-
-Themes and per-pod overlays use the [`notify`](https://crates.io/crates/notify)
-crate. We watch the theme directory and invalidate
-`theme:{name}` keys on any change in that subtree. Debounce 200 ms.
-
-## Cache as a trait
+## The `Cache` trait
 
 ```rust
 #[async_trait]
-trait Cache: Send + Sync {
-    async fn get<T>(&self, key: CacheKey) -> Option<Arc<T>>
-    where T: Send + Sync + Clone + 'static;
+pub trait Cache: Send + Sync {
+    /// Lookup. Returns `Some(value)` on hit, `None` on miss
+    /// (whether negative-cached or absent).
+    async fn get<T>(&self, key: &CacheKey) -> Option<Cached<T>>
+    where T: Send + Sync + DeserializeOwned + 'static;
 
-    async fn put<T>(&self, key: CacheKey, value: Arc<T>, ttl: Duration);
+    /// Insert or overwrite. The TTL is enforced by the backing store
+    /// where possible (Redis SET PX); the in-process backend honors
+    /// it via Moka time-to-live.
+    async fn put<T>(&self, key: CacheKey, value: &T, ttl: Duration)
+    where T: Send + Sync + Serialize + 'static;
 
-    async fn invalidate(&self, key: CacheKey);
+    /// Insert a negative entry (key resolved to "absent"). Lower
+    /// default TTL than `put`.
+    async fn put_negative(&self, key: CacheKey, ttl: Duration);
 
-    async fn invalidate_prefix(&self, prefix: &str);
+    /// Cluster-wide invalidation. Fans out via the impl's bus.
+    async fn invalidate(&self, key: &CacheKey);
+
+    /// Cluster-wide invalidation by prefix (e.g. all clients of a realm).
+    async fn invalidate_prefix(&self, prefix: &CacheKeyPrefix);
+
+    /// Single-flight: dedupe concurrent requests for the same key.
+    async fn get_or_load<T, F, Fut>(
+        &self,
+        key: CacheKey,
+        ttl: Duration,
+        loader: F,
+    ) -> Result<Cached<T>, CacheError>
+    where
+        T: Send + Sync + Serialize + DeserializeOwned + 'static,
+        F: Send + FnOnce() -> Fut,
+        Fut: Send + std::future::Future<Output = Result<T, CacheError>>;
+}
+
+pub struct CacheKey {
+    pub realm: RealmId,            // every key is realm-scoped
+    pub class: CacheClass,         // typed kind: Realm/Client/Flow/...
+    pub id: String,                // local identifier inside the class
+}
+
+pub struct Cached<T> {
+    pub value: Arc<T>,
+    pub fetched_at: Instant,
+    pub ttl: Duration,
 }
 ```
 
-A `MokaCache` implements it. A `NoopCache` exists for tests. We do
-**not** ship a `RedisCache` in v0.1, but the trait makes one possible
-later.
+Keys carry a typed `CacheClass` so we get compile-time guarantees
+that, e.g., a `Client` cache lookup can't accidentally read a
+`Flow` row. The wire encoding for Redis prefixes the class:
+`geo:{realm}:{class}:{id}`.
 
-## Negative caching
+## Implementations
 
-For hot non-existence lookups (a misconfigured client repeatedly
-querying a nonexistent realm), we cache `None` for a short TTL (1 s)
-to prevent stampedes. Negative entries are also invalidated by
-NOTIFY on the corresponding create.
+| Impl | Crate path | When |
+|---|---|---|
+| `RedisCache` | `geonosis-cache::redis` | **v0.1 default.** Single Redis (or Sentinel/Cluster) endpoint. Uses Redis as both KV and pub/sub. |
+| `LocalCache` | `geonosis-cache::local` | Air-gapped / dev / no-Redis. In-process Moka LRU + Postgres `LISTEN`/`NOTIFY` for invalidation. |
+| `KominoCache` | `geonosis-cache::komino` | **Future (v1.x).** Embedded distributed cache gossip-clustered between Geonosis pods. Replaces Redis without API change. |
+| `NoopCache` | tests only | Always miss. Used to validate cold-path correctness. |
 
-## Cache poisoning safety
+Implementations declare their **capabilities**:
 
-- Cache values are **owned, immutable `Arc<T>`** clones; serving them
-  cannot mutate them.
-- Deserialization happens at the storage boundary; cached values are
-  already validated domain types.
-- No cross-realm key collision is possible: every key embeds
-  `realm:{slug}`.
+```rust
+pub struct CacheCapabilities {
+    pub shared_across_pods: bool,
+    pub durable_through_restart: bool,
+    pub supports_prefix_invalidation: bool,
+    pub typical_get_p99_micros: u32,
+}
+```
 
-## Failure modes
+Code that requires shared state (rate-limit counters, code grant
+caches) checks `shared_across_pods` and falls back to Postgres-only
+where the cache is local.
 
-| Failure | Behavior |
-|---|---|
-| Listener reconnect | Cache flushed; next requests are cold. P99 latency briefly increases. No correctness impact. |
-| `NOTIFY` payload truncated by Postgres (8 KiB limit) | Should never happen with our payloads (small). Defensive: payloads carry only kind + key, not state. |
-| Postgres unavailable | Listener fails, pod marks not-ready, traffic shifts. Other pods still serve cached reads until cold. |
-| Massive invalidation storm | Coalescing buffer + bounded HashSet caps memory. |
+## RedisCache (default v0.1)
+
+**Storage model:**
+
+- Values serialized with `bincode` (compact, schema-tied) and
+  versioned (`v1:`, `v2:` prefix per `CacheClass`) so format changes
+  are forward-detected and treated as a miss.
+- Per-key TTL via `SET PX`. Default TTLs per class match the table
+  below.
+- Atomic compare-and-set on writes that need it (`SET ... XX NX`).
+- Single-flight implemented with `SET key loading PX 5000 NX` lease;
+  losers `WAIT` and retry the read.
+
+**Invalidation:**
+
+- Local invalidate: `DEL` key.
+- Cluster-wide invalidate: `PUBLISH geo:invalidate <serialized key>`.
+- Subscribed pods receive the message and `DEL` the same key (and
+  drop the L1 in-process entry — see below).
+
+**L1 in-process layer:**
+
+Pods keep a small Moka L1 in front of Redis with a 1-second TTL.
+This collapses the worst hot-path costs (the JWKS lookup on every
+`/token` for example). The pub/sub subscriber drops L1 entries on
+invalidation messages. L1 is keyed identically to L2 so consistency
+reasoning is one-step.
+
+**Failure semantics:**
+
+- Redis unavailable → reads fall through to Postgres; writes succeed
+  (DB write commits, invalidation queued in a bounded in-memory
+  outbox and replayed on reconnect).
+- If the outbox overflows or reconnect fails for > 60 s, the pod
+  flips readiness false and Kubernetes shifts traffic.
+- Redis sentinel/cluster modes supported via `redis-rs` ahead-of-time
+  client setup; no special server logic.
+
+## LocalCache (no-Redis option)
+
+For deployments that don't run Redis:
+
+- Each pod has a Moka LRU keyed identically.
+- One dedicated Postgres connection runs `LISTEN geonosis_invalidate`.
+- Writes invoke `pg_notify('geonosis_invalidate', payload)` in the
+  same transaction as the DB write — if the txn rolls back, no
+  notification is sent.
+- Capabilities: `shared_across_pods=false` for the L2 (each pod has
+  its own LRU, but they're kept consistent through NOTIFY-driven
+  evictions); `supports_prefix_invalidation=true` (via NOTIFY
+  payload).
+- Trade-off: warm-up after pod restart is slow because the cache is
+  local. Acceptable for small deployments; not the default.
+
+This is **exactly the cache layer that earlier doc revisions
+described**. It still works; it just is no longer the default.
+
+## KominoCache (future)
+
+Komino is a planned native distributed cache, in the spirit of
+mature embedded JVM caches that other established IAMs rely on, but
+implemented in Rust as a Geonosis-native crate. Goals for Komino:
+
+- **Embedded in `geonosis-server`** — pods cluster directly with
+  each other, no external middleware.
+- **Gossip-based membership** + consistent-hash partitioning.
+- **Causal-replication** between pods (anti-entropy on join).
+- **Per-realm-keyspace ownership** so a realm's hot keys live on
+  one set of pods, reducing cross-pod chatter.
+- **API-equivalent** to the existing `Cache` trait. Operators
+  upgrade Geonosis and toggle a config flag; Redis can be removed.
+- **Operationally simpler** than running Redis HA, while preserving
+  the cluster-wide cache semantics.
+
+Komino is **not** v0.1 work. It's an explicit medium-term direction
+that informs the trait surface — we don't add Redis-specific methods
+that would later be hard to satisfy without backing into Redis.
+
+It is acceptable that early Komino releases run alongside Redis as
+a migration path before Redis can be retired.
+
+## What we cache (per class)
+
+| Class | Key | Where | TTL | Cluster broadcast on invalidation |
+|---|---|---|---|---|
+| Realm | `realm/{slug}` | L1 + L2 | 30 min | yes |
+| Client | `client/{realm}/{client_id}` | L1 + L2 | 30 min | yes |
+| Flow (compiled) | `flow/{id}/{version}` | L1 + L2 | 30 min | yes |
+| Theme overlay tree | `theme/{name}` | L1 only (file-system source) | 5 min | yes (within pod via file watcher) |
+| SPI registry | `spi/{realm}` | L1 + L2 | 30 min | yes |
+| Active JWKS | `jwks/{realm}` | L1 + L2 | 30 min | yes |
+| Identity provider | `idp/{realm}/{alias}` | L1 + L2 | 30 min | yes |
+| Federation source | `fed/{realm}/{alias}` | L1 + L2 | 30 min | yes |
+| User (hot path) | `user/{id}` | L1 + L2 | **5 s** | no — short TTL only |
+| Negative miss | `neg/...` | L1 + L2 | 1 s | implicit (next positive write invalidates) |
+| Rate-limit counters | counter buckets | L2 only (Redis) | window-bound | n/a (atomic INCR) |
+
+Sessions, auth codes, refresh tokens are NOT cached — they're
+authoritative in Postgres and the cost of a miss is one cheap
+indexed lookup.
+
+## Coalescing
+
+For bursts of writes touching the same entity (e.g. realm import),
+the invalidation publisher coalesces by key over a 50 ms window
+before publishing. Bounded by HashSet, not by burst size.
 
 ## Stampede protection
 
-For expensive computed entries (compiled flow, JWKS construction), we
-use **single-flight**:
+`get_or_load` implements single-flight at both L1 and L2:
+
+- L1: `dashmap` of in-progress futures by key.
+- L2: Redis `SET ... XX NX` lease with a 5 s wait-and-retry.
+
+This stops the herd of concurrent `/token` validations from each
+recomputing JWKS during a key rotation.
+
+## Cache as an interface, in code
+
+A handler calls only the trait:
 
 ```rust
-let value = single_flight.get_or_compute(key, || async {
-    /* expensive build */
-}).await;
+async fn load_client(
+    cache: &dyn Cache,
+    storage: &dyn ClientStorage,
+    realm: RealmId,
+    client_id: &str,
+) -> Result<Arc<Client>, AppError> {
+    let key = CacheKey::client(realm, client_id);
+    cache.get_or_load(key, Duration::from_secs(1800), || async {
+        storage.find_client(realm, client_id).await
+    }).await
+}
 ```
 
-Concurrent callers wait on the same in-flight future.
+No code path imports `redis`. The Redis client lives inside
+`geonosis-cache::redis`. Switching backends is a configuration
+choice.
 
 ## Metrics
 
-- `geonosis_cache_hits_total{class}`
-- `geonosis_cache_misses_total{class}`
-- `geonosis_cache_evictions_total{class}`
-- `geonosis_cache_size{class}`
-- `geonosis_listener_reconnects_total`
-- `geonosis_listener_lag_seconds` (estimated from NOTIFY timestamps)
+- `geonosis_cache_hits_total{class,layer}` — layer ∈ {l1, l2}
+- `geonosis_cache_misses_total{class,layer}`
+- `geonosis_cache_evictions_total{class,layer}`
+- `geonosis_cache_size{class,layer}`
+- `geonosis_cache_outbox_depth` (queued invalidations when L2 down)
+- `geonosis_cache_backend{impl="redis|local|komino"}` — info metric
+- `geonosis_cache_invalidations_published_total{class}`
+- `geonosis_cache_invalidations_received_total{class}`
 
 ## Non-goals
 
-- **Strong cluster-wide consistency** for cached entries. Bounded
-  staleness only.
-- **Cross-pod request migration** (e.g. moving an in-progress flow
-  to another pod). Each request is pinned to one pod via ingress.
+- **Strong consistency** across pods. Bounded staleness only.
+- **Cross-pod request migration.** Each request is pinned to one pod.
 - **Sticky sessions.** Not needed; flow state is in Postgres.
+- **Custom serialization formats.** `bincode` everywhere; a value's
+  schema is its Rust type.
 
 ## Decisions and open items
 
-- **Cache size budget**: 256 MiB total per pod by default, allocated
-  via class weights (realm: 4, client: 8, flow: 4, jwks: 2,
-  theme: 8, spi: 2, idp: 2, federation: 2, user: 16). Numbers are
-  starting points and will be tuned in the Phase 1 bench harness.
-- **Optional Redis cache backend**: trait already accommodates it;
-  no implementation in v0.1. We'll ship it when an operator's load
-  profile warrants the dependency.
-- **LISTEN retry policy**: exponential backoff capped at 30 s.
-  After 10 consecutive failures, the pod self-restarts (Kubernetes
-  liveness probe — set by an internal "unhealthy listener" gauge).
-  Splitting the listener into its own DB-aware sidecar process is
-  evaluated for v0.2 if pod restarts become a measurable nuisance.
+- **v0.1 default**: Redis (single, sentinel, or cluster). Required
+  for the default Helm deployment.
+- **No-Redis fallback**: `LocalCache` with Postgres `LISTEN`/`NOTIFY`.
+  Supported and tested; not the default.
+- **Komino**: future native impl; informs the trait surface but no
+  code in v0.1.
+- **Cache size budget per pod**: 256 MiB L1 by default, allocated
+  across classes by weight; Redis sizing is operator-controlled.
+- **Authorization codes / device codes** in Redis: deferred to v0.2
+  for very-high-RPS realms; v0.1 uses Postgres for these.
+- **Multi-region Redis**: out of scope; Redis is assumed regional.
+- **Komino persistence on cold start**: TBD; v1.x design problem.

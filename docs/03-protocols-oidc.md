@@ -59,9 +59,9 @@ GET    /realms/{slug}/login-actions/post-login
 *      /admin/v1/...                                        [see admin-ui.md]
 ```
 
-The `/protocol/openid-connect/` prefix matches the path Keycloak uses.
-We adopt it because many SDKs hard-code it; deviating costs more than
-it saves.
+The `/protocol/openid-connect/` prefix matches a path convention many
+client SDKs hard-code as a fallback. We adopt it because deviating
+costs interop more than it saves in vanity.
 
 ## Conformance defaults
 

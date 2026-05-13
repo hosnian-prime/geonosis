@@ -94,7 +94,7 @@ Span attributes:
 - `realm.slug`
 - `client.id`
 - `flow.alias`, `flow.version`, `flow.node_id`
-- `spi.provider_alias`, `spi.module_sha256` (on SPI spans)
+- `spi.provider_urn`, `spi.module_sha256` (on SPI spans)
 - `db.statement` (parameter-stripped)
 - `error.code` and `error.kind` on errors
 
@@ -148,8 +148,10 @@ pub enum Target {
 `broker.link_created`, `key.rotated`, `key.disabled`,
 `admin.role_assigned`, `admin.role_revoked`.
 
-The full list is published in `docs/audit-actions.md` (to be added).
-Each action is documented with required `detail` fields.
+The complete enumeration of `action` strings lives in
+`crates/geonosis-core/src/audit_action.rs` as a typed enum;
+the user-facing list is generated from it via `geoctl docs gen-audit`.
+Each action is documented inline with the required `detail` fields.
 
 ### Sinks
 
@@ -168,7 +170,9 @@ Sinks are configured per realm. Failures to deliver to external sinks
 - Off-host archival (S3 with object-lock for WORM compliance) is
   v0.2.
 
-## End-user privacy
+## End-user privacy & GDPR
+
+### Logging knobs
 
 - IP addresses appear in audit and logs. A realm can enable IP
   truncation (last octet zeroed) for GDPR-conscious deployments.
@@ -177,6 +181,38 @@ Sinks are configured per realm. Failures to deliver to external sinks
 - Account deletion: per realm policy, audit events for a deleted user
   may be retained anonymized (replace `user_id` with a hashed
   placeholder while keeping action timeline).
+
+### Self-service data export & erasure (v0.2)
+
+When the account console ships in v0.2 we add two end-user
+endpoints:
+
+```
+GET    /realms/{slug}/account/me/export          # download all data
+POST   /realms/{slug}/account/me/delete          # request erasure
+```
+
+- **Export** returns a single ZIP containing the user's profile,
+  attributes, group/role memberships, organization memberships,
+  active sessions, brokered identity links, audit events keyed by
+  this user (subject to realm retention), and consent records. JSON
+  manifest + per-section JSON files. Generated synchronously for
+  small users (< 50 MB); for larger users (high-volume audit
+  trails), queued and emailed-when-ready.
+- **Delete** is a two-step: request → confirmation email → hard
+  delete + audit-event anonymization. Realm operators may set a
+  cooling-off window (default 7 days) during which the user can
+  rescind.
+- **Audit events** for the deleted user are retained per
+  retention-policy but with `user_id` rewritten to a one-way hash
+  so the timeline is preserved without re-identifying the subject.
+- Federated and brokered users: deletion removes the local mirror;
+  the external store is the operator's responsibility.
+
+Operator-side admin APIs `GET /admin/v1/realms/{slug}/users/{id}/export`
+and `DELETE /admin/v1/realms/{slug}/users/{id}` provide the
+same shape for admin-driven erasure (e.g. DPO request handling).
+These exist in v0.2 alongside the end-user paths.
 
 ## Dashboards (shipped)
 

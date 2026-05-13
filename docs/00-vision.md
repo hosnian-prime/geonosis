@@ -2,8 +2,8 @@
 
 ## What Geonosis is
 
-Geonosis is a **Keycloak-class** Identity & Access Management server written
-in Rust. It provides:
+Geonosis is a **full-featured enterprise-grade** Identity & Access
+Management server written in Rust. It provides:
 
 - Standards-compliant **OpenID Connect 1.0** and **OAuth 2.1** authorization.
 - **LDAP / Active Directory** federation as a user source.
@@ -16,8 +16,13 @@ in Rust. It provides:
 - **Customizable login UI** and **visually-edited authentication flows**
   with **hot reload** — config, themes, and plugins can change without
   restarting any pod.
-- First-class **multi-pod** operation on **Kubernetes**, with no required
-  cluster middleware beyond Postgres.
+- First-class **multi-pod** operation on **Kubernetes**, with
+  Postgres as the system of record and Redis as the recommended
+  default hot-cache + pub/sub bus. A Redis-free mode (in-process
+  cache + Postgres `LISTEN`/`NOTIFY`) is supported and tested for
+  small or air-gapped installs; a future major release replaces
+  the Redis dependency with **Komino**, an embedded distributed
+  cache (see [`09-cache-invalidation.md`](./09-cache-invalidation.md)).
 
 ## What it is not (Non-goals for v0.1)
 
@@ -38,8 +43,8 @@ may be added later; their absence is by design, not oversight.
   geo-distributed write is v0.3+.
 - **Built-in BYOK / HSM.** Crypto interface accepts an external KMS via
   trait, but only software-backed keys ship in v0.1.
-- **Migrating from Keycloak.** Importers (Keycloak realm export →
-  Geonosis) are nice-to-have, not committed.
+- **Migration importers from incumbent IAMs.** Realm-export
+  converters are nice-to-have but not committed for v0.1.
 - **GUI for SPI authoring.** Plugins are built with `cargo` and the
   `geonosis-spi-api` crate.
 

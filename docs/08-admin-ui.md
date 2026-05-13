@@ -85,7 +85,7 @@ my-theme/
 
 Two override mechanisms:
 
-1. **Template overlay** (the *Keycloak FreeMarker equivalent*):
+1. **Template overlay** (the classic *file-based theme* path):
    plain HTML/CSS, no recompile. Replaces a named page entirely.
    The renderer falls back through theme → parent-theme → built-in.
    Hot-reloadable by file watcher.

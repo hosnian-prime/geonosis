@@ -9,6 +9,16 @@ governs.
 **ACR (`acr`)** — Authentication Context Class Reference. A string in
 the id-token that summarizes how strong the authentication was.
 
+**Agent** — A non-human identity acting on behalf of a parent
+subject (user, service account, or organization). First-class entity
+in v0.1. Authenticated via Token Exchange (RFC 8693); carries an
+immutable parent reference, capability URN list, and rate-limit
+bucket. See [`18-agent-identity.md`](./18-agent-identity.md).
+
+**Agent capability** — A structured permission on an `Agent` finer
+than an OAuth scope: `tool:read-files`, `data:tier`, `model:family`,
+`spend:daily`, etc. Emitted in tokens under `geo:agent.capabilities`.
+
 **Action (audit)** — A categorical name for an audit event, e.g.
 `login.success`, `token.refreshed`. Taxonomy in
 [`13-observability.md`](./13-observability.md).
@@ -172,6 +182,11 @@ specs: JWS, JWE, JWK, JWKS.
 
 **KMS** — Key Management Service. See [`12-security-crypto.md`](./12-security-crypto.md).
 
+**Komino** — Geonosis's planned embedded, Infinispan-class
+distributed cache. Gossip-clustered between Geonosis pods,
+replacing the Redis dependency in a future v1.x release. The
+`Cache` trait is the seam.
+
 ## L
 
 **LDAP** — Lightweight Directory Access Protocol. Used as a
@@ -205,6 +220,18 @@ external user.
 ## O
 
 **OIDC** — OpenID Connect.
+
+**Organization** — A sub-realm grouping of users with shared
+branding, default IdP routing, per-org roles, invitations, and
+domain claims. Realms host many organizations; users may belong to
+0..N organizations. See [`15-organizations.md`](./15-organizations.md).
+
+**Org domain** — A DNS domain claimed and verified by an
+Organization. Optionally drives auto-join when a user signs in with
+an email under that domain.
+
+**Org membership** — A user's join into an Organization, with org-
+scoped roles and a state (Active / Invited / Suspended).
 
 **OAuth 2.1** — Tightened version of OAuth 2.0; baseline for new
 deployments.
@@ -256,8 +283,14 @@ client-scoped.
 
 ## S
 
-**SAML** — Security Assertion Markup Language. v0.1 supports
-consuming SAML IdPs (broker SP role).
+**SAML** — Security Assertion Markup Language. v0.1 supports BOTH
+consuming SAML IdPs (broker SP role) AND issuing SAML assertions
+(IdP role; see [`20-saml-idp.md`](./20-saml-idp.md)).
+
+**SCIM** — System for Cross-domain Identity Management (RFC 7642–7644).
+Standard protocol for user/group provisioning. v0.2 ships inbound
+(Geonosis as SCIM service provider) + outbound (Geonosis as SCIM
+client). See [`19-scim.md`](./19-scim.md).
 
 **Service account** — A pseudo-user attached to a confidential
 client; appears as `sub` for client-credentials tokens.
@@ -269,7 +302,16 @@ from token lifetime.
 can replace.
 
 **SPI** — Service Provider Interface. Our extension mechanism, backed
-by WASM components.
+by WASM components. Built-in implementations and operator-supplied
+WASM implementations live in the same per-realm registry under
+**provider URNs**; the operator can disable any built-in, replace
+it via `replaces`, or chain extras around it. See the registry
+section of [`07-spi-wasm.md`](./07-spi-wasm.md).
+
+**Provider URN** — Stable identifier for any provider, built-in or
+WASM. `builtin:{interface-short}:{name}` for built-ins;
+`wasm:{module-alias}:{export}` for WASM modules. The `builtin:`
+namespace is reserved.
 
 **Step-up flow** — A flow kind triggered by an `/authorize` request
 asking for a stronger `acr` than the current session holds. The
@@ -292,6 +334,15 @@ overrides, and metadata.
 **Token family** — Linked set of refresh tokens sharing a
 `family_id`. Used to detect rotation reuse.
 
+**Token Exchange** — RFC 8693 OAuth 2.0 token exchange grant.
+Implements the `act` (actor) chain that lets a token represent
+"this user, acting via this agent (or other delegate)". Central to
+the agent identity model.
+
+**`act` claim** — Per RFC 8693 §4.1, a JWT claim identifying the
+acting party in a token-exchange chain. Geonosis emits `act` for
+agent-issued tokens; can be nested when an agent re-delegates.
+
 **Tombstone (AD)** — An LDAP entry in the deleted-objects container
 representing a logically-deleted user. Geonosis treats tombstones
 as disable signals, not delete signals — see
@@ -305,6 +356,11 @@ and name fields, indexed with GIN.
 
 **User** — A person (or a brokered/federated identity) within a
 realm.
+
+**User Profile** — A per-realm declarative schema describing which
+user attributes exist, who can read/write them, and how they are
+validated. Drives registration, account-console, and admin forms.
+See [`16-user-profile.md`](./16-user-profile.md).
 
 ## V
 
