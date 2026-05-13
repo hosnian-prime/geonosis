@@ -1,9 +1,9 @@
 # Geonosis — Technical Documentation
 
 Geonosis is an Identity & Access Management (IAM) platform written in Rust.
-It aims to provide the feature surface of Keycloak with an embedded admin UI,
-WASM-based extension SPIs, customizable UI/flows, and zero-downtime
-operation on Kubernetes.
+It targets the feature surface of established enterprise IAMs with an
+embedded admin UI, WASM-based extension SPIs, customizable UI/flows, and
+zero-downtime operation on Kubernetes.
 
 This directory is the single source of truth for the architecture. Source
 code references its decisions; designs that are not written down here do not
@@ -30,7 +30,7 @@ exist.
 | 14 | [roadmap.md](./14-roadmap.md) | Phased delivery plan |
 | 15 | [organizations.md](./15-organizations.md) | Sub-realm Organizations (B2B SaaS tenants) |
 | 16 | [user-profile.md](./16-user-profile.md) | Declarative attribute schema |
-| 17 | [keycloak-parity.md](./17-keycloak-parity.md) | Feature-by-feature Keycloak audit |
+| 17 | [feature-parity.md](./17-feature-parity.md) | Feature scope audit vs. established IAMs |
 | ∞ | [glossary.md](./glossary.md) | Terms used across docs |
 
 ## Status

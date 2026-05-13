@@ -9,8 +9,10 @@ Without a User Profile, attributes are a free-form `BTreeMap<String,
 AttributeValue>` — anybody can write anything. The User Profile
 turns that map into a typed, enforced contract.
 
-This is direct parity with Keycloak's User Profile feature
-(introduced in Keycloak 15, declarative format from 24+).
+This is direct parity with the declarative User Profile feature
+found in established enterprise IAMs — turned into a Rust + WASM
+contract so custom validators are sandboxed, hot-swappable, and
+language-agnostic.
 
 ## Why a schema
 

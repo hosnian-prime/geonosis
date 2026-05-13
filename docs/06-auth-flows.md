@@ -11,11 +11,12 @@ target is: **trivial cases are trivial, complex cases are possible**.
 
 ## Why a graph, not a list
 
-Keycloak's "ordered list with `REQUIRED / ALTERNATIVE / OPTIONAL /
-DISABLED`" model is loved for simple cases and resented for complex
-ones. Branching ("if user logged in via Google in the last 24h, skip
-MFA"), parallel choices ("MFA: pick TOTP or WebAuthn"), and post-step
-side effects all bend the list model.
+The classic IAM model — an ordered list of steps tagged
+`REQUIRED / ALTERNATIVE / OPTIONAL / DISABLED` — is loved for simple
+cases and resented for complex ones. Branching ("if user logged in
+via Google in the last 24h, skip MFA"), parallel choices ("MFA: pick
+TOTP or WebAuthn"), and post-step side effects all bend the list
+model out of shape.
 
 We pay the modest extra complexity of a graph because:
 

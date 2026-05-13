@@ -91,24 +91,32 @@ Exit criteria:
 
 ## Phase 4 — SPI v1 (≈ 6 weeks)
 
-**Goal:** operators can ship custom WASM authenticators, mappers, and
-event listeners.
+**Goal:** operators can ship custom WASM authenticators, mappers,
+event listeners, **and user-storage providers — including full
+replacement of the built-in local user store**.
 
 Exit criteria:
 
 - [ ] Wasmtime host (`geonosis-spi-host`) with epoch interruption,
       fuel, memory caps.
 - [ ] WIT worlds: `geonosis:authn`, `geonosis:mapper`,
-      `geonosis:event`, `geonosis:policy`, with `geonosis:host`
-      interface.
+      `geonosis:event`, `geonosis:policy`,
+      `geonosis:user-storage`, `geonosis:broker-adapter`,
+      `geonosis:user-profile-validator`, all importing
+      `geonosis:host`.
+- [ ] **Provider registry** with built-ins-as-plugins:
+      `LocalUserStorage`, LDAP source provider, all built-in
+      authenticators / mappers / brokers seeded as bindings.
+- [ ] `replaces` field on `SpiBinding` enforced at registry load.
 - [ ] `geonosis-spi-api` crate (Rust authoring SDK).
 - [ ] Module upload via admin API + persistence (Postgres `bytea`
       first; S3 backend behind a feature flag).
 - [ ] Compiled-module cache (`*.cwasm`) under
       `/var/cache/geonosis/spi/`.
 - [ ] Quarantine + retry policies for misbehaving plugins.
-- [ ] Reference plugin: a simple "captcha" authenticator and a
-      "claim-prefix" mapper.
+- [ ] Reference plugin: a "REST-backed user-storage" example
+      that replaces the local store, plus a "captcha" authenticator
+      and a "claim-prefix" mapper.
 
 ## Phase 5 — Flow editor v1 (≈ 6 weeks)
 
@@ -188,7 +196,7 @@ infrastructure refactoring that needs its own quarter.
 - **CIBA**.
 - **GUI plugin authoring**.
 - **Visual builder for login pages** (themes remain file/code-based).
-- **Migration importers** (Keycloak realm export → Geonosis).
+- **Migration importers** from incumbent IAM realm exports.
 
 ## Risks and mitigations
 

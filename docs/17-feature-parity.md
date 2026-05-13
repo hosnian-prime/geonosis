@@ -1,12 +1,15 @@
-# 17 — Keycloak Feature Parity Audit
+# 17 — Feature Scope Audit
 
-A living map of Keycloak's admin-visible features to Geonosis's
-counterpart. Each row tells you **where in our docs/code** the
-feature lives, **what we have**, and **what's deferred**. When a
-feature is in Keycloak but missing here, the row makes it explicit.
+A living map of the **target feature surface** for an enterprise
+IAM and Geonosis's coverage of each item. Each row tells you
+**where in our docs/code** the feature lives, **what we have**,
+and **what's deferred**. When a feature is commonly expected and
+we do not provide it, the row makes that explicit.
 
-Reference is Keycloak 26.0 admin console structure. Items that
-appear only in Keycloak 27+ pre-releases are noted.
+The audit is organized to match the navigation an experienced IAM
+operator expects: realm settings, clients, roles, groups, users,
+identity providers, federation, flows, organizations, sessions,
+events, SPI surface, admin API, account console.
 
 ## Legend
 
@@ -222,7 +225,7 @@ appear only in Keycloak 27+ pre-releases are noted.
 | Sessions list | ✅ | `Session` rows |
 | Consents list | ✅ | persisted consent records |
 | Impersonation (admin signs in as user) | 🟡 | v0.2; explicit audit + restricted role |
-| Sub-user / parent-user | 🚫 | not in Keycloak either |
+| Sub-user / parent-user hierarchy | 🚫 | not a standard IAM concept |
 
 ## Identity providers (broker)
 
@@ -267,7 +270,7 @@ appear only in Keycloak 27+ pre-releases are noted.
 | Visual editor | ✅ | [`06-auth-flows.md`](./06-auth-flows.md) + [`08-admin-ui.md`](./08-admin-ui.md) |
 | Conditional execution (guard) | ✅ | tiny pure-evaluation language on edges |
 
-## Organizations (Keycloak 25+)
+## Organizations (B2B SaaS sub-realm grouping)
 
 | Feature | Status | Where |
 |---|---|---|
@@ -303,16 +306,17 @@ appear only in Keycloak 27+ pre-releases are noted.
 
 ## Extensibility (SPI)
 
-| Keycloak SPI | Geonosis WIT | v0.1 |
+| Reference SPI category | Geonosis WIT | v0.1 |
 |---|---|---|
-| `UserStorageProvider` | `geonosis:federation@0.1.0` | ✅ |
-| `Authenticator` | `geonosis:authn@0.1.0` | ✅ |
-| `EventListenerSPI` | `geonosis:event@0.1.0` | ✅ |
-| `OIDCProtocolMapper`, `SAMLProtocolMapper` | `geonosis:mapper@0.1.0` | ✅ |
-| `PolicyProviderFactory` | `geonosis:policy@0.1.0` | ✅ |
-| `IdentityProviderFactory` (Apple/GitHub special-cases) | `geonosis:broker-adapter@0.1.0` | ✅ |
-| `KeyProvider` (BYOK) | trait `KeyManagementService` | ✅ (Software in v0.1; Vault v0.2) |
-| `UserProfileValidator` | `geonosis:user-profile-validator@0.1.0` | ✅ |
+| User-storage / federation provider | `geonosis:user-storage@0.1.0` | ✅ |
+| Authenticator | `geonosis:authn@0.1.0` | ✅ |
+| Event listener | `geonosis:event@0.1.0` | ✅ |
+| OIDC / SAML protocol mapper | `geonosis:mapper@0.1.0` | ✅ |
+| Policy provider | `geonosis:policy@0.1.0` | ✅ |
+| Identity-provider vendor adapter | `geonosis:broker-adapter@0.1.0` | ✅ |
+| Key provider (BYOK) | trait `KeyManagementService` | ✅ (Software in v0.1; Vault v0.2) |
+| User-profile attribute validator | `geonosis:user-profile-validator@0.1.0` | ✅ |
+| Override mode (replace / decorate / chain built-ins) | provider registry — see [`07-spi-wasm.md`](./07-spi-wasm.md) | ✅ |
 | Authoring language | Rust v0.1, Go + JS v0.2, Python deferred |
 
 ## Admin REST API
@@ -323,7 +327,7 @@ appear only in Keycloak 27+ pre-releases are noted.
 | Users / Clients / Roles / Groups / Sessions / Events | ✅ | same |
 | Organizations | ✅ | [`15-organizations.md`](./15-organizations.md) |
 | Bulk import / export | 🟡 | v0.2 (`geoctl realm export/import`) |
-| Keycloak-compatible import | 🟡 | wishlist v0.2 / not committed |
+| Incumbent-IAM import (realm export → Geonosis) | 🟡 | wishlist v0.2 / not committed |
 
 ## Account console (end-user portal)
 
@@ -338,40 +342,40 @@ appear only in Keycloak 27+ pre-releases are noted.
 | Org memberships management | 🟡 | v0.2 |
 | GDPR data export / delete | 🤔 | v0.3 candidate |
 
-## Other Keycloak-isms
+## Tooling & operational features
 
 | Feature | Status | Notes |
 |---|---|---|
 | Realm export / import | 🟡 | v0.2 via `geoctl` |
 | Authentication Flow import / export | ✅ | v0.1 via `geoctl` (YAML) |
-| Theme on disk (FreeMarker → ours) | ✅ | files under `/themes/...`, watcher; not FreeMarker syntax |
-| Templates: register, login, otp, idp, email | ✅ | naming follows Keycloak conventions where reasonable |
-| `kc.sh` CLI | ✅ | replaced by `geoctl` |
-| `kc-export` Keycloak realm import | 🟡 / 🤔 | nice-to-have, not committed |
+| Theme on disk | ✅ | files under `/themes/...`, watcher; templating engine is ours, not FreeMarker |
+| Templates: register, login, otp, idp, email | ✅ | naming follows common IAM conventions |
+| Operator CLI | ✅ | `geoctl` |
+| Realm import from incumbent IAMs | 🤔 | nice-to-have, not committed |
 | Master realm bootstrap | ✅ | inherent |
 | Mobile-friendly login | ✅ | responsive themes by default |
 | Database upgrade tool | ✅ | `geoctl migrate`, expand-contract |
-| HA caches (Infinispan) | ✅ → 🔵 | Redis in v0.1; Komino replacing Redis in v1.x ([`09-cache-invalidation.md`](./09-cache-invalidation.md)) |
+| HA cache layer | ✅ → 🔵 | Redis in v0.1; Komino replacing Redis in v1.x ([`09-cache-invalidation.md`](./09-cache-invalidation.md)) |
 | Multi-site (cross-DC replication) | 🚫 | non-goal v0.1 |
 | Backchannel push notification | 🟡 | v0.2 via OIDC back-channel logout + event sinks |
 
 ## Where we deliberately differ
 
-| Geonosis | vs. Keycloak | Why |
+| Geonosis | vs. incumbent IAMs | Why |
 |---|---|---|
-| Rust single binary | Java + WildFly | Smaller image, faster boot, predictable memory |
-| WIT/WASM SPI | Java Service Loader | Sandboxing + language-agnostic + hot reload |
-| Leptos SSR admin UI | Patternfly + React | Tighter binary, slot-based override |
+| Rust single binary | Java app servers | Smaller image, faster boot, predictable memory |
+| WIT/WASM SPI | Java Service Loader-style SPI | Sandboxing + language-agnostic + hot reload |
+| Leptos SSR admin UI | React/Patternfly SPA | Tighter binary, slot-based override, one toolchain |
 | Postgres-only storage | many DBs supported | Simplicity; one well-tested target |
 | Graph-DSL flows | flat list with `REQUIRED/ALTERNATIVE` | Branching + parallel options without semantic gymnastics |
-| Theme = filesystem + WASM | FreeMarker templates only | Hot reload + Rust-friendly without losing simple overrides |
-| `LISTEN`/`NOTIFY` invalidation as alternative | Infinispan replication | Lighter footprint when no shared cache needed |
-| Komino (planned) | Infinispan | Embedded, gossip-clustered, no JVM |
+| Theme = filesystem + WASM | template engine only | Hot reload + Rust-friendly without losing simple overrides |
+| `LISTEN`/`NOTIFY` invalidation as alternative | Java-cluster replication | Lighter footprint when no shared cache needed |
+| Komino (planned) | embedded JVM caches | Native Rust, gossip-clustered, no JVM |
 
 ## How to find your way
 
-If you came here looking for a specific Keycloak setting and don't
-see it in the table, check:
+If you came here looking for a specific feature from another IAM
+and don't see it in the table, check:
 
 1. The **glossary** ([`glossary.md`](./glossary.md)) — some
    features live under slightly different names.

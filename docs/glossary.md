@@ -286,7 +286,16 @@ from token lifetime.
 can replace.
 
 **SPI** — Service Provider Interface. Our extension mechanism, backed
-by WASM components.
+by WASM components. Built-in implementations and operator-supplied
+WASM implementations live in the same per-realm registry under
+**provider URNs**; the operator can disable any built-in, replace
+it via `replaces`, or chain extras around it. See the registry
+section of [`07-spi-wasm.md`](./07-spi-wasm.md).
+
+**Provider URN** — Stable identifier for any provider, built-in or
+WASM. `builtin:{interface-short}:{name}` for built-ins;
+`wasm:{module-alias}:{export}` for WASM modules. The `builtin:`
+namespace is reserved.
 
 **Step-up flow** — A flow kind triggered by an `/authorize` request
 asking for a stronger `acr` than the current session holds. The
