@@ -20,9 +20,12 @@ A full-featured Identity & Access Management server written in Rust.
 
 Start here: [`docs/README.md`](./docs/README.md).
 
-The architecture is broken into 15 focused docs covering the vision,
+The architecture is broken into focused docs covering the vision,
 component map, data model, protocol surface, SPI contracts, admin
-UI, cluster invariants, security, deployment, and a phased roadmap.
+UI, cluster invariants, security, deployment, organizations, user
+profile schema, agent identity, SCIM, SAML IdP role, developer
+experience, the planned managed offering, feature scope, and a
+phased roadmap.
 
 ## License
 

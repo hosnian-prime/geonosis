@@ -30,15 +30,20 @@ exist.
 | 14 | [roadmap.md](./14-roadmap.md) | Phased delivery plan |
 | 15 | [organizations.md](./15-organizations.md) | Sub-realm Organizations (B2B SaaS tenants) |
 | 16 | [user-profile.md](./16-user-profile.md) | Declarative attribute schema |
-| 17 | [feature-parity.md](./17-feature-parity.md) | Feature scope audit vs. established IAMs |
+| 17 | [feature-parity.md](./17-feature-parity.md) | Feature scope audit |
+| 18 | [agent-identity.md](./18-agent-identity.md) | AI / M2M agent identity (v0.1 differentiator) |
+| 19 | [scim.md](./19-scim.md) | SCIM 2.0 provisioning, inbound + outbound (v0.2) |
+| 20 | [saml-idp.md](./20-saml-idp.md) | SAML 2.0 IdP role — issuing assertions (v0.1) |
+| 21 | [dx-package.md](./21-dx-package.md) | Developer experience: quickstart, examples, SDKs |
+| 22 | [cloud-offering.md](./22-cloud-offering.md) | Managed Geonosis Cloud strategy |
 | ∞ | [glossary.md](./glossary.md) | Terms used across docs |
 
 ## Status
 
-These documents capture the **initial architecture** agreed on at project
-inception. Sections marked **OPEN** require further decision before
-implementation can proceed. Sections marked **DEFERRED** are out of scope
-for v0.1 but anticipated.
+These documents capture the **initial architecture** agreed on at
+project inception. Sections marked **DEFERRED** are out of scope for
+v0.1 but committed for v0.2 or v0.3. Sections marked **non-goal** are
+explicitly out of scope for at least v0.x.
 
 ## Conventions
 

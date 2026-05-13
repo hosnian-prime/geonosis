@@ -246,7 +246,7 @@ theme parameters; no separate template files.
 - **Per-org IdPs**: bound from existing realm IdPs; no per-org
   IdP isolation. Per-org IdP isolation is on the v0.2 wishlist.
 - **Org-level flows**: v0.1 only allows overriding
-  `first_broker_login_flow` per org-IdP binding. Full per-org flow
+  `first_login_flow` per org-IdP binding. Full per-org flow
   binding is v0.2.
 - **Suspension semantics**: hard block at flow Start with
   `org_suspended` error. Soft mode ("warn but allow") not planned.

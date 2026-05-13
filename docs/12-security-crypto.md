@@ -168,9 +168,9 @@ locally so verification is always fast, signing-only takes the hit.
 - **No passphrase derivation in the server.** A passphrase-based
   master key invites operators to use weak passphrases. The repo
   ships a documented *recipe* (HKDF-SHA-256 with mandatory salt and
-  length) in `docs/runbooks/master-key-derivation.md` for operators
-  who need that workflow — they derive the 32-byte key out-of-band
-  and provide it as the env var like any other secret.
+  length) as comments in the `geoctl secrets generate-master-key`
+  subcommand — operators derive the 32-byte key out-of-band and
+  provide it as the env var like any other secret.
 - **Rotation**: a `geoctl secrets rewrap --new-key <path>` command
   reads every wrapped secret in the DB, decrypts with the old master,
   re-encrypts with the new, swaps in a transaction. Runtime supports

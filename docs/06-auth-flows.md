@@ -230,7 +230,7 @@ Saving a flow:
 2. **Validate** (acyclic, connected, terminating, all node providers
    resolved, all template aliases existent in the bound theme).
 3. **Insert** `auth_flow` row with new `version`.
-4. `pg_notify('geonosis.invalidate', '{"kind":"flow","id":"<id>"}')`.
+4. `pg_notify('geonosis_invalidate', '{"kind":"flow","id":"<id>"}')`.
 5. Each pod: invalidate cache entry. New executions compile fresh.
 
 Compilation produces a `CompiledFlow` (graph indexed by `NodeId`,

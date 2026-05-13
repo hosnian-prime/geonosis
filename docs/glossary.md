@@ -9,6 +9,16 @@ governs.
 **ACR (`acr`)** — Authentication Context Class Reference. A string in
 the id-token that summarizes how strong the authentication was.
 
+**Agent** — A non-human identity acting on behalf of a parent
+subject (user, service account, or organization). First-class entity
+in v0.1. Authenticated via Token Exchange (RFC 8693); carries an
+immutable parent reference, capability URN list, and rate-limit
+bucket. See [`18-agent-identity.md`](./18-agent-identity.md).
+
+**Agent capability** — A structured permission on an `Agent` finer
+than an OAuth scope: `tool:read-files`, `data:tier`, `model:family`,
+`spend:daily`, etc. Emitted in tokens under `geo:agent.capabilities`.
+
 **Action (audit)** — A categorical name for an audit event, e.g.
 `login.success`, `token.refreshed`. Taxonomy in
 [`13-observability.md`](./13-observability.md).
@@ -273,8 +283,14 @@ client-scoped.
 
 ## S
 
-**SAML** — Security Assertion Markup Language. v0.1 supports
-consuming SAML IdPs (broker SP role).
+**SAML** — Security Assertion Markup Language. v0.1 supports BOTH
+consuming SAML IdPs (broker SP role) AND issuing SAML assertions
+(IdP role; see [`20-saml-idp.md`](./20-saml-idp.md)).
+
+**SCIM** — System for Cross-domain Identity Management (RFC 7642–7644).
+Standard protocol for user/group provisioning. v0.2 ships inbound
+(Geonosis as SCIM service provider) + outbound (Geonosis as SCIM
+client). See [`19-scim.md`](./19-scim.md).
 
 **Service account** — A pseudo-user attached to a confidential
 client; appears as `sub` for client-credentials tokens.
@@ -317,6 +333,15 @@ overrides, and metadata.
 
 **Token family** — Linked set of refresh tokens sharing a
 `family_id`. Used to detect rotation reuse.
+
+**Token Exchange** — RFC 8693 OAuth 2.0 token exchange grant.
+Implements the `act` (actor) chain that lets a token represent
+"this user, acting via this agent (or other delegate)". Central to
+the agent identity model.
+
+**`act` claim** — Per RFC 8693 §4.1, a JWT claim identifying the
+acting party in a token-exchange chain. Geonosis emits `act` for
+agent-issued tokens; can be nested when an agent re-delegates.
 
 **Tombstone (AD)** — An LDAP entry in the deleted-objects container
 representing a logically-deleted user. Geonosis treats tombstones

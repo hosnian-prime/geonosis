@@ -94,7 +94,7 @@ Span attributes:
 - `realm.slug`
 - `client.id`
 - `flow.alias`, `flow.version`, `flow.node_id`
-- `spi.provider_alias`, `spi.module_sha256` (on SPI spans)
+- `spi.provider_urn`, `spi.module_sha256` (on SPI spans)
 - `db.statement` (parameter-stripped)
 - `error.code` and `error.kind` on errors
 
@@ -148,8 +148,10 @@ pub enum Target {
 `broker.link_created`, `key.rotated`, `key.disabled`,
 `admin.role_assigned`, `admin.role_revoked`.
 
-The full list is published in `docs/audit-actions.md` (to be added).
-Each action is documented with required `detail` fields.
+The complete enumeration of `action` strings lives in
+`crates/geonosis-core/src/audit_action.rs` as a typed enum;
+the user-facing list is generated from it via `geoctl docs gen-audit`.
+Each action is documented inline with the required `detail` fields.
 
 ### Sinks
 

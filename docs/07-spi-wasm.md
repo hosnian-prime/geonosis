@@ -312,8 +312,8 @@ async fn build_user_storage_registry(realm: &Realm) -> ProviderRegistry<dyn User
         if replaced.contains(binding.provider_urn.as_str()) { continue; }
 
         let provider: Arc<dyn UserStorageProvider> = match binding.origin() {
-            Origin::Builtin => builtin_factory(&binding.provider_urn, &binding.config)?,
-            Origin::Wasm    => wasm_factory(&binding.provider_urn, &binding.config).await?,
+            ProviderOrigin::Builtin => builtin_factory(&binding.provider_urn, &binding.config)?,
+            ProviderOrigin::Wasm    => wasm_factory(&binding.provider_urn, &binding.config).await?,
         };
 
         providers.push(RegisteredProvider {
@@ -472,7 +472,7 @@ interface authenticator {
 }
 
 world authn-provider {
-  import host: geonosis:host/v0.1.0;
+  import host: geonosis:host@0.1.0;
   export authenticator;
 }
 ```
@@ -543,7 +543,7 @@ variant lookup-outcome {
 }
 
 world user-storage-provider-world {
-  import host: geonosis:host/v0.1.0;
+  import host: geonosis:host@0.1.0;
   export user-storage-provider;
 }
 ```
@@ -613,7 +613,7 @@ interface broker-adapter {
 }
 
 world broker-adapter-provider {
-  import host: geonosis:host/v0.1.0;   // logging, http-client, secrets
+  import host: geonosis:host@0.1.0;   // logging, http-client, secrets
   export broker-adapter;
 }
 ```
@@ -759,7 +759,7 @@ Recommended operator practice (documented in
 
 For every plugin call we emit a tracing span with:
 
-- `spi.interface`, `spi.provider_alias`, `spi.module_sha256`
+- `spi.interface`, `spi.provider_urn`, `spi.module_sha256`
 - `spi.fuel_consumed`, `spi.memory_peak_bytes`
 - `spi.outcome` (`success` / `error_kind`)
 
