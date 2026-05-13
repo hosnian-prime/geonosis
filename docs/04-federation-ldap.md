@@ -152,6 +152,36 @@ non-LDAP source (SCIM, REST API, internal HR system). The contract is
 in [`07-spi-wasm.md`](./07-spi-wasm.md). The runtime treats it
 identically to LDAP from the resolver's perspective.
 
+## AD-specific behaviors
+
+### Disabled-bit detection
+
+`userAccountControl` bit `0x0002` (ACCOUNTDISABLE) on an AD user
+toggles the local `enabled` flag at every sync (and at every login
+attempt, as a side effect of the lookup).
+
+### Tombstones (recycle-bin deletions)
+
+Geonosis treats AD tombstones as **disable signals, not delete
+signals**. On an incremental sync run:
+
+1. Query the deleted-objects container (`CN=Deleted Objects,...`)
+   with the `LDAP_SERVER_SHOW_DELETED_OID` control, scoped to objects
+   modified since `last_sync_at`.
+2. For each tombstoned entry whose `objectGUID` matches a mirrored
+   local user, set local `enabled=false` and clear personal
+   attributes (`name`, `email`) while preserving `id`, `username_lc`,
+   and audit history.
+3. Emit `federation.removed` audit event with both `external_id` and
+   `external_dn`.
+4. **Never** hard-delete the local row from a tombstone signal.
+   AD's recycle-bin can resurrect; we mirror that capability by
+   simply flipping `enabled` back on restore.
+
+Hard-delete of a federated user requires an explicit operator action
+(`geoctl federation purge --source corp-ad --user <id>`) with a
+14-day cooling period.
+
 ## Non-goals
 
 - **Pushing local users back to LDAP** (Geonosis as the master) —
@@ -162,10 +192,11 @@ identically to LDAP from the resolver's perspective.
 - **eDirectory and Tivoli DS quirks** — supported via attribute
   mapping but not specifically tested.
 
-## Open
+## Decisions and open items
 
-- **AD recycle-bin tombstone handling** during incremental sync —
-  needs spec.
-- **Page cookie vs simple paged results** — pick simple paged for
-  v0.1; VLV deferred.
-- **Kerberos pass-through** binding — design exists, ship v0.2.
+- **AD recycle-bin tombstone handling** — disable + audit, no
+  hard-delete (spec above).
+- **Page cookie vs simple paged results** — simple paged for v0.1;
+  VLV deferred.
+- **Kerberos pass-through** binding — v0.2 as a WASM SPI plugin
+  (`geonosis-spi-kerberos`).

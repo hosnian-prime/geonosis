@@ -174,6 +174,62 @@ interface event-listener {
 This is **fire-and-forget**. Errors are logged but do not affect the
 triggering operation.
 
+### `geonosis:broker-adapter@0.1.0`
+
+Per-IdP behavior for non-generic providers (Google quirks, GitHub's
+non-OIDC flow, Apple's `form_post` + private-relay email, etc.).
+Used by the first-party plugins listed in
+[`05-identity-broker.md`](./05-identity-broker.md).
+
+```wit
+package geonosis:broker-adapter@0.1.0;
+
+interface broker-adapter {
+  use types.{idp-config, authn-request, raw-callback,
+             broker-assertion, claim-set, error};
+
+  describe: func() -> provider-info;
+
+  /// Build the URL to redirect the user-agent to, given a fresh
+  /// state/nonce and the realm's bound IdP config.
+  build-authn-url: func(
+      req: authn-request,
+      config: idp-config,
+  ) -> result<string, error>;
+
+  /// Parse the inbound callback (query string for redirect,
+  /// form body for form_post) into a normalized raw assertion.
+  parse-callback: func(
+      raw: raw-callback,
+      config: idp-config,
+  ) -> result<broker-assertion, error>;
+
+  /// Validate signatures, audience, nonce, freshness. Plugin
+  /// reports its findings; core enforces top-level invariants too.
+  validate-assertion: func(
+      assertion: broker-assertion,
+      config: idp-config,
+  ) -> result<broker-assertion, error>;
+
+  /// Optional enrichment step: pull `/user`-style endpoints,
+  /// merge with assertion, produce a final claim set the rest of
+  /// the broker pipeline consumes.
+  enrich-claims: func(
+      assertion: broker-assertion,
+      config: idp-config,
+  ) -> result<claim-set, error>;
+}
+
+world broker-adapter-provider {
+  import host: geonosis:host/v0.1.0;   // logging, http-client, secrets
+  export broker-adapter;
+}
+```
+
+Resource limits for adapter calls are higher than for inline-flow
+SPIs (network round-trip expected): default 5 s timeout, 100 MiB
+peak memory, fuel cap 500 million.
+
 ### `geonosis:policy@0.1.0`
 
 Decision points the server consults (e.g. "is this client allowed
@@ -325,16 +381,25 @@ Metrics: `geonosis_spi_call_duration_seconds`,
   WASM-pluggable from the browser. Customization on the server
   produces customized rendered output.
 - **Multi-language SDKs in v0.1.** Only `geonosis-spi-api` (Rust)
-  ships. Other languages can still build to the WIT contract by
-  hand; we add Go/JS SDKs in v0.2.
+  ships in v0.1. Go (`geonosis-spi-go`, TinyGo) and JavaScript
+  (`geonosis-spi-js`, ComponentizeJS) SDKs follow in v0.2.
 - **Distributed plugin coordination** — plugins are pure (or read
   state via host APIs). They don't have their own cluster state.
 
-## Open
+## Decisions and open items
 
-- **Default fuel budget per interface** — needs benchmarks.
-- **Module store** — Postgres `bytea` for v0.1 (simple). Switch to
-  object store with a Postgres metadata row if any plugins exceed
-  ~5 MiB regularly.
-- **`epoch_interruption_period`** — start with 1 ms ticks; tune.
-- **Authoring SDK** for Go/JS — design now, ship v0.2.
+- **Authoring SDKs**: Rust v0.1; Go (TinyGo) + JS/TS
+  (ComponentizeJS) v0.2; Python deferred. WIT contracts are the
+  same across languages — SDKs are convenience layers.
+- **Module store**: Postgres `bytea` for v0.1 (simple, ACID,
+  cluster-trivial). An S3-backed store with Postgres metadata rows
+  ships behind a feature flag in the same release; operators with
+  many large plugins enable it.
+- **Default fuel budgets** (placeholders; calibrated during Phase 1
+  bench work):
+  - `authn`, `mapper`, `policy`: 50 M fuel, 200 ms wall, 32 MiB
+  - `event`: 10 M fuel, 100 ms wall, 16 MiB
+  - `broker-adapter`: 500 M fuel, 5 s wall, 100 MiB (network)
+  - `federation` (custom user-storage): 200 M fuel, 2 s wall, 64 MiB
+- **`epoch_interruption_period`**: 1 ms ticks. Re-evaluate during
+  benchmarks.

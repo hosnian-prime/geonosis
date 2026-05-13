@@ -208,15 +208,58 @@ typed.
 | Component-override module updated | admin API upload | WASM SPI hot-swap (per [`07-spi-wasm.md`](./07-spi-wasm.md)) |
 | Theme binding changed (realm setting) | admin API | DB write → `NOTIFY` → cache invalidate |
 
-## Accessibility & security baselines
+## Accessibility, internationalization, and security baselines
 
 - All forms have explicit labels, `aria-describedby`, focus rings.
 - Targets WCAG 2.1 AA.
+- **Right-to-left support is day-one.** Every component uses CSS
+  logical properties (`margin-inline-start`, `padding-block-end`,
+  `border-inline`, `text-align: start/end`) instead of physical
+  axes. `dir="auto"` on text containers; `<html dir>` is set from
+  the negotiated locale. A CI lint forbids physical-axis CSS in the
+  design-system crate.
 - CSP enforced: `default-src 'self'`, `style-src 'self' 'nonce-...'`,
   `script-src 'self' 'nonce-...'`. Themes can extend via theme.toml
   declarations (audited at install).
 - HTML escaped by default at template boundary. `unsafe_inner_html`
   is used only with linted call sites.
+
+## Theme sandbox threat model
+
+A theme is **operator-supplied code**, but it can come from third
+parties (community themes) or be edited by a less-trusted realm
+admin. We assume themes may be **buggy or hostile**.
+
+What a theme MUST NOT be able to do:
+
+| Concern | Defense |
+|---|---|
+| Read other realms' data | Theme renders inside a per-realm rendering context; template variables are scoped to the current realm + the page's flow context. Templates have **no I/O primitives** — no `read()`, no `http`, no `db`. |
+| Exfiltrate via outbound request | CSP `default-src 'self'`; theme CSS/JS served from same origin; remote assets blocked. `theme.toml` `csp_extra` allowlist is enforced server-side and reviewed at install. |
+| XSS via attacker-controlled values | All template substitutions HTML-escaped by default; `unsafe_inner_html` calls are linted; user-supplied attributes are passed as text. |
+| Steal session/CSRF cookies via XHR | `HttpOnly` cookies; CSRF requires double-submit, not just XHR. |
+| Persist code that escapes the page | Themes have no server-side execution. WASM component-override themes run in the same sandbox as regular SPI (fuel + memory + no implicit imports). |
+| Override built-in admin pages with phishing UI | Themes apply to **login** surface only; the admin surface uses a non-themable internal layout for its outer chrome (login UI may still be customized within the admin surface for impersonation flows, but framed in non-overridable chrome). |
+
+A formal threat-model review is part of the v0.1 release checklist;
+the table above is the working baseline.
+
+## End-to-end testing
+
+The Leptos admin UI is exercised with **Playwright** in CI. Rationale:
+
+- Battle-tested for SVG/canvas interactions (the flow editor is a
+  hand-rolled graph canvas).
+- Vendor-neutral; runs in headless Chromium / Firefox / WebKit.
+- Mature visual-regression snapshotting.
+
+The Playwright suite lives under `e2e/`. Test fixtures provision a
+clean Postgres + a `geoctl realm import` of a deterministic seed
+realm. A complementary `cargo nextest` smoke harness covers
+backend-only paths so we don't need Playwright for fast tests.
+
+Trade-off accepted: a Node toolchain is added to CI. We isolate it in
+its own Dockerfile and pin versions in `e2e/package-lock.json`.
 
 ## Non-goals
 
@@ -228,12 +271,10 @@ typed.
 - **Drag-drop UI builder** for login pages — themes are file/code,
   not visual. Visual builder for flows only.
 
-## Open
+## Decisions and open items
 
-- **`<FlowEditor/>` testing** — Playwright vs Leptos's own e2e
-  helpers; pick by mid-implementation.
-- **RTL languages** in the design system — ensure CSS logical
-  properties everywhere from day one.
-- **Theme sandboxing** — a malicious template SHOULD NOT exfiltrate
-  data; templating engine guarantees this, but we need to write down
-  the threat model explicitly.
+- **End-to-end testing**: Playwright + a Rust-side smoke harness.
+- **RTL**: day-one with CSS logical properties; CI lint forbids
+  physical-axis CSS in the design system.
+- **Theme sandbox threat model**: documented above; formal review
+  required before v0.1 GA.

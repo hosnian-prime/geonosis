@@ -205,11 +205,17 @@ Concurrent callers wait on the same in-flight future.
   to another pod). Each request is pinned to one pod via ingress.
 - **Sticky sessions.** Not needed; flow state is in Postgres.
 
-## Open
+## Decisions and open items
 
-- **Cache size budgets**: total ~256 MiB default per pod, split per
-  class — needs benchmarks.
-- **Optional Redis cache backend** for installs that need it (very
-  high RPS, or want lower variance on user cache) — design but defer.
-- **`LISTEN` retry policy** beyond exponential backoff — circuit-
-  breaker if Postgres is flapping.
+- **Cache size budget**: 256 MiB total per pod by default, allocated
+  via class weights (realm: 4, client: 8, flow: 4, jwks: 2,
+  theme: 8, spi: 2, idp: 2, federation: 2, user: 16). Numbers are
+  starting points and will be tuned in the Phase 1 bench harness.
+- **Optional Redis cache backend**: trait already accommodates it;
+  no implementation in v0.1. We'll ship it when an operator's load
+  profile warrants the dependency.
+- **LISTEN retry policy**: exponential backoff capped at 30 s.
+  After 10 consecutive failures, the pod self-restarts (Kubernetes
+  liveness probe — set by an internal "unhealthy listener" gauge).
+  Splitting the listener into its own DB-aware sidecar process is
+  evaluated for v0.2 if pod restarts become a measurable nuisance.

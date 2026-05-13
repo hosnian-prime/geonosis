@@ -19,8 +19,8 @@ invariants, and where each piece lives in the codebase.
 | OAuth 2.0 PKCE | RFC 7636 | required for public clients, recommended for confidential |
 | Pushed Authorization Requests | RFC 9126 | `/oauth2/par` |
 | JAR / JARM | RFC 9101 / OAuth2.0 JARM | both supported v0.1 |
-| Mutual TLS Client Auth | RFC 8705 | v0.2 |
-| DPoP | RFC 9449 | v0.2 |
+| Mutual TLS Client Auth | RFC 8705 | v0.2 — per-realm sender-constraint |
+| DPoP | RFC 9449 | v0.2 — per-realm sender-constraint |
 | Demonstrated PoP for ATs | draft | v0.2 |
 | Token Exchange | RFC 8693 | v0.2 |
 | CIBA | OpenID CIBA Core 1.0 | DEFERRED |
@@ -304,9 +304,16 @@ enum of validated requests; only validated values cross into the core.
 - **JARM signed response_mode=jwt** — v0.2.
 - **Self-issued OP** — out of scope.
 
-## Open
+## Decisions and open items
 
-- **Default scopes mapping** to claims — needs UX walkthrough.
-- **DPoP** vs **mTLS** as the preferred sender-constraint — picked
-  per-realm in v0.2; not exposed in v0.1.
-- **CIBA** if a customer requires it — would be a v0.3 candidate.
+- **Sender-constraint**: each realm chooses `dpop`, `mtls`, or `none`
+  in v0.2; both implementations land together. v0.1 emits bearer
+  tokens. The `acr_policy` (per realm) can require a specific
+  sender-constraint at a given ACR level — see
+  [`12-security-crypto.md`](./12-security-crypto.md).
+- **ACR claim**: per-realm policy table determines the `acr` value
+  for any given authentication outcome — see
+  [`12-security-crypto.md`](./12-security-crypto.md) §ACR Policy.
+- **Default scopes mapping** to claims — needs UX walkthrough during
+  Phase 2. The set is stable; only the UI editor surface is open.
+- **CIBA** if a customer requires it — v0.3 candidate.

@@ -246,6 +246,34 @@ the DSL" — operators can also edit YAML directly. Power-user features:
 - Per-version diff view.
 - Dry-run with a synthetic context to preview branch decisions.
 
+## Flow kinds
+
+A flow has a **kind** that determines when the executor picks it.
+Built-in kinds:
+
+| Kind | When picked |
+|---|---|
+| `browser` | Interactive `/authorize` requests |
+| `direct-grant` | `grant_type=password` |
+| `registration` | Self-service signup |
+| `reset-credentials` | Forgot-password page |
+| `first-broker-login` | First login via external IdP |
+| `client-authentication` | Alternative client auth (e.g. private_key_jwt + extra checks) |
+| `step-up` | `/authorize` with `acr_values` requesting a level not yet satisfied by the current session |
+
+A realm can host **multiple `step-up` flows**, distinguished by the
+`acr` they target. The executor consults the realm's `acr_policy`
+(see [`12-security-crypto.md`](./12-security-crypto.md)) to:
+
+1. Compute the **current ACR** of the session (from AMR + sender-
+   constraint).
+2. If the request's `acr_values` lists a stronger level not currently
+   held, look up the `step-up` flow whose binding targets that level.
+3. Run it; on success, augment session AMR and re-evaluate.
+
+A typical step-up flow is short: skip if cookie says "user already
+satisfied this level recently", else demand WebAuthn or OTP.
+
 ## Built-in flows (out of the box)
 
 Every realm comes with these flows pre-installed; operators can
@@ -256,8 +284,37 @@ clone-and-edit:
 - `registration` — self-service signup
 - `reset-credentials` — forgot password
 - `first-broker-login` — first login via external IdP
-- `client-authentication` — alternative auth for clients (e.g.
-  `private_key_jwt` + extra checks)
+- `client-authentication` — alternative auth for clients
+- `step-up-mfa` — example `step-up` flow targeting ACR level 2 (MFA)
+
+## Forced flows (admin override)
+
+Two complementary mechanisms let admins force a user through an
+out-of-band flow at the next login:
+
+- **`required_actions`** on `app_user`: an enumerated list
+  (`verify-email`, `update-password`, `configure-otp`, ...).
+  The `browser` flow's start node consults this list and detours to
+  the corresponding built-in subflow. Best for **simple, additive
+  steps** — fixing one credential, accepting a new ToS, etc.
+- **`required_flow`** column on `app_user` (nullable `FlowAlias`):
+  forces the entire login through a designated flow instead of the
+  client's normal `browser` flow. Best for **bespoke onboarding**
+  (e.g. risk-review, manager-approval, escalated identity
+  verification). Cleared by the flow itself on success.
+
+Both are evaluated at the `Start` node of the executor:
+
+```
+Start
+ ├─ if user.required_flow.is_some() → jump to that flow
+ ├─ else if user.required_actions non-empty → enter actions subflow
+ └─ else continue with client's bound browser flow
+```
+
+The two are independent and additive — an admin can both queue a
+`required_flow` (e.g., security review) and a `required_action`
+(e.g., update password) on the same user.
 
 ## Non-goals
 
@@ -266,13 +323,13 @@ clone-and-edit:
 - **Server-side scripting in guards** — guards are a fixed expression
   language; complex logic goes into a WASM authenticator.
 
-## Open
+## Decisions and open items
 
-- **Step-up authentication** as a flow vs. as a property of the
-  client request — leaning toward a `step-up` flow kind selectable
-  per `acr_values` request.
-- **Action-driven external triggers** (admin forces a user into a
-  flow on next login) — likely a column on `app_user`, evaluated by
-  the start node.
-- **Editor templating** — should flows be importable from a public
-  registry? Defer.
+- **Step-up authentication**: dedicated `step-up` flow kind picked
+  by the executor based on requested `acr_values` and the realm's
+  `acr_policy`.
+- **Admin-forced flows**: both `required_actions` (simple, additive)
+  and `required_flow` (full override). Specified above.
+- **Editor templating / public flow registry** — deferred; flows
+  are exported/imported as YAML via `geoctl`, but there's no
+  curated central marketplace.
