@@ -329,7 +329,7 @@ pub struct Client {
     pub client_id: String,              // OAuth client_id, unique per realm
     pub name: Option<String>,
     pub description: Option<String>,
-    pub kind: ClientKind,               // Confidential | Public | BearerOnly | ServiceAccount
+    pub kind: ClientKind,               // see enum below
 
     // — URIs & origins —
     pub root_url: Option<Url>,
@@ -386,13 +386,22 @@ pub struct Client {
     pub updated_at: DateTime<Utc>,
 }
 
+pub enum ClientKind {
+    Confidential,                        // server-side app with a secret
+    Public,                              // SPA / native, PKCE-only
+    BearerOnly,                          // resource server, never initiates auth
+    ServiceAccount,                      // client_credentials grant only
+    SamlServiceProvider,                 // see 20-saml-idp.md; uses SamlSpClientConfig
+    ScimClient,                          // inbound SCIM provisioning client (see 19-scim.md)
+}
+
 pub struct GrantPolicy {
     pub authorization_code: bool,        // "Standard flow"
     pub implicit: bool,                  // DEPRECATED; off by default
     pub direct_access_grants: bool,      // password grant
     pub client_credentials: bool,
     pub device_authorization: bool,      // RFC 8628
-    pub token_exchange: bool,            // RFC 8693, v0.2
+    pub token_exchange: bool,            // RFC 8693 — v0.1 for Agent identity path; full surface v0.2
     pub ciba: bool,                      // OIDC CIBA, DEFERRED
     pub service_accounts_enabled: bool,
 }
@@ -666,6 +675,179 @@ pub struct EventSink {
     pub enabled: bool,
 }
 
+// — Agent identity (see 18-agent-identity.md) —
+
+pub struct Agent {
+    pub id: AgentId,
+    pub realm_id: RealmId,
+    pub alias: String,                      // human-readable, unique per realm
+    pub display_name: String,
+    pub kind: AgentKind,                    // Assistant | Scraper | Webhook | Batch | Custom(_)
+    pub model_hint: Option<String>,
+    pub vendor: Option<String>,
+    pub version: Option<String>,
+    pub parent_subject: ParentSubject,      // immutable; set at creation
+    pub capabilities: Vec<AgentCapability>,
+    pub allowed_scopes: Vec<ScopeName>,
+    pub allowed_audiences: Vec<String>,
+    pub rate_limit: AgentRateLimit,
+    pub auth_method: AgentAuthMethod,
+    pub public_key: Option<PublicJwk>,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub revoked_at: Option<DateTime<Utc>>,
+    pub enabled: bool,
+}
+
+pub enum ParentSubject {
+    User(UserId),
+    ServiceAccount(ClientId),
+    Organization(OrganizationId),
+}
+
+pub enum AgentKind { Assistant, Scraper, Webhook, Batch, Custom(String) }
+
+pub struct AgentCapability {
+    pub urn: String,                        // "tool:read-files", "data:tier", ...
+    pub config: serde_json::Value,
+}
+
+pub struct AgentRateLimit {
+    pub requests_per_minute: u32,
+    pub tokens_per_day: Option<u64>,
+}
+
+pub enum AgentAuthMethod {
+    PrivateKeyJwt,
+    DpopBoundKey,
+    TokenExchangeOnly,
+}
+
+// — SAML SP-as-Client config (see 20-saml-idp.md) —
+
+pub struct SamlSpClientConfig {
+    pub entity_id: String,
+    pub acs_urls: Vec<Url>,
+    pub slo_url: Option<Url>,
+    pub binding: SamlBinding,
+    pub name_id_format: NameIdFormat,
+    pub want_authnrequest_signed: bool,
+    pub want_assertions_encrypted: bool,
+    pub signing_key: KeyId,
+    pub encryption_certificate: Option<X509Certificate>,
+    pub authn_request_signing_certificates: Vec<X509Certificate>,
+    pub attribute_mappers: Vec<MapperBinding>,
+    pub default_audience: Option<String>,
+    pub session_index_strategy: SessionIndexStrategy,
+}
+
+pub enum SessionIndexStrategy { UseSessionId, Random }
+
+/// Per-(user, SP) opaque NameID for the `persistent` format.
+pub struct SamlPersistentId {
+    pub id: SamlPersistentIdRow,
+    pub realm_id: RealmId,
+    pub user_id: UserId,
+    pub sp_entity_id: String,
+    pub name_id: String,                    // opaque ULID
+    pub created_at: DateTime<Utc>,
+}
+
+// — SCIM provisioning (see 19-scim.md) —
+
+pub struct ScimTarget {
+    pub id: ScimTargetId,
+    pub realm_id: RealmId,
+    pub organization_id: Option<OrganizationId>,
+    pub alias: String,
+    pub endpoint: Url,
+    pub auth: ScimTargetAuth,
+    pub schema_overrides: Vec<ScimMapping>,
+    pub events: ScimEventFilter,
+    pub sync_mode: ScimSyncMode,
+    pub retry_policy: ScimRetryPolicy,
+    pub state: ScimTargetState,             // Healthy | Degraded | CircuitOpen
+    pub enabled: bool,
+}
+
+pub enum ScimTargetAuth {
+    Bearer { token: Secret<String> },
+    OAuth2 { client_id: String, client_secret: Secret<String>, token_endpoint: Url, scope: Vec<String> },
+    PrivateKeyJwt { client_id: String, key_id: KeyId, audience: String },
+}
+
+pub struct ScimMapping {
+    pub geonosis_attribute: String,         // e.g. "department"
+    pub scim_path: String,                  // e.g. "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User:department"
+}
+
+pub struct ScimEventFilter {
+    pub events: Vec<String>,                // empty = all relevant
+}
+
+pub enum ScimSyncMode {
+    RealTime,
+    Scheduled { cron: String },
+}
+
+pub struct ScimRetryPolicy {
+    pub max_retries: u32,                   // default 5
+    pub initial_backoff: Duration,
+    pub max_backoff: Duration,
+    pub circuit_break_after_consecutive_failures: u32,
+}
+
+pub enum ScimTargetState { Healthy, Degraded, CircuitOpen }
+
+// — Broker runtime state (see 05-identity-broker.md) —
+
+pub struct BrokerLink {
+    pub id: BrokerLinkId,
+    pub realm_id: RealmId,
+    pub user_id: UserId,
+    pub idp_alias: String,
+    pub external_id: String,                // OIDC `sub` or SAML NameID
+    pub external_username: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub last_login_at: Option<DateTime<Utc>>,
+}
+
+/// Per-attempt brokered authn state. TTL 10 min, persisted in Postgres.
+pub struct BrokerAuthnState {
+    pub id: BrokerAuthnStateId,
+    pub realm_id: RealmId,
+    pub idp_alias: String,
+    pub state: String,                      // CSRF random
+    pub nonce: Option<String>,
+    pub return_to_flow_state: FlowStateId,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+}
+
+// — Flow runtime state (see 06-auth-flows.md) —
+
+pub struct FlowState {
+    pub id: FlowStateId,
+    pub realm_id: RealmId,
+    pub flow_id: FlowId,
+    pub flow_version: i32,
+    pub current_node: NodeId,
+    pub history: Vec<FlowHistoryEntry>,
+    pub context: FlowContext,
+    pub started_at: DateTime<Utc>,
+    pub last_activity_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub csrf_token: CsrfToken,
+}
+
+pub struct FlowHistoryEntry {
+    pub node_id: NodeId,
+    pub outcome: FlowNodeOutcome,
+    pub at: DateTime<Utc>,
+}
+
+pub enum FlowNodeOutcome { Success, Skipped, Failed(String), Redirected }
+
 pub struct WasmModule {
     pub id: WasmModuleId,
     pub realm_id: RealmId,
@@ -834,6 +1016,11 @@ pub struct EventSinkId(pub Ulid);
 pub struct EventId(pub Ulid);
 pub struct TokenFamilyId(pub Ulid);
 pub struct AgentId(pub Ulid);              // see 18-agent-identity.md
+pub struct ScimTargetId(pub Ulid);         // see 19-scim.md
+pub struct BrokerLinkId(pub Ulid);         // see 05-identity-broker.md
+pub struct BrokerAuthnStateId(pub Ulid);
+pub struct FlowStateId(pub Ulid);
+pub struct SamlPersistentIdRow(pub Ulid);  // see 20-saml-idp.md
 
 /// Opaque base32-encoded 32-byte random; stored hashed where appropriate.
 pub struct SessionId(pub String);
@@ -1100,10 +1287,7 @@ pub enum ProviderError {
 }
 pub enum ResourceKind { Fuel, Memory, WallClock }
 
-pub enum ProviderOrigin {
-    Builtin,
-    Wasm { module_id: WasmModuleId, alias: String },
-}
+// ProviderOrigin is declared inline with SpiBinding above; see entity catalog.
 
 pub struct ExternalUser {
     pub external_id: String,
@@ -1186,7 +1370,11 @@ pub struct CacheKey { pub realm: RealmId, pub class: CacheClass, pub id: String 
 pub struct CacheKeyPrefix { pub realm: RealmId, pub class: CacheClass }
 pub enum CacheClass {
     Realm, Client, Flow, Theme, Spi, Jwks, Idp, Federation,
-    User, UserProfile, Organization, Negative,
+    User, UserProfile, Organization,
+    SamlMetadata,                            // realm SAML IdP metadata XML
+    ScimTarget,                              // per-target health / schema cache
+    Agent,                                   // agent record on hot token-exchange path
+    Negative,
 }
 pub struct Cached<T> {
     pub value: Arc<T>,

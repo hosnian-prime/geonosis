@@ -41,34 +41,48 @@ Summary:
 
 ## URL surface
 
+Each endpoint's required role gate is listed inline. **realm-admin**
+is the master-realm-issued admin token (or a single-realm install's
+`realm-admin` client); **org-admin** is a member of the org holding
+either the realm-defined `organization-admin` role or an `OrgRole`
+flagged with `is_admin=true`; **user** is the authenticated user
+themselves.
+
 ```
-GET    /admin/v1/realms/{slug}/orgs
-POST   /admin/v1/realms/{slug}/orgs
-GET    /admin/v1/realms/{slug}/orgs/{alias}
-PUT    /admin/v1/realms/{slug}/orgs/{alias}
-DELETE /admin/v1/realms/{slug}/orgs/{alias}
+GET    /admin/v1/realms/{slug}/orgs                                   [realm-admin]
+POST   /admin/v1/realms/{slug}/orgs                                   [realm-admin]
+GET    /admin/v1/realms/{slug}/orgs/{alias}                           [realm-admin | org-admin of {alias}]
+PUT    /admin/v1/realms/{slug}/orgs/{alias}                           [realm-admin | org-admin of {alias}]
+DELETE /admin/v1/realms/{slug}/orgs/{alias}                           [realm-admin]
 
-GET    /admin/v1/realms/{slug}/orgs/{alias}/members
-POST   /admin/v1/realms/{slug}/orgs/{alias}/members/{user_id}        # add existing user
-DELETE /admin/v1/realms/{slug}/orgs/{alias}/members/{user_id}
+GET    /admin/v1/realms/{slug}/orgs/{alias}/members                   [realm-admin | org-admin]
+POST   /admin/v1/realms/{slug}/orgs/{alias}/members/{user_id}         [realm-admin | org-admin]   # add existing user
+PUT    /admin/v1/realms/{slug}/orgs/{alias}/members/{user_id}/roles   [realm-admin | org-admin]   # mutate org-scoped roles
+DELETE /admin/v1/realms/{slug}/orgs/{alias}/members/{user_id}         [realm-admin | org-admin]
 
-POST   /admin/v1/realms/{slug}/orgs/{alias}/invitations
-GET    /admin/v1/realms/{slug}/orgs/{alias}/invitations
-DELETE /admin/v1/realms/{slug}/orgs/{alias}/invitations/{id}
+POST   /admin/v1/realms/{slug}/orgs/{alias}/invitations               [realm-admin | org-admin]
+GET    /admin/v1/realms/{slug}/orgs/{alias}/invitations               [realm-admin | org-admin]
+POST   /admin/v1/realms/{slug}/orgs/{alias}/invitations/{id}/resend   [realm-admin | org-admin]
+DELETE /admin/v1/realms/{slug}/orgs/{alias}/invitations/{id}          [realm-admin | org-admin]
 
-POST   /admin/v1/realms/{slug}/orgs/{alias}/domains
-DELETE /admin/v1/realms/{slug}/orgs/{alias}/domains/{id}
-POST   /admin/v1/realms/{slug}/orgs/{alias}/domains/{id}/verify
+POST   /admin/v1/realms/{slug}/orgs/{alias}/domains                   [realm-admin | org-admin]
+DELETE /admin/v1/realms/{slug}/orgs/{alias}/domains/{id}              [realm-admin | org-admin]
+POST   /admin/v1/realms/{slug}/orgs/{alias}/domains/{id}/verify       [realm-admin | org-admin]
 
-GET    /admin/v1/realms/{slug}/orgs/{alias}/idps
-POST   /admin/v1/realms/{slug}/orgs/{alias}/idps          # bind realm IdP to org
-DELETE /admin/v1/realms/{slug}/orgs/{alias}/idps/{idp_alias}
+GET    /admin/v1/realms/{slug}/orgs/{alias}/idps                      [realm-admin | org-admin]
+POST   /admin/v1/realms/{slug}/orgs/{alias}/idps                      [realm-admin]                # bind realm IdP to org
+DELETE /admin/v1/realms/{slug}/orgs/{alias}/idps/{idp_alias}          [realm-admin]
 
-GET    /admin/v1/realms/{slug}/orgs/{alias}/roles
-POST   /admin/v1/realms/{slug}/orgs/{alias}/roles
-PUT    /admin/v1/realms/{slug}/orgs/{alias}/roles/{name}
-DELETE /admin/v1/realms/{slug}/orgs/{alias}/roles/{name}
+GET    /admin/v1/realms/{slug}/orgs/{alias}/roles                     [realm-admin | org-admin]
+POST   /admin/v1/realms/{slug}/orgs/{alias}/roles                     [realm-admin | org-admin]
+PUT    /admin/v1/realms/{slug}/orgs/{alias}/roles/{name}              [realm-admin | org-admin]
+DELETE /admin/v1/realms/{slug}/orgs/{alias}/roles/{name}              [realm-admin | org-admin]
 ```
+
+A **background job** sweeps `OrgInvitation` rows past their
+`expires_at`, marks them `Expired`, and emits
+`org.invitation.expired`. The job runs every 5 minutes under
+leader election.
 
 End-user-facing (account console, v0.2):
 
@@ -189,12 +203,15 @@ Each organization has a `OrganizationBranding`:
 Applied to login templates when an org context is set. Implemented as
 theme parameters; no separate template files.
 
-## Lifecycle & non-goals
+## Lifecycle
 
 - **Suspending an org**: `enabled=false`; logins from members are
   blocked at the start node with `org_suspended`.
 - **Deleting an org**: hard delete; member roles unassigned; users
   not deleted.
+
+## Non-goals
+
 - **Cross-realm orgs** — out of scope. An org belongs to exactly one
   realm.
 - **Org-level signing keys** — out of scope; realm keys apply.

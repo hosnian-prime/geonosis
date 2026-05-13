@@ -85,7 +85,9 @@ struct SyncPolicy {
 
 The `bind_password` is **not** stored in plaintext. Configuration
 fields of type `Secret<T>` are persisted as ciphertext encrypted with
-the realm's `master_secret` key. See [`12-security-crypto.md`](./12-security-crypto.md).
+the server's master encryption key (a DEK wraps the secret; the DEK
+is wrapped under `GEONOSIS_MASTER_KEY`). See
+[`12-security-crypto.md`](./12-security-crypto.md).
 
 ## Authentication flow integration
 
@@ -104,8 +106,8 @@ A typical realm starts with these providers registered:
 
 Operators may insert their own WASM provider in between by giving
 it a priority between 100 and 1000, or replace the local store
-entirely (see [`07-spi-wasm.md`](./07-spi-wasm.md) §3 worked
-example).
+entirely (see [`07-spi-wasm.md`](./07-spi-wasm.md) §"Worked
+example: replacing the local user store with a REST-based store").
 
 Credential validation is dispatched to the **same** provider that
 returned the user lookup:
