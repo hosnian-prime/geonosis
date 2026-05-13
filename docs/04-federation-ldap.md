@@ -4,6 +4,15 @@ User federation lets Geonosis authenticate users that live in an
 **external** LDAP / Active Directory and act as if they were native
 Geonosis users — without copying their passwords.
 
+> **Implementation note.** Federation sources are not a separate
+> subsystem in Geonosis. Each configured LDAP/AD source is registered
+> in the realm's **user-storage provider registry** alongside the
+> built-in local store. The dispatcher is the standard `FirstMatch`
+> chain described in [`07-spi-wasm.md`](./07-spi-wasm.md). LDAP-
+> specific behavior lives in a built-in provider
+> (`builtin:user-storage:ldap:{alias}`); the rest of this document
+> covers that provider's configuration and runtime behavior.
+
 ## Modes
 
 | Mode | What happens |
@@ -80,21 +89,36 @@ the realm's `master_secret` key. See [`12-security-crypto.md`](./12-security-cry
 
 ## Authentication flow integration
 
-Federation participates in the auth flow as a **user-storage source**.
-When a flow's `LookupUser` step runs, the storage layer queries
-sources in priority order:
+Federation participates as one provider in the realm's
+**user-storage registry**. When a flow's `LookupUser` step runs,
+the registry's `FirstMatch` dispatcher iterates providers in
+priority order. The first one to return `Found` wins; `NotFound`
+delegates to the next.
 
-```
-local users → federation sources (by priority) → SPI WasmFederation
-```
+A typical realm starts with these providers registered:
 
-The first source that returns a match wins. A `UsernamePassword` step
-then dispatches the credential validation to that source:
+| Priority | URN | Origin | Role |
+|---|---|---|---|
+| 100 | `builtin:user-storage:ldap:corp-ad` | Built-in (this doc) | Mirror of AD; consulted first |
+| 1000 | `builtin:user-storage:local` | Built-in | Postgres `app_user` fallback |
 
-- Local user → bcrypt/argon2 check against `credential` row.
-- LDAP user → simple BIND with the supplied password against the
-  user's DN.
-- WASM federation → `geonosis:federation/validate-credential` call.
+Operators may insert their own WASM provider in between by giving
+it a priority between 100 and 1000, or replace the local store
+entirely (see [`07-spi-wasm.md`](./07-spi-wasm.md) §3 worked
+example).
+
+Credential validation is dispatched to the **same** provider that
+returned the user lookup:
+
+- `builtin:user-storage:local` → Argon2id check against
+  `credential` row.
+- `builtin:user-storage:ldap:...` → simple BIND with the supplied
+  password against the user's DN.
+- `wasm:...` → `user-storage-provider.validate-credential` call.
+
+This keeps the trust boundary intact: a user mirrored from LDAP
+cannot accidentally be authenticated by the local password
+table.
 
 ## Group sync (optional)
 
@@ -147,10 +171,13 @@ them. Operators wanting eager mirroring run a one-shot sync job via
 
 ## Custom federation via SPI
 
-A WASM module implementing `geonosis:federation@0.1.0` can supply a
-non-LDAP source (SCIM, REST API, internal HR system). The contract is
-in [`07-spi-wasm.md`](./07-spi-wasm.md). The runtime treats it
-identically to LDAP from the resolver's perspective.
+A WASM module implementing `geonosis:user-storage@0.1.0` can supply
+a non-LDAP source (SCIM, REST API, internal HR system, mainframe
+gateway). The contract is in [`07-spi-wasm.md`](./07-spi-wasm.md).
+Because the dispatcher treats every storage provider uniformly,
+a custom WASM source is **indistinguishable** from a built-in
+provider to upstream code — the same priority ordering and
+`replaces` semantics apply.
 
 ## AD-specific behaviors
 

@@ -3,8 +3,9 @@
 **Organizations** are a sub-realm grouping of users with shared
 context, branding, identity provider hookups, and roles. They model
 the B2B SaaS pattern where one realm hosts many customer tenants.
-The design mirrors Keycloak's Organizations feature (introduced in
-Keycloak 25, refined in 26+) and ships in v0.1.
+The design follows the B2B-SaaS Organization model that has become
+the de-facto pattern in established enterprise IAMs in recent years.
+It ships in v0.1.
 
 ## Why both Realm and Organization
 

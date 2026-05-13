@@ -161,9 +161,9 @@ described**. It still works; it just is no longer the default.
 
 ## KominoCache (future)
 
-Komino is a planned native distributed cache, taking inspiration
-from **Infinispan** (the JBoss/Red Hat cache that Keycloak embeds).
-Goals for Komino:
+Komino is a planned native distributed cache, in the spirit of
+mature embedded JVM caches that other established IAMs rely on, but
+implemented in Rust as a Geonosis-native crate. Goals for Komino:
 
 - **Embedded in `geonosis-server`** — pods cluster directly with
   each other, no external middleware.

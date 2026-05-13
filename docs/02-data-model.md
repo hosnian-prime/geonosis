@@ -5,7 +5,8 @@ listed here are **normative**: code MUST match these spellings.
 
 ## Tenancy
 
-We adopt the **Realm = tenant** model from Keycloak.
+We adopt the **Realm = tenant** model: one server hosts many realms;
+each realm is an isolated identity universe.
 
 - A **Realm** owns its users, clients, groups, roles, keys, flows,
   themes, and SPI bindings.
@@ -87,7 +88,7 @@ pub struct Realm {
     pub enabled: bool,
     pub ssl_required: SslRequirement,   // None | ExternalRequests | All
 
-    // — feature toggles (Keycloak "Realm settings → Login" parity) —
+    // — feature toggles (realm login surface) —
     pub login: LoginSettings,           // see below
     pub registration: RegistrationPolicy,
     pub session_policy: SessionPolicy,
@@ -121,7 +122,7 @@ pub struct Realm {
     pub updated_at: DateTime<Utc>,
 }
 
-/// All the on/off switches a Keycloak operator sees under "Realm settings → Login".
+/// All the on/off switches an operator sees under "Realm settings → Login".
 pub struct LoginSettings {
     pub user_registration_allowed: bool,
     pub forgot_password_allowed: bool,
@@ -333,7 +334,7 @@ pub struct Client {
     // — URIs & origins —
     pub root_url: Option<Url>,
     pub base_url: Option<Url>,
-    pub admin_url: Option<Url>,         // Keycloak-style admin/backchannel URL
+    pub admin_url: Option<Url>,         // app-side admin/backchannel URL
     pub redirect_uris: Vec<UriPattern>,
     pub post_logout_uris: Vec<UriPattern>,
     pub web_origins: Vec<Origin>,       // CORS allowlist
@@ -631,12 +632,20 @@ pub struct RefreshToken {
 pub struct SpiBinding {
     pub id: SpiBindingId,
     pub realm_id: RealmId,
-    pub interface: WitInterfaceName,    // "geonosis:authn", "geonosis:event", ...
-    pub provider_alias: String,
-    pub module_id: WasmModuleId,        // bytecode pointer
+    pub interface: WitInterfaceName,    // "geonosis:user-storage@0.1.0", "geonosis:authn@0.1.0", ...
+    pub provider_urn: String,           // stable id — "builtin:..." or "wasm:..."
+    pub origin: ProviderOrigin,         // Builtin | Wasm { module_id, alias }
     pub config: serde_json::Value,      // typed by interface contract
-    pub priority: i32,
+    pub priority: i32,                  // smaller = earlier (FirstMatch / Chain)
     pub enabled: bool,
+    pub replaces: Option<String>,       // when set, forcibly disables target provider URN
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+pub enum ProviderOrigin {
+    Builtin,                            // implementation lives in-process (Rust)
+    Wasm { module_id: WasmModuleId, alias: String },
 }
 
 pub struct EventSink {

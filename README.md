@@ -1,6 +1,6 @@
 # Geonosis
 
-A Keycloak-class Identity & Access Management server written in Rust.
+A full-featured Identity & Access Management server written in Rust.
 
 - OIDC 1.0 + OAuth 2.1 compliant authentication and authorization
 - LDAP / Active Directory user federation
@@ -9,7 +9,8 @@ A Keycloak-class Identity & Access Management server written in Rust.
 - WebAssembly-based extension SPI (WASI 0.2 + WIT)
 - Visually-edited authentication flows with hot reload
 - Designed for multi-pod Kubernetes deployment with zero-downtime
-  upgrades, no Redis or Infinispan required
+  upgrades; Redis-backed cache in v0.1, replaced by an embedded
+  distributed cache (Komino) in a future major release
 
 > **Status:** early architecture phase. Source code does not yet
 > exist in this repository. Technical documentation under
