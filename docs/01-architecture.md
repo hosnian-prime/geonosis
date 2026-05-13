@@ -6,31 +6,49 @@ Read this first; refer to others when you need detail.
 ## Top-level view
 
 ```
-                          ┌─────────────────────────┐
-                          │       Kubernetes        │
-                          │                         │
-                          │  Ingress (TLS, L7)      │
-                          │      │                  │
-                 ┌────────┼──────┴────────────┐     │
-                 ▼        ▼                   ▼     │
-            ┌──────┐ ┌──────┐  ...       ┌──────┐   │
-            │ pod  │ │ pod  │            │ pod  │   │
-            │  N   │ │  N   │            │  N   │   │
-            └──┬───┘ └──┬───┘            └──┬───┘   │
-               │        │                   │       │
-               └────────┴───────┬───────────┘       │
-                                │                   │
-                                ▼                   │
-                       ┌─────────────────┐          │
-                       │   PostgreSQL    │          │
-                       │  primary + RR   │◀─────────┘
-                       └─────────────────┘
+                          ┌──────────────────────────────────────────┐
+                          │              Kubernetes                  │
+                          │                                          │
+                          │  Ingress (TLS, L7)                       │
+                          │      │                                   │
+                 ┌────────┼──────┴────────────┐                      │
+                 ▼        ▼                   ▼                      │
+            ┌──────┐ ┌──────┐  ...       ┌──────┐                    │
+            │ pod  │ │ pod  │            │ pod  │                    │
+            │  N   │ │  N   │            │  N   │                    │
+            └──┬───┘ └──┬───┘            └──┬───┘                    │
+               │        │                   │                        │
+               └────────┴────────┬──────────┘                        │
+                                 │                                   │
+                       ┌─────────┴───────────┐                       │
+                       ▼                     ▼                       │
+              ┌─────────────────┐    ┌───────────────────┐           │
+              │   PostgreSQL    │    │      Redis        │           │
+              │  primary + RR   │    │  hot cache + bus  │           │
+              │  (system of     │    │  (replaceable by  │           │
+              │   record)       │    │   Komino v1.x)    │           │
+              └─────────────────┘    └───────────────────┘           │
+                                                                     │
+                       ┌─────────────────────────────────────────────┘
+                       ▼
+              ┌─────────────────┐
+              │ Object store    │
+              │ (S3/GCS) for    │
+              │ WASM modules    │
+              └─────────────────┘
 ```
 
 A pod is the unit of replication. Every pod is stateless beyond an
-in-process cache. **No** Redis, Infinispan, Hazelcast, etcd, or gossip
-ring is required. Cluster coordination flows through Postgres
-`LISTEN`/`NOTIFY`.
+in-process cache. The cluster has **two stateful dependencies** by
+default: **Postgres** (durable system of record) and **Redis** (hot
+cache + pub/sub fan-out). A no-Redis deployment is supported for
+small installs — the same `Cache` trait is satisfied by an in-process
+LRU with Postgres `LISTEN`/`NOTIFY` for invalidation.
+
+A future major release replaces the Redis dependency with **Komino**,
+an embedded Infinispan-class distributed cache, gossip-clustered
+between Geonosis pods themselves. The `Cache` trait is the seam:
+swapping the implementation is intended to be invisible to callers.
 
 ## A single pod
 
@@ -73,7 +91,7 @@ HTTP ─────────► │   │ axum router│──►│  middle
 | HTTP surface | `geonosis-server` | axum router, TLS, middleware stack, panic boundary |
 | Core domain | `geonosis-core` | Pure entity types, no I/O. Realm, User, Client, Session, Role, Group, Flow, KeyMaterial |
 | Storage | `geonosis-storage` | `Storage` trait + Postgres impl with sqlx |
-| Cache | `geonosis-cache` | In-process LRU keyed by entity, invalidated by `NOTIFY` |
+| Cache | `geonosis-cache` | `Cache` trait + Redis impl (default), Postgres-NOTIFY-only impl (no-Redis option), Komino impl (future) |
 | Migrations | `geonosis-migrate` | sqlx migrations + expand-contract helpers |
 | OIDC protocol | `geonosis-protocol-oidc` | `/authorize`, `/token`, `/userinfo`, `/logout`, `/.well-known/openid-configuration`, JWKS |
 | Auth flow | `geonosis-flow` | Graph executor + serializable DSL |
@@ -111,14 +129,14 @@ HTTP ─────────► │   │ axum router│──►│  middle
 
 | State class | Where it lives | Read consistency | Invalidation |
 |---|---|---|---|
-| Configuration (realm, client, flow, theme bindings) | Postgres + in-process LRU | bounded staleness (≤ NOTIFY round-trip, typically < 100 ms) | `pg_notify('geonosis.invalidate', ...)` |
-| Cryptographic keys | Postgres + in-process | same as config | same; explicit rotate command |
-| User records | Postgres | strong (no cache) for writes; cached read on hot path with short TTL (5 s) | TTL + NOTIFY on writes |
+| Configuration (realm, client, flow, theme bindings) | Postgres + Redis + in-process L1 | bounded staleness (≤ 100 ms on hot path) | `Cache::invalidate` (Redis pub/sub or Postgres NOTIFY) |
+| Cryptographic keys | Postgres + Redis + in-process | same as config | same; explicit rotate command |
+| User records | Postgres + Redis (short TTL) | strong (no cache) for writes; cached read on hot path with short TTL (5 s) | TTL + invalidation on writes |
 | Sessions (browser SSO cookies) | Postgres | strong | not cached cross-pod; per-pod lookup against DB; session id is opaque, indexed |
-| Authorization codes / device codes | Postgres | strong, single-use, TTL-indexed | row delete on use |
-| Rate-limit counters | In-process token bucket | per-pod (best-effort cluster total) | natural decay |
+| Authorization codes / device codes | Postgres (Redis allowed in v0.2 for very high RPS) | strong, single-use, TTL-indexed | row delete on use |
+| Rate-limit counters | Redis (when configured) → cluster-wide; otherwise per-pod bucket | per-pod fallback is best-effort cluster total | natural decay |
 | Refresh tokens | Postgres (hashed) | strong | row delete on revoke / rotate |
-| WASM module bytecode | Object store + Postgres metadata | bounded staleness | NOTIFY → recompile in pod |
+| WASM module bytecode | Object store + Postgres metadata | bounded staleness | invalidation event → recompile in pod |
 
 Rate-limit being per-pod is an explicit non-goal of v0.1: see
 [`13-observability.md`](./13-observability.md) for the trade-off.

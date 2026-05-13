@@ -28,6 +28,9 @@ exist.
 | 12 | [security-crypto.md](./12-security-crypto.md) | Keys, JWT signing, secret handling |
 | 13 | [observability.md](./13-observability.md) | Logs, metrics, traces, audit |
 | 14 | [roadmap.md](./14-roadmap.md) | Phased delivery plan |
+| 15 | [organizations.md](./15-organizations.md) | Sub-realm Organizations (B2B SaaS tenants) |
+| 16 | [user-profile.md](./16-user-profile.md) | Declarative attribute schema |
+| 17 | [keycloak-parity.md](./17-keycloak-parity.md) | Feature-by-feature Keycloak audit |
 | ∞ | [glossary.md](./glossary.md) | Terms used across docs |
 
 ## Status

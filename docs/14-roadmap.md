@@ -53,20 +53,21 @@ Exit criteria:
 ## Phase 2 — Admin UI v1 (≈ 6–8 weeks)
 
 **Goal:** the binary's admin UI lets an operator create a realm,
-manage users, clients, and roles, and view audit events.
+manage users, clients, organizations, and roles, and view audit events.
 
 Exit criteria:
 
 - [ ] Leptos admin app with SSR + auth via master-realm tokens.
 - [ ] CRUD pages for: realms, users, clients, roles, groups,
-      sessions.
+      **organizations**, sessions.
+- [ ] **User Profile editor** + registration form rendered from schema.
 - [ ] Audit event explorer.
 - [ ] REST API `/admin/v1/...` mirroring the UI; OpenAPI doc
       generated.
 - [ ] Basic theme overlay (login-template substitution) with hot
       reload.
 - [ ] Internationalization plumbing; English + Turkish bundles ship.
-- [ ] CLI (`geoctl`) parity for realms / clients / users /
+- [ ] CLI (`geoctl`) parity for realms / clients / users / orgs /
       keys / audit.
 
 ## Phase 3 — Federation & broker (≈ 6–8 weeks)
@@ -161,6 +162,24 @@ Picked in order of operator demand. Not committed.
 - **K8s Operator CRDs**.
 - **Audit event compaction** per family.
 - **Multi-region active-active** plan (deferred design).
+
+## Phase 8 — Komino (v1.x, post-GA)
+
+**Goal:** retire the Redis dependency by introducing **Komino**, an
+embedded Infinispan-class distributed cache that gossip-clusters
+between Geonosis pods.
+
+Exit criteria:
+
+- [ ] Gossip membership protocol + consistent-hash partitioning.
+- [ ] Anti-entropy on join; bounded recovery time after partition.
+- [ ] `KominoCache` impl of `Cache` trait — API-equivalent.
+- [ ] Helm chart supports `cache.backend=komino`.
+- [ ] Migration runbook: Redis → Komino with overlap window.
+- [ ] Benchmarks show ≤ 10% RPS regression vs. Redis at p99.
+
+This is intentionally a separate phase from v0.1 → v0.2 work; it's
+infrastructure refactoring that needs its own quarter.
 
 ## What we explicitly defer to v1.0+
 
