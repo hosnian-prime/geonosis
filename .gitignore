@@ -1,0 +1,25 @@
+# Build
+/target/
+**/*.rs.bk
+
+# Cargo.lock is tracked: the workspace ships binaries (kamino-server, kamino-cli, xtask)
+# and CI / benches need deterministic builds.
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.*
+
+# Claude Code
+.claude/settings.local.json
+.claude/worktrees/
