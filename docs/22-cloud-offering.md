@@ -164,3 +164,18 @@ fragment the project. Resist always.
 - **Crippled OSS** as an upgrade funnel. The OSS path is fully
   capable; Cloud earns its money on operations, not artificial
   scarcity.
+
+## Decisions and open items
+
+- **Per-realm metering** is the only Cloud-driven addition to the
+  OSS server. Lands in v0.2 audit pipeline as plain counters; the
+  Cloud product consumes them.
+- **Pricing model** (per-MAU vs. per-resource): undecided; resolved
+  before the Cloud private preview.
+- **First region**: EU. US follows in v0.3. APAC later.
+- **Free tier scope**: generous enough that Geonosis Cloud is a
+  real solution for small-traffic dev/B2C accounts, not a teaser.
+- **Plugin marketplace governance** (curation, signing root,
+  removal process): designed before Cloud GA.
+- **SOC 2 Type II / ISO 27001 audit cadence**: starts during v0.2
+  private preview; reports available at GA.

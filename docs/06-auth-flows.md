@@ -60,7 +60,8 @@ The graph compiler enforces these at save time.
 | `otp` | TOTP / HOTP |
 | `webauthn` | WebAuthn assertion |
 | `recovery-code` | One-time recovery code |
-| `magic-link` | Email link with single-use token |
+| `magic-link` | Email link with single-use token (gated by realm SMTP config) |
+| `phone-otp` | SMS one-time password — relies on a **SMS-sender SPI plugin** (`geonosis:event` listener with `kind=sms`); v0.1 ships the contract and a reference Twilio plugin behind the `spi-twilio` first-party module. Per-realm config picks the active provider. |
 | `consent` | OAuth consent screen |
 | `cookie` | Re-use existing SSO cookie |
 | `idp-redirect` | Begin a `broker-step` (see [`05-identity-broker.md`](./05-identity-broker.md)) |
