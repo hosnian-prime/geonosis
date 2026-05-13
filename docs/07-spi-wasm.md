@@ -566,6 +566,67 @@ interface event-listener {
 This is **fire-and-forget**. Errors are logged but do not affect the
 triggering operation.
 
+### `geonosis:user-profile-validator@0.1.0`
+
+Per-attribute custom validators invoked by the
+[`16-user-profile.md`](./16-user-profile.md) validator chain.
+Bound to specific attribute names by the `UserProfile`'s
+`AttributeValidator::Custom { module, config }` variant. **Phase:
+v0.1**.
+
+```wit
+package geonosis:user-profile-validator@0.1.0;
+
+interface validator {
+  use types.{validation-error};
+
+  describe: func() -> provider-info;
+
+  validate: func(
+      attribute: string,
+      values: list<string>,
+      config: list<u8>,
+  ) -> result<_, validation-error>;
+}
+
+world user-profile-validator-world {
+  import host: geonosis:host@0.1.0;
+  export validator;
+}
+```
+
+### `geonosis:ui-component@0.1.0`
+
+Server-side admin / login UI component overrides. Bound at the
+theme layer per [`08-admin-ui.md`](./08-admin-ui.md) §Component
+overrides (themes). **Phase: v0.1.** Trait surface is the Leptos
+`Surface` slot trait; the WIT contract here wraps the rendered
+output.
+
+```wit
+package geonosis:ui-component@0.1.0;
+
+interface ui-component {
+  use types.{component-context, rendered-html, error};
+
+  describe: func() -> component-info;
+
+  /// Render the component to HTML given a typed locals payload.
+  /// The host pre-sanitizes locals; output is appended into the
+  /// page DOM at the slot's anchor with CSP nonces injected.
+  render: func(
+      slot: string,
+      ctx: component-context,
+      locals: list<u8>,                // bincode-encoded typed payload
+  ) -> result<rendered-html, error>;
+}
+
+world ui-component-world {
+  import host: geonosis:host@0.1.0;
+  export ui-component;
+}
+```
+
 ### `geonosis:broker-adapter@0.1.0`
 
 Per-IdP behavior for non-generic providers (Google quirks, GitHub's
@@ -766,6 +827,66 @@ For every plugin call we emit a tracing span with:
 Metrics: `geonosis_spi_call_duration_seconds`,
 `geonosis_spi_call_total{interface,outcome}`,
 `geonosis_spi_quarantined_total`.
+
+## Future / deferred WIT interfaces
+
+Placeholders kept here so 07 remains the authoritative SPI catalog.
+Full signatures land with the phase they're committed to in
+[`14-roadmap.md`](./14-roadmap.md).
+
+### `geonosis:scim-mapper@0.1.0` (v0.2)
+
+Per-target SCIM resource transform — runs on push (outbound) and on
+receive (inbound). Used by [`19-scim.md`](./19-scim.md) for
+sensitive-attribute masking, vendor-specific schema bending, etc.
+Signature shape (preview):
+
+```
+describe: func() -> provider-info;
+map-outbound: func(resource: list<u8>, config: list<u8>) -> result<list<u8>, error>;
+map-inbound:  func(resource: list<u8>, config: list<u8>) -> result<list<u8>, error>;
+```
+
+### `geonosis:scim-target-auth@0.1.0` (v0.2)
+
+Custom authentication for non-standard SCIM endpoints (AWS SigV4 on
+private SCIM-like APIs, mTLS-token-bound endpoints, etc.). Signature
+preview:
+
+```
+describe: func() -> provider-info;
+prepare-request: func(req: http-request, config: list<u8>) -> result<http-request, error>;
+```
+
+### `geonosis:agent-attestation@0.1.0` (v0.2)
+
+Validate the contents of an actor token before token exchange (e.g.
+enforce a trusted attestation server's signature on the agent's
+model name + version). Signature preview:
+
+```
+describe: func() -> provider-info;
+attest: func(actor-token: list<u8>, config: list<u8>) -> result<attestation-result, error>;
+```
+
+### `geonosis:vc-issuer@0.1.0` (v0.3)
+
+Verifiable Credentials issuance (SD-JWT VC / W3C VC). Lands with
+the v0.3 protocol work; signature shape TBD.
+
+### `geonosis:storage@0.1.0` (future)
+
+Long-lived per-realm storage for plugins (key-value, append-only
+log). Sandboxed; quota-bound; no direct filesystem access. Lands
+when a real plugin needs it; not in v0.1 or v0.2.
+
+### `geonosis:http-client@0.1.0` (future, currently inline in `geonosis:host`)
+
+In v0.1, outbound HTTP is exposed as the `http-client` interface
+**inside** the `geonosis:host@0.1.0` world (see Host interface
+above). A future split into its own `geonosis:http-client` package
+may happen if egress controls grow elaborate; the embedded shape
+is intentional in v0.1 to keep host capabilities under one roof.
 
 ## Non-goals
 

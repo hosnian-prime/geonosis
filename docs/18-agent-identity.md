@@ -116,23 +116,35 @@ pub enum AgentAuthMethod {
 
 ## URL surface
 
+Each endpoint's required role gate is listed inline. **realm-admin**
+is the realm administrator; **parent-user** is the user who owns
+the agent (when `parent_subject = User(_)`); **parent-org-admin** is
+an org admin (when `parent_subject = Organization(_)`); **agent
+itself** authenticates via its bound credentials but cannot mutate
+its own configuration.
+
 ```
-GET    /admin/v1/realms/{slug}/agents
-POST   /admin/v1/realms/{slug}/agents
-GET    /admin/v1/realms/{slug}/agents/{alias}
-PATCH  /admin/v1/realms/{slug}/agents/{alias}
-DELETE /admin/v1/realms/{slug}/agents/{alias}
-POST   /admin/v1/realms/{slug}/agents/{alias}/revoke
-GET    /admin/v1/realms/{slug}/agents/{alias}/usage          # rolling rate-limit + token counters
+GET    /admin/v1/realms/{slug}/agents                                [realm-admin]
+POST   /admin/v1/realms/{slug}/agents                                [realm-admin | parent-user | parent-org-admin]
+GET    /admin/v1/realms/{slug}/agents/{alias}                        [realm-admin | parent-user | parent-org-admin]
+PATCH  /admin/v1/realms/{slug}/agents/{alias}                        [realm-admin | parent-user | parent-org-admin]
+DELETE /admin/v1/realms/{slug}/agents/{alias}                        [realm-admin | parent-user | parent-org-admin]
+POST   /admin/v1/realms/{slug}/agents/{alias}/revoke                 [realm-admin | parent-user | parent-org-admin]
+GET    /admin/v1/realms/{slug}/agents/{alias}/usage                  [realm-admin | parent-user | parent-org-admin]
 
 # End-user self-service (v0.2 with account console)
-GET    /realms/{slug}/account/agents                         # list my agents
-POST   /realms/{slug}/account/agents                         # create one
-DELETE /realms/{slug}/account/agents/{alias}                 # revoke
+GET    /realms/{slug}/account/agents                                 [authenticated user; scope to own]
+POST   /realms/{slug}/account/agents                                 [authenticated user; sets parent=self]
+DELETE /realms/{slug}/account/agents/{alias}                         [authenticated user; own agents only]
 
 # Protocol surface
-POST   /realms/{slug}/protocol/openid-connect/token          # standard, with grant_type=urn:ietf:params:oauth:grant-type:token-exchange
+POST   /realms/{slug}/protocol/openid-connect/token                  # standard; grant_type=urn:ietf:params:oauth:grant-type:token-exchange
+                                                                     # client must be enabled for `token_exchange`
 ```
+
+`parent-user` authorization is enforced both at the **route** layer
+(claim check) and at the **storage** layer (RLS predicate
+`Agent.parent_subject = current_user`).
 
 ## Token issuance
 
@@ -240,15 +252,27 @@ Every action by an agent is recorded with action prefix `agent.`:
 - `agent.rate_limit.hit`
 
 Audit events for agent activity are **never** compacted (per
-[`13-observability.md`](./13-observability.md) §audit compaction
-plan): the user signal must remain clean.
+[`13-observability.md`](./13-observability.md) §Audit event
+compaction): the user signal must remain clean.
 
 ## Rate limiting
 
-Agents have **separate** rate-limit buckets from human users. Counters
-keyed `agent_rl:{realm}:{agent_id}:{window}`. Default limits set per
-agent at creation; cluster-wide enforcement requires Redis-backed
-cache (v0.1 default) or v0.2 cluster-wide rate limiting.
+Agents have **separate** rate-limit buckets from human users.
+Counters are keyed `agent_rl:{realm}:{agent_id}:{window}`. Default
+limits set per agent at creation.
+
+Enforcement scope by phase:
+
+- **v0.1, Redis-backed cache (the default deployment shape):**
+  cluster-wide enforcement is available immediately, because
+  Redis already counts atomically across pods. Agent rate-limit
+  shipping in v0.1 specifically piggybacks on this.
+- **v0.1, no-Redis (LocalCache) deployment:** per-pod enforcement
+  only. Operators running without Redis accept this looser bound.
+- **v0.2, general cluster-wide rate limiting** rolls out for
+  ALL counters (not just agents); the agent buckets transparently
+  benefit and gain richer policy controls (per-capability, per
+  parent-subject).
 
 ## Revocation
 
@@ -310,6 +334,18 @@ Three points are pluggable:
   Continuous-auth heartbeats.
 - **v0.3**: Agent-to-agent delegation chains with policy-driven
   capability reduction at each hop.
+
+## Decisions and open items
+
+- **Capability URN namespace**: stable, partitioned `tool:*`,
+  `data:*`, `model:*`, `spend:*`, `time:*`, `custom:*`. New top-level
+  prefixes require a doc change.
+- **Parent-subject immutability**: hard rule. Reparenting = revoke
+  + recreate.
+- **Per-realm agent cap**: 1000 default per user; per-org policy
+  overrides.
+- **Cross-realm agents**: explicit non-goal.
+- **Continuous attestation**: deferred to v0.3.
 
 ## SOLID notes
 

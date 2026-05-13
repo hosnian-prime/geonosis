@@ -102,6 +102,7 @@ HTTP ─────────► │   │ axum router│──►│  middle
 | SPI host | `geonosis-spi-host` | Wasmtime + WIT bindings; per-realm sandbox |
 | SPI authoring SDK | `geonosis-spi-api` | Rust bindings for plugin authors; re-exports generated `wit-bindgen` glue |
 | Admin UI | `geonosis-admin-ui` | Leptos SSR + hydration; component slot trait for theming |
+| Account console (v0.2) | `geonosis-account-ui` | End-user self-service portal; shares the UI kit, separate auth/threat surface |
 | Admin UI kit | `geonosis-ui-kit` | Shared design-system primitives (`<Button/>`, `<Card/>`, `<Field/>`, tokens) |
 | Theme engine | `geonosis-theme` | Filesystem theme overlay + hot reload watcher |
 | Internationalization | `geonosis-i18n` | Project Fluent (FTL) bundles, locale negotiation, RTL helpers |

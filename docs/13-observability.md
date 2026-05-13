@@ -135,23 +135,47 @@ pub enum Target {
 }
 ```
 
-### Action taxonomy (selected)
+### Action taxonomy
 
-`login.success`, `login.failure`, `login.locked`, `logout.success`,
-`token.issued`, `token.refreshed`, `token.revoked`,
-`token.reuse_detected`, `consent.granted`, `consent.revoked`,
-`user.created`, `user.updated`, `user.deleted`, `user.password_changed`,
-`user.required_action_set`, `client.created`, `client.updated`,
-`client.secret_rotated`, `flow.created`, `flow.updated`,
-`spi.installed`, `spi.uninstalled`, `spi.quarantined`,
-`federation.synced`, `federation.error`, `broker.first_login`,
-`broker.link_created`, `key.rotated`, `key.disabled`,
-`admin.role_assigned`, `admin.role_revoked`.
+Actions form a **dotted namespace** rooted in the entity or
+subsystem they pertain to. Authoritative enumeration lives in
+`crates/geonosis-core/src/audit_action.rs` as a typed Rust enum;
+the user-facing reference is generated from it via
+`geoctl docs gen-audit`. The namespace map below is normative for
+new actions added in other docs.
 
-The complete enumeration of `action` strings lives in
-`crates/geonosis-core/src/audit_action.rs` as a typed enum;
-the user-facing list is generated from it via `geoctl docs gen-audit`.
-Each action is documented inline with the required `detail` fields.
+| Namespace | Owner doc | Selected actions |
+|---|---|---|
+| `login.*` | [`03`](./03-protocols-oidc.md), [`06`](./06-auth-flows.md) | `login.success`, `login.failure`, `login.locked` |
+| `logout.*` | [`03`](./03-protocols-oidc.md) | `logout.success`, `logout.backchannel_sent`, `logout.backchannel_failed` |
+| `token.*` | [`03`](./03-protocols-oidc.md) | `token.issued`, `token.refreshed`, `token.revoked`, `token.reuse_detected` |
+| `consent.*` | [`03`](./03-protocols-oidc.md) | `consent.granted`, `consent.revoked` |
+| `user.*` | [`02`](./02-data-model.md), [`16`](./16-user-profile.md) | `user.created`, `user.updated`, `user.deleted`, `user.password_changed`, `user.required_action_set`, `user.attribute_rejected` |
+| `user-profile.*` | [`16`](./16-user-profile.md) | `user-profile.updated` |
+| `client.*` | [`02`](./02-data-model.md) | `client.created`, `client.updated`, `client.secret_rotated` |
+| `flow.*` | [`06`](./06-auth-flows.md) | `flow.created`, `flow.updated`, `flow.published` |
+| `spi.*` | [`07`](./07-spi-wasm.md) | `spi.installed`, `spi.uninstalled`, `spi.quarantined`, `spi.module_recompiled` |
+| `federation.*` | [`04`](./04-federation-ldap.md) | `federation.synced`, `federation.error`, `federation.removed`, `federation.circuit_open` |
+| `broker.*` | [`05`](./05-identity-broker.md) | `broker.first_login`, `broker.link_created`, `broker.link_removed`, `broker.assertion_rejected` |
+| `key.*` | [`12`](./12-security-crypto.md) | `key.rotated`, `key.disabled`, `key.imported` |
+| `admin.*` | [`08`](./08-admin-ui.md) | Admin-API-driven mutations: `admin.role_assigned`, `admin.role_revoked`, `admin.client_impersonated`, `admin.realm_settings_changed` |
+| `org.*` | [`15`](./15-organizations.md) | `org.created`, `org.updated`, `org.deleted`, `org.member.added`, `org.member.removed`, `org.member.suspended`, `org.invitation.sent`, `org.invitation.accepted`, `org.invitation.expired`, `org.invitation.resent`, `org.domain.added`, `org.domain.verified`, `org.idp.bound` |
+| `agent.*` | [`18`](./18-agent-identity.md) | `agent.created`, `agent.updated`, `agent.revoked`, `agent.token.issued`, `agent.token.rejected`, `agent.capability.exceeded`, `agent.rate_limit.hit` |
+| `scim.*` | [`19`](./19-scim.md) | `scim.user.created`, `scim.user.updated`, `scim.user.deleted`, `scim.user.failed`, `scim.group.*`, `scim.target.circuit_open`, `scim.target.recovered` |
+| `saml.*` | [`20`](./20-saml-idp.md) | `saml.assertion_issued`, `saml.authnrequest.rejected`, `saml.slo_propagated`, `saml.metadata_served` |
+| `migration.*` | [`10`](./10-zero-downtime-migrations.md) | `migration.applied`, `migration.expand_started`, `migration.contract_started`, `migration.backfill_progress` |
+
+#### Namespace contract
+
+- `admin.*` covers any admin-API mutation. When the mutation targets
+  a specific entity, the entity's namespace MAY emit a parallel,
+  finer-grained event (e.g. an admin grant of an org role emits
+  both `admin.role_assigned` and `org.member.added`).
+- `entity.subentity.action` (three or more dots) is allowed; example:
+  `agent.token.issued`. Namespaces longer than three dots are
+  discouraged.
+- New `action` strings MUST be added to the Rust enum (compile-time
+  check) and SHOULD be reflected in the table above in the same PR.
 
 ### Sinks
 
@@ -259,8 +283,14 @@ Prometheus alerting rules cover:
   This combination keeps the cost low while never losing a slow or
   failed authorize. Operators can override the ratio via
   `OTEL_TRACES_SAMPLER_ARG`.
-- **Audit event compaction**: deferred to v0.2. For v0.1 we accept
-  the cost of writing one row per `token.refreshed`. If a realm
-  truly drives millions of refreshes/hour and the audit storage
-  proves expensive, the v0.2 plan is a per-family summary row
-  flushed every N events or every T seconds.
+
+### Audit event compaction
+
+Deferred to v0.2. For v0.1 we accept the cost of writing one row
+per `token.refreshed`. If a realm truly drives millions of
+refreshes/hour and the audit storage proves expensive, the v0.2
+plan is a per-token-family summary row flushed every N events or
+every T seconds. Agent-namespace actions
+([`18-agent-identity.md`](./18-agent-identity.md)) are explicitly
+**excluded** from compaction — the user signal must remain
+auditable per-action.

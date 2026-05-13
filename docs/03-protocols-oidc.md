@@ -22,7 +22,7 @@ invariants, and where each piece lives in the codebase.
 | Mutual TLS Client Auth | RFC 8705 | v0.2 — per-realm sender-constraint |
 | DPoP | RFC 9449 | v0.2 — per-realm sender-constraint |
 | Demonstrated PoP for ATs | draft | v0.2 |
-| Token Exchange | RFC 8693 | v0.2 |
+| Token Exchange | RFC 8693 | v0.1 (initial; first use is the Agent identity path) — full surface in v0.2 |
 | CIBA | OpenID CIBA Core 1.0 | DEFERRED |
 | FAPI 1.0 Baseline | OpenID FAPI 1 Baseline | conformance target v0.1 |
 | FAPI 1.0 Advanced / FAPI 2.0 | | v0.2 |

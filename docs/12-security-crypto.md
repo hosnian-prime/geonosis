@@ -179,7 +179,7 @@ locally so verification is always fast, signing-only takes the hit.
 - **Backup**: master key is the encryption boundary for the DB. Lose
   it, lose all stored signing keys. Operator runbook MUST cover this.
 
-## ACR policy (per realm)
+## ACR Policy (per realm)
 
 Authentication Context Class Reference (`acr`) is a token claim
 expressing **how strong** the authentication was. Each realm defines

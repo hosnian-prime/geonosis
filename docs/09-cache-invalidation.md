@@ -196,6 +196,11 @@ a migration path before Redis can be retired.
 | Identity provider | `idp/{realm}/{alias}` | L1 + L2 | 30 min | yes |
 | Federation source | `fed/{realm}/{alias}` | L1 + L2 | 30 min | yes |
 | User (hot path) | `user/{id}` | L1 + L2 | **5 s** | no — short TTL only |
+| **User Profile** schema | `user-profile/{realm}` | L1 + L2 | 30 min | yes — on schema save |
+| **Organization** | `org/{realm}/{alias}` | L1 + L2 | 30 min | yes |
+| **SAML metadata** (IdP role) | `saml-metadata/{realm}` | L1 + L2 | 30 min | yes — on signing-key rotation or SAML config change |
+| **SCIM target** health/schema | `scim-target/{realm}/{alias}` | L1 + L2 | 60 s | yes |
+| **Agent** (hot Token-Exchange path) | `agent/{realm}/{alias}` | L1 + L2 | 30 s | yes — revocation must propagate fast |
 | Negative miss | `neg/...` | L1 + L2 | 1 s | implicit (next positive write invalidates) |
 | Rate-limit counters | counter buckets | L2 only (Redis) | window-bound | n/a (atomic INCR) |
 
