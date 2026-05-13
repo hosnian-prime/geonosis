@@ -36,6 +36,7 @@ exist.
 | 20 | [saml-idp.md](./20-saml-idp.md) | SAML 2.0 IdP role — issuing assertions (v0.1) |
 | 21 | [dx-package.md](./21-dx-package.md) | Developer experience: quickstart, examples, SDKs |
 | 22 | [cloud-offering.md](./22-cloud-offering.md) | Managed Geonosis Cloud strategy |
+| ★ | [recipes/](./recipes/README.md) | Task-oriented how-to guides (10 v0.1 recipes) |
 | ∞ | [glossary.md](./glossary.md) | Terms used across docs |
 
 ## Status
