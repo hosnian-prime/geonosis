@@ -1,0 +1,23 @@
+[package]
+name = "geonosis-protocol-saml-idp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "SAML 2.0 IdP role — issuing assertions to downstream SPs."
+
+[lints]
+workspace = true
+
+[dependencies]
+geonosis-core = { path = "../geonosis-core" }
+geonosis-crypto = { path = "../geonosis-crypto" }
+geonosis-saml-types = { path = "../geonosis-saml-types" }
+
+async-trait.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+chrono.workspace = true
+url.workspace = true

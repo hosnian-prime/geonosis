@@ -2,7 +2,7 @@
 /target/
 **/*.rs.bk
 
-# Cargo.lock is tracked: the workspace ships binaries (kamino-server, kamino-cli, xtask)
+# Cargo.lock is tracked: the workspace ships binaries (geonosis-server, geoctl)
 # and CI / benches need deterministic builds.
 
 # IDE

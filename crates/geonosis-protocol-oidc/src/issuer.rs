@@ -1,0 +1,176 @@
+//! `TokenIssuer` implementation backed by `KeyManagementService`.
+
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use chrono::Utc;
+use thiserror::Error;
+
+use geonosis_core::{
+    AccessTokenClaims, Client, IdTokenClaims, Realm, RealmId, ScopeName, SessionId, Subject,
+};
+use geonosis_crypto::jwt::{sign_jwt, JwsHeader, PrivateMaterial};
+use geonosis_crypto::KeyManagementService;
+use geonosis_protocol_oauth::grants::GrantError;
+use geonosis_protocol_oauth::TokenIssuer;
+
+/// Errors emitted when issuing fails before the OAuth grant layer surfaces
+/// them as `invalid_request` / `server_error`.
+#[derive(Debug, Error)]
+pub enum OidcIssuerError {
+    #[error("kms: {0}")]
+    Kms(#[from] geonosis_crypto::KmsError),
+    #[error("signing: {0}")]
+    Sign(String),
+    #[error("internal: {0}")]
+    Internal(String),
+}
+
+/// OIDC-aware token issuer. Holds a reference to the realm-scoped KMS and
+/// a per-realm refresh-token hash key. The hash key is derived from the
+/// master key at realm-load time (see `geonosis-server`).
+pub struct OidcIssuer<K: KeyManagementService + ?Sized + 'static> {
+    pub kms: Arc<K>,
+    pub refresh_hash_keys: BTreeMap<RealmId, [u8; 32]>,
+    pub issuer_base: url::Url,
+}
+
+#[async_trait]
+impl<K: KeyManagementService + ?Sized + 'static> TokenIssuer for OidcIssuer<K> {
+    async fn mint_access_token(
+        &self,
+        realm: &Realm,
+        client: &Client,
+        subject: &Subject,
+        session_id: &SessionId,
+        scope: &[ScopeName],
+    ) -> Result<(String, i64), GrantError> {
+        let alg = client
+            .access_token_signing_alg
+            .unwrap_or(realm.token_policy.default_signing_alg);
+        let kid = self
+            .kms
+            .active_signing_kid(realm.id, alg)
+            .await
+            .map_err(|e| GrantError::Internal(e.to_string()))?;
+        let private = self
+            .kms
+            .load_private(&kid)
+            .await
+            .map_err(|e| GrantError::Internal(e.to_string()))?;
+
+        let now = Utc::now();
+        let exp_secs = realm.token_policy.access_token_lifespan.as_secs() as i64;
+        let claims = AccessTokenClaims {
+            iss: issuer_url(&self.issuer_base, &realm.slug),
+            sub: subject.token_sub(),
+            aud: vec![client.client_id.clone()],
+            exp: now.timestamp() + exp_secs,
+            iat: now.timestamp(),
+            jti: geonosis_crypto::random::random_token(),
+            scope: scope
+                .iter()
+                .map(geonosis_core::ScopeName::as_str)
+                .collect::<Vec<_>>()
+                .join(" "),
+            azp: client.client_id.clone(),
+            sid: Some(session_id.to_string()),
+            realm_access: None,
+            resource_access: Default::default(),
+            groups: None,
+            ext: Default::default(),
+        };
+        let header = JwsHeader::new(alg, kid.to_string(), "JWT");
+        let jwt =
+            sign_jwt_compat(&header, &claims, &private).map_err(|e| GrantError::Internal(e))?;
+        Ok((jwt, exp_secs))
+    }
+
+    async fn mint_id_token(
+        &self,
+        realm: &Realm,
+        client: &Client,
+        subject: &Subject,
+        session_id: &SessionId,
+        _scope: &[ScopeName],
+        nonce: Option<&str>,
+    ) -> Result<String, GrantError> {
+        let alg = client
+            .access_token_signing_alg
+            .unwrap_or(realm.token_policy.default_signing_alg);
+        let kid = self
+            .kms
+            .active_signing_kid(realm.id, alg)
+            .await
+            .map_err(|e| GrantError::Internal(e.to_string()))?;
+        let private = self
+            .kms
+            .load_private(&kid)
+            .await
+            .map_err(|e| GrantError::Internal(e.to_string()))?;
+
+        let now = Utc::now();
+        let claims = IdTokenClaims {
+            iss: issuer_url(&self.issuer_base, &realm.slug),
+            sub: subject.token_sub(),
+            aud: vec![client.client_id.clone()],
+            exp: now.timestamp() + realm.token_policy.access_token_lifespan.as_secs() as i64,
+            iat: now.timestamp(),
+            auth_time: now.timestamp(),
+            nonce: nonce.map(str::to_string),
+            azp: client.client_id.clone(),
+            amr: None,
+            acr: None,
+            sid: Some(session_id.to_string()),
+            name: None,
+            preferred_username: None,
+            email: None,
+            email_verified: None,
+        };
+        let header = JwsHeader::new(alg, kid.to_string(), "JWT");
+        sign_jwt_compat(&header, &claims, &private).map_err(GrantError::Internal)
+    }
+
+    fn refresh_hash_key(&self, realm: RealmId) -> [u8; 32] {
+        self.refresh_hash_keys
+            .get(&realm)
+            .copied()
+            // Fallback (should never happen in production): zero-key would
+            // be a security bug; we use a recognizable pattern that tests
+            // can spot.
+            .unwrap_or([0xFEu8; 32])
+    }
+}
+
+fn issuer_url(base: &url::Url, slug: &str) -> String {
+    let mut u = base.clone();
+    let path = format!(
+        "{}/realms/{}",
+        u.path().trim_end_matches('/').trim_end_matches("/realms").trim_end_matches('/'),
+        slug
+    );
+    u.set_path(&path);
+    u.to_string()
+}
+
+fn sign_jwt_compat<T: serde::Serialize>(
+    header: &JwsHeader,
+    claims: &T,
+    key: &PrivateMaterial,
+) -> Result<String, String> {
+    sign_jwt(header, claims, key).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn issuer_url_includes_realm() {
+        let base = url::Url::parse("https://g.example").unwrap();
+        let s = issuer_url(&base, "acme");
+        assert!(s.starts_with("https://g.example"), "got {s}");
+        assert!(s.ends_with("/realms/acme"), "got {s}");
+    }
+}
