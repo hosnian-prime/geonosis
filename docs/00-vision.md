@@ -16,8 +16,13 @@ Management server written in Rust. It provides:
 - **Customizable login UI** and **visually-edited authentication flows**
   with **hot reload** — config, themes, and plugins can change without
   restarting any pod.
-- First-class **multi-pod** operation on **Kubernetes**, with no required
-  cluster middleware beyond Postgres.
+- First-class **multi-pod** operation on **Kubernetes**, with
+  Postgres as the system of record and Redis as the recommended
+  default hot-cache + pub/sub bus. A Redis-free mode (in-process
+  cache + Postgres `LISTEN`/`NOTIFY`) is supported and tested for
+  small or air-gapped installs; a future major release replaces
+  the Redis dependency with **Komino**, an embedded distributed
+  cache (see [`09-cache-invalidation.md`](./09-cache-invalidation.md)).
 
 ## What it is not (Non-goals for v0.1)
 

@@ -129,7 +129,7 @@ pub enum AttributeValidator {
     Options(Vec<String>),                 // discrete enum
     PersonNameProhibitedCharacters,       // emoji, control chars, etc.
     UsernameProhibitedCharacters,
-    UriPattern,                           // accepts URI templates
+    UrlPattern,                           // accepts URI templates per RFC 6570
     Custom { module: WasmModuleId, config: serde_json::Value },
 }
 ```

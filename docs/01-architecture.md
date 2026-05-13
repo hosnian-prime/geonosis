@@ -94,6 +94,7 @@ HTTP ─────────► │   │ axum router│──►│  middle
 | Cache | `geonosis-cache` | `Cache` trait + Redis impl (default), Postgres-NOTIFY-only impl (no-Redis option), Komino impl (future) |
 | Migrations | `geonosis-migrate` | sqlx migrations + expand-contract helpers |
 | OIDC protocol | `geonosis-protocol-oidc` | `/authorize`, `/token`, `/userinfo`, `/logout`, `/.well-known/openid-configuration`, JWKS |
+| OAuth grants | `geonosis-protocol-oauth` | grant-type engines, token mint, PKCE, PAR storage |
 | Auth flow | `geonosis-flow` | Graph executor + serializable DSL |
 | LDAP federation | `geonosis-federation-ldap` | Bind to external LDAP/AD; mirror users on demand |
 | Identity broker | `geonosis-broker` | OIDC and SAML brokering (acts as SP) |
@@ -101,8 +102,11 @@ HTTP ─────────► │   │ axum router│──►│  middle
 | SPI host | `geonosis-spi-host` | Wasmtime + WIT bindings; per-realm sandbox |
 | SPI authoring SDK | `geonosis-spi-api` | Rust bindings for plugin authors; re-exports generated `wit-bindgen` glue |
 | Admin UI | `geonosis-admin-ui` | Leptos SSR + hydration; component slot trait for theming |
+| Admin UI kit | `geonosis-ui-kit` | Shared design-system primitives (`<Button/>`, `<Card/>`, `<Field/>`, tokens) |
 | Theme engine | `geonosis-theme` | Filesystem theme overlay + hot reload watcher |
-| CLI | `geonosis-cli` (`geoctl`) | Operator CLI: realm import/export, plugin install, key rotate |
+| Internationalization | `geonosis-i18n` | Project Fluent (FTL) bundles, locale negotiation, RTL helpers |
+| Benchmarks | `geonosis-bench` | Load profiles (steady-state, spike, MFA-heavy); regression tracking |
+| CLI | `geonosis-cli` (binary `geoctl`) | Operator CLI: realm import/export, plugin install, key rotate |
 | Build tasks | `xtask` | codegen (WIT), dev-server with hot reload, e2e fixtures |
 
 ## Request anatomy: an OIDC `authorize`
@@ -184,6 +188,93 @@ No request is dropped during any of these.
   through to a `Disabled` step if its `requirement` allows.
 - **NOTIFY backlog:** if a pod misses notifications (long stall), it
   drops its cache on reconnect (safe but cold).
+
+## Design principles (SOLID, applied)
+
+Geonosis treats the SOLID principles as load-bearing architectural
+discipline, not slogans. Each principle has a concrete, doc-cited
+realization:
+
+### Single Responsibility
+
+Every crate has one reason to change. The crate map (above) is the
+guarantee: `geonosis-protocol-oidc` changes when OIDC spec interpretation
+changes; `geonosis-flow` changes when the flow DSL changes; they never
+change together. The same applies to entities — `User` does not own
+session state (that's `Session`), and `Session` does not own audit
+events (that's `AuditEvent`).
+
+Practical consequence: a security-only release CAN touch
+`geonosis-crypto` without rebuilding the protocol crate. CI enforces
+this via per-crate test gates.
+
+### Open / Closed
+
+The system is open to extension, closed to modification. The carrier
+is the **provider registry** ([`07-spi-wasm.md`](./07-spi-wasm.md)):
+
+- Built-ins implement the same trait as WASM plugins; both register
+  in the same per-realm list under stable URNs.
+- New authenticators, mappers, federation sources, brokers, validators
+  arrive as plugin uploads — no server release required.
+- The `replaces` field expresses override at the binding layer; core
+  code is untouched.
+
+The flow DSL ([`06-auth-flows.md`](./06-auth-flows.md)) is the second
+carrier: new authentication shapes are new graphs, not new code.
+
+### Liskov Substitution
+
+Any provider implementing a trait MUST be safely substitutable for any
+other. We enforce this two ways:
+
+- **Trait contracts are explicit and test-covered.** Every trait has
+  a conformance test harness; built-ins and example WASM plugins both
+  run against it.
+- **`LookupOutcome::NotFound` is the universal "I don't handle this"
+  signal** across user-storage providers. A WASM REST-backed store
+  is indistinguishable to the dispatcher from the built-in local
+  store.
+
+`Subject` is the substitution gateway at the flow layer: `Local`,
+`External`, `ServiceAccount`, `Agent` variants are interchangeable to
+the token mint code path.
+
+### Interface Segregation
+
+Interfaces are small and concern-specific. Examples:
+
+- `geonosis:authn` is just authentication; mappers don't see it.
+- `geonosis:mapper` transforms claims; doesn't have authn capability.
+- `geonosis:event` listeners can't see private state by accident
+  (host capability gated).
+- The `Cache` trait is read/write/invalidate only — no Redis-isms
+  leak. A `LocalCache` (no Redis) satisfies it.
+- The `KeyManagementService` trait is sign/unwrap/JWK only — no
+  KMS-vendor-specific endpoints. Vault, AWS, GCP all fit.
+
+Resource servers consuming Geonosis tokens depend on
+`geonosis-verify` ([`21-dx-package.md`](./21-dx-package.md)) — a
+tiny crate. They do NOT pull in the server.
+
+### Dependency Inversion
+
+High-level handlers depend on traits; concrete implementations are
+injected. Examples:
+
+- The OIDC `/token` handler depends on `dyn KeyManagementService`,
+  `dyn UserStorageProvider` registry, `dyn Cache`. Swapping Redis
+  for Komino, software keys for Vault Transit, local users for a
+  custom WASM store — none of these touch the handler.
+- The flow executor depends on a `dyn FlowState` repository (Postgres
+  today; a different backend possible).
+- The admin UI depends on the admin REST API contract, not on Rust
+  types. SDKs in TypeScript / Go / Python / Rust all consume the same
+  OpenAPI surface.
+
+This is also what makes Geonosis Cloud
+([`22-cloud-offering.md`](./22-cloud-offering.md)) viable later
+without forking: every concretion is replaceable.
 
 ## Non-goals (architecture-level)
 

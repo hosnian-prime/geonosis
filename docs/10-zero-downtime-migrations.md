@@ -152,9 +152,10 @@ Postgres semantics we rely on:
 - Avoid `ALTER COLUMN ... TYPE` for non-trivial types — write a new
   column.
 
-These are documented as **migration recipes** in
-`docs/migration-recipes.md` (to be added with the first real
-migration).
+A reference of **migration recipes** (per-operation: rename column,
+change type, drop table, etc.) is published alongside the first
+real migration, as comments on the migration files themselves and
+distilled into the engineering-onboarding guide at GA.
 
 ## Configuration & feature flags
 

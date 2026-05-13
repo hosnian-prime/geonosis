@@ -531,7 +531,7 @@ pub enum AttributeValidator {
     Options(Vec<String>),                // discrete enum
     PersonNameProhibitedCharacters,
     UsernameProhibitedCharacters,
-    UriPattern,
+    UrlPattern,                          // RFC 6570 URI template match
     Custom { module: WasmModuleId, config: serde_json::Value },
 }
 
@@ -557,12 +557,19 @@ pub struct IdentityProvider {
     pub id: IdpId,
     pub realm_id: RealmId,
     pub alias: String,                  // "google", "corp-okta"
-    pub kind: IdpKind,                  // Oidc | Saml
+    pub display_name: String,
+    pub kind: IdpKind,                  // Oidc | Saml — non-OIDC OAuth2 (e.g. GitHub) is
+                                        // wrapped by a broker-adapter plugin presenting OIDC-shaped
+                                        // assertions to the core. See 05-identity-broker.md.
     pub config: IdpConfig,              // protocol-specific fields
     pub trust: IdpTrust,                // signing keys / metadata URL
     pub mapper_bindings: Vec<MapperBinding>, // SPI mappers run on the broker assertion
     pub first_login_flow: FlowId,
     pub post_login_flow: Option<FlowId>,
+    pub sync_mode: SyncMode,            // Import | ForceFetch
+    pub link_only: bool,                // never auto-create users; only link to existing
+    pub adapter_urn: Option<String>,    // optional broker-adapter SPI plugin URN
+                                        // (Some(...) for vendor-quirky providers like GitHub/Apple/Microsoft)
     pub enabled: bool,
 }
 
@@ -792,6 +799,445 @@ predicates.
   is its own table.
 - **Soft delete by default** — only audit events are append-only;
   user delete is hard delete unless `retention_policy` says otherwise.
+
+## Appendix — Common type vocabulary
+
+Types referenced by the entities above and across the other docs.
+This list is **normative**: code MUST match these spellings. Where
+a variant set is small, the variants are enumerated; where it's
+large, the canonical doc is cited.
+
+### Identifier newtypes
+
+All ids are `pub struct XxxId(pub Ulid)` (Crockford base32-rendered)
+unless stated otherwise. Newtypes prevent accidental mixing at
+compile time.
+
+```rust
+pub struct RealmId(pub Ulid);
+pub struct UserId(pub Ulid);
+pub struct ClientId(pub Ulid);             // INTERNAL ULID. Distinct from Client.client_id (public OAuth client_id string).
+pub struct RoleId(pub Ulid);
+pub struct GroupId(pub Ulid);
+pub struct OrganizationId(pub Ulid);
+pub struct OrgDomainId(pub Ulid);
+pub struct OrgRoleId(pub Ulid);
+pub struct OrgInvitationId(pub Ulid);
+pub struct FlowId(pub Ulid);
+pub struct NodeId(pub Ulid);               // within a flow graph
+pub struct KeyId(pub Ulid);
+pub struct CredentialId(pub Ulid);
+pub struct IdpId(pub Ulid);
+pub struct SpiBindingId(pub Ulid);
+pub struct WasmModuleId(pub Ulid);
+pub struct EventSinkId(pub Ulid);
+pub struct EventId(pub Ulid);
+pub struct TokenFamilyId(pub Ulid);
+pub struct AgentId(pub Ulid);              // see 18-agent-identity.md
+
+/// Opaque base32-encoded 32-byte random; stored hashed where appropriate.
+pub struct SessionId(pub String);
+pub struct CodeId(pub String);
+pub struct RefreshTokenId(pub String);     // stored hash; never plaintext
+```
+
+`Client.client_id: String` is the **public** OAuth client_id (a
+human-readable string). `ClientId(pub Ulid)` is the **internal**
+primary key. Cross-table references use the ULID; the wire surface
+uses the public string.
+
+### Attribute and profile types
+
+```rust
+pub enum AttributeValue {
+    String(String),
+    StringArray(Vec<String>),
+    Integer(i64),
+    Float(f64),
+    Boolean(bool),
+    Date(NaiveDate),
+    DateTime(DateTime<Utc>),
+}
+
+pub struct PersonName {
+    pub given: Option<String>,
+    pub family: Option<String>,
+    pub middle: Option<String>,
+    pub honorific: Option<String>,
+    pub display: Option<String>,           // explicit override; else computed
+}
+
+/// BCP 47 language tag (e.g. "en", "tr", "az", "de-CH").
+pub struct Locale(pub String);
+
+pub enum RequiredAction {
+    VerifyEmail,
+    UpdatePassword,
+    ConfigureOtp,
+    ConfigureWebauthn,
+    AcceptTerms { version: String },
+    UpdateProfile,
+    Custom(String),                        // "acme:complete-onboarding" etc.
+}
+
+pub enum AttributeRequirement {
+    Always,
+    OnRegistration,
+    Never,
+    Conditional(GuardExpr),
+}
+
+/// Tiny pure-evaluation expression language; same grammar used by flow edges.
+/// AST-parsed at save time, no embedded scripting.
+pub struct GuardExpr(pub String);
+
+pub struct AttributePermissions {
+    pub view: Vec<AttributeAudience>,
+    pub edit: Vec<AttributeAudience>,
+}
+
+pub enum AttributeAudience { User, Admin, Anyone }
+pub enum UnmanagedAttributePolicy { Reject, Allow, Hidden }
+pub struct ScopeName(pub String);          // OAuth scope identifier
+```
+
+### Credential types
+
+```rust
+pub struct CredentialRef {
+    pub id: CredentialId,
+    pub kind: CredentialKind,
+    pub label: Option<String>,             // "iPhone YubiKey"
+    pub created_at: DateTime<Utc>,
+    pub last_used_at: Option<DateTime<Utc>>,
+}
+
+pub enum CredentialKind {
+    Password,
+    Totp,
+    Hotp,
+    WebauthnPlatform,                      // built-in / synced authenticator
+    WebauthnRoaming,                       // security key
+    RecoveryCode,
+    MagicLink,
+    PhoneOtp,
+}
+
+pub struct Credential {
+    pub kind: CredentialKind,
+    pub secret_data: Vec<u8>,              // algorithm-specific encoded form
+    pub config: serde_json::Value,         // per-kind tuning (e.g. argon2id params)
+}
+
+pub struct CredentialInfo {
+    pub id: CredentialId,
+    pub kind: CredentialKind,
+    pub label: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub last_used_at: Option<DateTime<Utc>>,
+    pub revoked: bool,
+}
+
+pub enum ValidationResult {
+    Valid { amr: Vec<Amr> },
+    InvalidCredential,
+    UserDisabled,
+    UserLocked { unlock_at: Option<DateTime<Utc>> },
+    Unsupported,
+}
+
+pub enum Amr {
+    Pwd, Otp, Wbn,                         // password / TOTP|HOTP / WebAuthn
+    Sms, Email,                            // phone OTP / magic link
+    Mfa,                                   // synthetic when two factors satisfied
+    Pop,                                   // proof-of-possession (DPoP / mTLS)
+    Custom(String),
+}
+```
+
+### Subject (flow result)
+
+```rust
+pub enum Subject {
+    Local(UserId),
+    External {
+        idp_alias: String,
+        broker_assertion: BrokerAssertion,
+        candidate_user: Option<UserId>,    // present when matched
+    },
+    ServiceAccount(ClientId),
+    Agent {                                // see 18-agent-identity.md
+        agent_id: AgentId,
+        parent_subject: Box<Subject>,      // delegating principal
+        scopes: Vec<ScopeName>,
+    },
+}
+```
+
+### Federation / broker / IdP types
+
+```rust
+pub struct FederationLink {
+    pub source_urn: String,                // "builtin:user-storage:ldap:corp-ad" or "wasm:..."
+    pub external_id: String,
+    pub external_dn: Option<String>,       // LDAP only
+    pub last_synced_at: DateTime<Utc>,
+}
+
+pub enum IdpKind { Oidc, Saml }
+pub struct IdpConfig(pub serde_json::Value);
+pub struct IdpTrust {
+    pub jwks: Option<serde_json::Value>,
+    pub jwks_uri: Option<Url>,
+    pub saml_signing_certs: Vec<X509Certificate>,
+    pub metadata_url: Option<Url>,
+    pub metadata_refresh_interval: Duration,
+}
+pub enum SyncMode { Import, ForceFetch }
+pub enum MembershipState { Active, Invited, Suspended }
+
+pub struct MapperBinding {
+    pub mapper_urn: String,
+    pub config: serde_json::Value,
+    pub priority: i32,
+}
+
+pub struct BrokerAssertion {
+    pub idp_alias: String,
+    pub external_id: String,
+    pub issuer: String,
+    pub raw: Vec<u8>,
+    pub claims: BTreeMap<String, AttributeValue>,
+    pub tokens: Option<OAuth2TokenSet>,
+    pub received_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+pub struct OAuth2TokenSet {
+    pub access_token: Secret<String>,
+    pub refresh_token: Option<Secret<String>>,
+    pub id_token: Option<Secret<String>>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub scope: Vec<String>,
+}
+
+pub struct OidcIdpConfig { /* per 05-identity-broker.md */ }
+pub struct SamlIdpConfig { /* per 05-identity-broker.md */ }
+```
+
+### Cryptographic / protocol types
+
+```rust
+pub enum JwsAlgorithm {
+    RS256, RS384, RS512,
+    PS256, PS384, PS512,
+    ES256, ES384, ES512,
+    EdDSA,                                 // Ed25519
+    HS256, HS384, HS512,                   // client_secret_jwt only
+}
+
+pub enum KeyAlgorithm { Rs(u16), Es(u16), Ed25519 }
+pub enum KeyUsage { Sig, Enc }
+pub enum KeyState { Active, PreviousActive, Disabled }
+
+pub enum HashAlg { Argon2id }              // v0.1 only allowed
+pub struct Argon2idParams { pub memory_kib: u32, pub iterations: u32, pub parallelism: u32 }
+
+pub enum ClientAuthMethod {
+    ClientSecretBasic, ClientSecretPost, ClientSecretJwt,
+    PrivateKeyJwt, None,                   // None = PKCE-only public clients
+    TlsClientAuth,                         // v0.2
+}
+
+pub enum PkceMode { Required, IfSupported, Off }
+pub enum SenderConstraint { None, Dpop, Mtls }
+pub enum AccessTokenType { Jwt, Opaque }
+pub enum PairwiseSubAlg { None, Sha256Salted }
+pub enum FapiLevel { None, Baseline, Advanced }
+
+pub struct X509Certificate(pub Vec<u8>);   // DER-encoded
+pub enum NameIdFormat { Unspecified, EmailAddress, Persistent, Transient, X509SubjectName }
+pub enum SamlBinding { HttpRedirect, HttpPost, Artifact }
+
+pub struct BlacklistRef {
+    pub source: BlacklistSource,
+    pub last_refreshed: DateTime<Utc>,
+}
+pub enum BlacklistSource { HaveIBeenPwned, LocalFile { path: PathBuf } }
+```
+
+### Provider / SPI types
+
+```rust
+pub enum LookupOutcome<T> {
+    NotFound,                              // delegate to next provider in chain
+    Found(T),
+}
+
+pub struct ProviderCapabilities {
+    pub supports_create: bool,
+    pub supports_update: bool,
+    pub supports_delete: bool,
+    pub supports_credential_validation: bool,
+    pub supports_search: bool,
+    pub readonly_attributes: Vec<String>,
+}
+
+pub struct ProviderContext {
+    pub request_id: String,
+    pub realm_id: RealmId,
+    pub remote_ip: Option<IpAddr>,
+    pub trace_carrier: BTreeMap<String, String>,
+}
+
+pub enum ProviderError {
+    NotFound, Unsupported,
+    ResourceExceeded { kind: ResourceKind },
+    Conflict(String), InvalidConfig(String),
+    NetworkError(String), Timeout,
+    Disabled, Quarantined,
+    Internal(String),
+}
+pub enum ResourceKind { Fuel, Memory, WallClock }
+
+pub enum ProviderOrigin {
+    Builtin,
+    Wasm { module_id: WasmModuleId, alias: String },
+}
+
+pub struct ExternalUser {
+    pub external_id: String,
+    pub username: String,
+    pub email: Option<String>,
+    pub email_verified: bool,
+    pub name: Option<PersonName>,
+    pub attributes: BTreeMap<String, AttributeValue>,
+    pub credentials: Vec<CredentialRef>,
+    pub enabled: bool,
+    pub source_urn: String,                // provider URN that emitted this
+}
+
+pub struct UserDraft {
+    pub username: String,
+    pub email: Option<String>,
+    pub name: Option<PersonName>,
+    pub attributes: BTreeMap<String, AttributeValue>,
+    pub initial_credential: Option<Credential>,
+}
+
+pub struct UserPatch {
+    pub email: Option<Option<String>>,     // outer = "field present", inner = set/unset
+    pub name: Option<Option<PersonName>>,
+    pub attributes: Option<BTreeMap<String, AttributeValue>>,
+    pub enabled: Option<bool>,
+}
+
+pub struct SearchQuery {
+    pub q: Option<String>,                 // tsvector free-text
+    pub username: Option<String>,
+    pub email: Option<String>,
+    pub attributes: BTreeMap<String, String>,
+    pub group_id: Option<GroupId>,
+    pub organization_id: Option<OrganizationId>,
+    pub limit: u32,
+    pub offset: u32,
+}
+
+pub struct SearchPage {
+    pub items: Vec<ExternalUser>,
+    pub total: Option<u64>,                // None when source can't count
+}
+
+pub struct WitInterfaceName(pub String);   // "geonosis:user-storage@0.1.0"
+```
+
+### Auth flow execution types
+
+```rust
+pub struct FlowContext { /* see 06-auth-flows.md */ }
+pub struct CompiledFlow { /* indexed graph + parsed guards */ }
+pub enum StepInput { Submit(FormBody), Resume, IdpCallback(RawCallback) }
+pub enum StepOutput {
+    Render(RenderInstruction),
+    Redirect(Url),
+    Done(Subject),
+    Failed(FlowFailure),
+}
+pub struct RenderInstruction {
+    pub template: String,
+    pub locals: BTreeMap<String, serde_json::Value>,
+    pub csrf: CsrfToken,
+}
+pub struct CsrfToken(pub String);
+pub enum FlowFailure {
+    InvalidCredential,
+    UserDisabled,
+    UserNotFound,
+    ConsentDenied,
+    BrokerError(String),
+    SpiError(ProviderError),
+}
+```
+
+### Cache types
+
+```rust
+pub struct CacheKey { pub realm: RealmId, pub class: CacheClass, pub id: String }
+pub struct CacheKeyPrefix { pub realm: RealmId, pub class: CacheClass }
+pub enum CacheClass {
+    Realm, Client, Flow, Theme, Spi, Jwks, Idp, Federation,
+    User, UserProfile, Organization, Negative,
+}
+pub struct Cached<T> {
+    pub value: Arc<T>,
+    pub fetched_at: Instant,
+    pub ttl: Duration,
+}
+```
+
+### WebAuthn-specific types
+
+```rust
+pub struct Aaguid(pub Uuid);
+pub struct CoseAlgorithm(pub i32);
+pub enum AuthenticatorAttachment { Platform, CrossPlatform }
+pub enum ResidentKey { Preferred, Required, Discouraged }
+pub enum UserVerification { Preferred, Required, Discouraged }
+pub enum Attestation { None, Indirect, Direct, Enterprise }
+```
+
+### Miscellaneous
+
+```rust
+pub enum XFrameOption { Deny, SameOrigin }
+
+pub struct SmtpAuth {
+    pub user: String,
+    pub password: Secret<String>,
+    pub mechanism: SmtpMechanism,
+}
+pub enum SmtpMechanism { Plain, Login, CramMd5 }
+
+pub enum AuthnLevel { Anonymous, Single, Mfa, HardwareBound }
+
+pub struct EventSinkRef(pub EventSinkId);
+pub enum EventSinkKind { Postgres, Webhook, Kafka, Cloud }
+
+/// HTTP origin per RFC 6454 (e.g. "https://app.acme.com").
+/// Distinct from `ProviderOrigin` (built-in vs. WASM provenance);
+/// the two never appear in the same module's name resolution.
+pub struct Origin(pub String);
+```
+
+> **Naming notes** (from doc audit):
+>
+> - `Origin` is **HTTP origin**; `ProviderOrigin` is provider provenance.
+> - `Client.client_id: String` is the **public** OAuth identifier;
+>   `ClientId(Ulid)` is the **internal** primary key. They differ
+>   intentionally; cross-references use the ULID.
+> - `UrlPattern` (a `UserAttributeValidator` variant) is unrelated to
+>   the `UriPattern` of `Client.redirect_uris`. The latter is a
+>   redirect-URI matcher; the former is an RFC 6570 template validator.
 
 ## Decisions and open items
 

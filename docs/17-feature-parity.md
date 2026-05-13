@@ -241,7 +241,7 @@ events, SPI surface, admin API, account console.
 | Sync mode (Import vs ForceFetch) | ✅ | `IdentityProvider.sync_mode` |
 | Issuer overrides / hosted domain | ✅ | per `OidcIdpConfig` |
 | WS-Federation / CAS | 🚫 | non-goal |
-| As-IdP for SAML SPs | 🟡 | v0.2 |
+| As-IdP for SAML SPs | ✅ | v0.1 push; see [`20-saml-idp.md`](./20-saml-idp.md) |
 
 ## User federation
 
@@ -252,7 +252,7 @@ events, SPI surface, admin API, account console.
 | AD-specific (tombstone, sAMAccountName, objectGUID) | ✅ | spec'd |
 | Group sync | ✅ | `GroupSyncConfig` |
 | Kerberos / SPNEGO | 🟡 | v0.2 via `spi-kerberos` |
-| Custom federation source | ✅ | WASM `geonosis:federation@0.1.0` |
+| Custom federation source | ✅ | WASM `geonosis:user-storage@0.1.0` |
 
 ## Authentication flows
 
@@ -341,6 +341,59 @@ events, SPI surface, admin API, account console.
 | Linked accounts (broker) | 🟡 | v0.2 |
 | Org memberships management | 🟡 | v0.2 |
 | GDPR data export / delete | 🟡 | v0.2; `/account/me/export`, `/account/me/delete`, admin-API equivalents. See [`13-observability.md`](./13-observability.md) §End-user privacy & GDPR |
+
+## Agent identity (AI / M2M delegation)
+
+| Feature | Status | Where |
+|---|---|---|
+| First-class `Agent` entity | ✅ | [`18-agent-identity.md`](./18-agent-identity.md) |
+| Token Exchange (RFC 8693) issuance with `act` chain | ✅ | v0.1 |
+| Capability URN namespace | ✅ | `tool:*`, `data:*`, `model:*`, `spend:*`, `time:*`, `custom:*` |
+| Per-agent rate-limit + cost tracking | ✅ | v0.1 entity; cluster-wide enforcement v0.2 |
+| Agent revocation (admin + self-service) | ✅ / 🟡 | Admin v0.1; account-console self-service v0.2 |
+| Agent attestation SPI | 🟡 | v0.2 `geonosis:agent-attestation@0.1.0` |
+| Agent-to-agent delegation chains | 🟡 | v0.3; policy-driven capability reduction per hop |
+| Continuous attestation heartbeats | 🟡 | v0.3 |
+
+## SCIM 2.0 provisioning
+
+| Feature | Status | Where |
+|---|---|---|
+| Inbound (Geonosis as service provider) | 🟡 | v0.2 [`19-scim.md`](./19-scim.md) |
+| Outbound (Geonosis pushes to apps) | 🟡 | v0.2; built-in event listener `builtin:event:scim-outbound` |
+| ServiceProviderConfig + Schemas + ResourceTypes | 🟡 | v0.2 |
+| User + Group + EnterpriseUser | 🟡 | v0.2 |
+| Bulk + PATCH + filter | 🟡 | v0.2 |
+| Per-realm AND per-org SCIM endpoints | 🟡 | v0.2 |
+| Custom mappers via `geonosis:scim-mapper@0.1.0` | 🟡 | v0.2 |
+
+## Developer experience
+
+| Feature | Status | Where |
+|---|---|---|
+| 5-minute quickstart | ✅ | [`21-dx-package.md`](./21-dx-package.md) |
+| Next.js + axum example apps | ✅ | v0.1 |
+| SvelteKit + FastAPI example apps | 🟡 | v0.2 |
+| Spring Boot + Django example apps | 🟡 | v0.3 |
+| 10 task-oriented recipes | ✅ | v0.1; grows in v0.2/v0.3 |
+| `geonosis-verify` Rust crate | 🟡 | v0.2 |
+| OpenAPI spec for admin REST API | 🟡 | v0.2 |
+| Admin SDKs (TS, Python, Go, Rust) | 🟡 | v0.2; auto-generated |
+| Postman / Bruno collection | 🟡 | v0.2 |
+| Test-mode realms | 🟡 | v0.2 |
+| Docs site + Algolia search | 🟡 | v0.2 |
+| Interactive browser playground | 🟡 | v0.3 |
+
+## Managed Cloud strategy
+
+| Feature | Status | Where |
+|---|---|---|
+| Cloud planning compatible with OSS architecture | ✅ | [`22-cloud-offering.md`](./22-cloud-offering.md) |
+| Per-realm metering hooks | 🟡 | v0.2 |
+| Cloud GA (first region) | 🟡 | v0.3 |
+| Plugin marketplace | 🟡 | v0.3 |
+| Geo-routing across regions | 🟡 | v0.3 |
+| Multi-region active-active | 🟡 | v0.4+ design |
 
 ## Tooling & operational features
 
