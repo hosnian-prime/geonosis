@@ -1,0 +1,21 @@
+[package]
+name = "geonosis-spi-host"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "WASM SPI host (wasmtime + WIT) + provider registry."
+
+[lints]
+workspace = true
+
+[dependencies]
+geonosis-core = { path = "../geonosis-core" }
+
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+parking_lot.workspace = true

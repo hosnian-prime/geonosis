@@ -1,0 +1,17 @@
+[package]
+name = "geonosis-saml-types"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Shared SAML 2.0 schema types (used by broker + IdP)."
+
+[lints]
+workspace = true
+
+[dependencies]
+geonosis-core = { path = "../geonosis-core" }
+serde.workspace = true
+chrono.workspace = true
+url.workspace = true

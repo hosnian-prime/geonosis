@@ -1,0 +1,28 @@
+[package]
+name = "geonosis-storage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Storage trait + in-memory impl (Postgres impl deferred to v0.1 PR)."
+
+[lints]
+workspace = true
+
+[dependencies]
+geonosis-core = { path = "../geonosis-core" }
+geonosis-crypto = { path = "../geonosis-crypto" }
+
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+chrono.workspace = true
+tokio.workspace = true
+parking_lot.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+url.workspace = true
