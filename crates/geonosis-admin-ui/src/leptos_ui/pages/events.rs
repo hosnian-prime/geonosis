@@ -1,15 +1,15 @@
-//! `/admin-next/realms/:slug/events` — audit event explorer.
+//! `/admin/realms/{slug}/events` — audit event explorer.
 //!
 //! Plain HTML form GET → re-renders the same page with the filter
-//! reapplied. No hydration: per docs/08-admin-ui.md only the flow
-//! editor is hydrated; filterable list pages stay SSR-only with a
-//! `<form method="get">` so they work without JS.
+//! reapplied. SSR-only per spec §2.14.
 
 use leptos::prelude::*;
 
 use crate::leptos_ui::app::{Page, PageContext};
+use crate::leptos_ui::components::breadcrumb::Crumb;
 use crate::leptos_ui::components::list_table::ListTable;
 use crate::leptos_ui::components::page_header::PageHeader;
+use crate::leptos_ui::components::widgets::EmptyState;
 
 #[derive(Clone, Debug, Default)]
 pub struct EventFilter {
@@ -28,57 +28,54 @@ pub struct EventRow {
 }
 
 #[component]
-pub fn EventsPage(realm_slug: String, filter: EventFilter, rows: Vec<EventRow>) -> impl IntoView {
-    let ctx = PageContext {
-        title: "Audit events".into(),
-        active_section: "events",
-        realm_slug: Some(realm_slug.clone()),
-    };
-    let back = format!("/admin-next/realms/{realm_slug}");
+pub fn EventsPage(
+    realm_slug: String,
+    filter: EventFilter,
+    rows: Vec<EventRow>,
+    ctx: PageContext,
+) -> impl IntoView {
+    let ctx = ctx
+        .with_title("Audit events")
+        .with_section("events")
+        .with_realm(realm_slug.clone())
+        .with_crumbs(vec![
+            Crumb::link("Realms", "/admin/realms"),
+            Crumb::link(realm_slug.clone(), format!("/admin/realms/{realm_slug}")),
+            Crumb::current("Audit events"),
+        ]);
     let action = filter.action.unwrap_or_default();
     let actor = filter.actor.unwrap_or_default();
     let from = filter.from.unwrap_or_default();
     let until = filter.until.unwrap_or_default();
-    let empty = rows.is_empty();
+    let is_empty = rows.is_empty();
+    let form_action = format!("/admin/realms/{realm_slug}/events");
     view! {
         <Page context=ctx>
             <PageHeader
-                title="Audit events"
-                back_href=back
-                subtitle="Append-only forensic stream. Filters apply server-side; results capped at 500."
+                title="Audit events".into()
+                subtitle=Some("Append-only forensic stream. Filters apply server-side; results capped at 500.".into())
             />
-            <form class="gn-filter" method="get">
-                <label>
-                    "Action"
-                    <input type="text" name="action" value=action
-                        placeholder="oidc.token.issued"/>
-                </label>
-                <label>
-                    "Actor"
-                    <input type="text" name="actor" value=actor
-                        placeholder="user / client / system / ULID"/>
-                </label>
-                <label>
-                    "From"
-                    <input type="datetime-local" name="from" value=from/>
-                </label>
-                <label>
-                    "Until"
-                    <input type="datetime-local" name="until" value=until/>
-                </label>
+            <form class="gn-filter-bar" method="get" action=form_action>
+                <input class="gn-input" type="text" name="action" value=action placeholder="action (e.g. user.created)"/>
+                <input class="gn-input" type="text" name="actor" value=actor placeholder="actor kind (user/client/system)"/>
+                <input class="gn-input" type="datetime-local" name="from" value=from/>
+                <input class="gn-input" type="datetime-local" name="until" value=until/>
                 <button type="submit" class="gn-btn">"Apply"</button>
             </form>
-            {if empty {
-                view! { <p class="gn-empty">"No events match the current filter."</p> }.into_any()
+            {if is_empty {
+                view! {
+                    <EmptyState title="No events match this filter".into()
+                        description="Relax the filter or wait for new events to occur.".into()/>
+                }.into_any()
             } else {
                 view! {
                     <ListTable headers=vec!["Occurred at", "Actor", "Action", "Target"]>
                         {rows.into_iter().map(|r| view! {
                             <tr>
-                                <td><time>{r.occurred_at}</time></td>
-                                <td><code>{r.actor}</code></td>
-                                <td>{r.action}</td>
-                                <td><code>{r.target}</code></td>
+                                <td data-label="Occurred at" class="gn-text-subtle">{r.occurred_at}</td>
+                                <td data-label="Actor"><code>{r.actor}</code></td>
+                                <td data-label="Action">{r.action}</td>
+                                <td data-label="Target"><code class="gn-truncate">{r.target}</code></td>
                             </tr>
                         }).collect_view()}
                     </ListTable>
