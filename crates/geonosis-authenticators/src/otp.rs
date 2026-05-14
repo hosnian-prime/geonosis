@@ -16,7 +16,7 @@ use geonosis_core::{Amr, CredentialKind};
 
 use crate::context::AuthnContext;
 use crate::traits::{
-    AuthnError, AuthnInput, AuthnOutput, Authenticator, FailureKind, RenderInstruction,
+    Authenticator, AuthnError, AuthnInput, AuthnOutput, FailureKind, RenderInstruction,
 };
 
 #[derive(Debug, Error)]
@@ -167,7 +167,11 @@ pub fn verify_totp(
 
 /// Generate a TOTP for a fixed point in time — exposed for tests and the
 /// enrollment helper.
-pub fn generate_totp_at(config: &OtpConfig, secret: &[u8], now_unix_secs: u64) -> Result<String, OtpError> {
+pub fn generate_totp_at(
+    config: &OtpConfig,
+    secret: &[u8],
+    now_unix_secs: u64,
+) -> Result<String, OtpError> {
     let step = now_unix_secs / u64::from(config.period_seconds);
     let n = hotp(config.algorithm, secret, step)? % 10u32.pow(config.digits);
     Ok(format!("{:0width$}", n, width = config.digits as usize))
@@ -178,17 +182,20 @@ fn hotp(alg: OtpAlgorithm, secret: &[u8], counter: u64) -> Result<u32, OtpError>
     let bytes = counter.to_be_bytes();
     let mac_bytes: Vec<u8> = match alg {
         OtpAlgorithm::Sha1 => {
-            let mut mac = <Hmac<Sha1>>::new_from_slice(secret).map_err(|e| OtpError::BadKey(e.to_string()))?;
+            let mut mac = <Hmac<Sha1>>::new_from_slice(secret)
+                .map_err(|e| OtpError::BadKey(e.to_string()))?;
             mac.update(&bytes);
             mac.finalize().into_bytes().to_vec()
         }
         OtpAlgorithm::Sha256 => {
-            let mut mac = <Hmac<Sha256>>::new_from_slice(secret).map_err(|e| OtpError::BadKey(e.to_string()))?;
+            let mut mac = <Hmac<Sha256>>::new_from_slice(secret)
+                .map_err(|e| OtpError::BadKey(e.to_string()))?;
             mac.update(&bytes);
             mac.finalize().into_bytes().to_vec()
         }
         OtpAlgorithm::Sha512 => {
-            let mut mac = <Hmac<Sha512>>::new_from_slice(secret).map_err(|e| OtpError::BadKey(e.to_string()))?;
+            let mut mac = <Hmac<Sha512>>::new_from_slice(secret)
+                .map_err(|e| OtpError::BadKey(e.to_string()))?;
             mac.update(&bytes);
             mac.finalize().into_bytes().to_vec()
         }

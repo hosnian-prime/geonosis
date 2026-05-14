@@ -50,6 +50,6 @@ pub use registry::{register_builtins, BuiltinUrn};
 pub use require_action::RequireActionAuthenticator;
 pub use risk_score::{RiskDecision, RiskScoreAuthenticator};
 pub use traits::{
-    AuthnError, AuthnInput, AuthnOutput, Authenticator, FailureKind, RenderInstruction,
+    Authenticator, AuthnError, AuthnInput, AuthnOutput, FailureKind, RenderInstruction,
 };
 pub use webauthn::WebauthnAuthenticator;

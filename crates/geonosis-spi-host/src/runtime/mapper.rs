@@ -117,12 +117,9 @@ impl WasmMapperRuntime {
         // period so the wall-clock budget bounds the call regardless
         // of how slow the underlying instruction stream is.
         let tick_ms = self.engine.config().epoch_tick_ms.max(1);
-        let ticks_needed = (self.limits.wall_clock_ms + tick_ms - 1) / tick_ms;
+        let ticks_needed = self.limits.wall_clock_ms.div_ceil(tick_ms);
         store.set_epoch_deadline(ticks_needed.max(1));
-        store.limiter(|s: &mut HostState| -> &mut dyn wasmtime::ResourceLimiter {
-            &mut s.limiter
-        });
+        store.limiter(|s: &mut HostState| -> &mut dyn wasmtime::ResourceLimiter { &mut s.limiter });
         Ok(store)
     }
 }
-

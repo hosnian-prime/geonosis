@@ -7,13 +7,13 @@ use async_trait::async_trait;
 use parking_lot::RwLock;
 
 use geonosis_broker::{BrokerAuthnState, BrokerLink, IdentityProvider};
+use geonosis_core::id::{AgentId, OrgInvitationId, OrgRoleId};
 use geonosis_core::{
     Agent, Client, ClientId, CodeGrant, CodeId, FlowStateId, Group, GroupId, OrgConsentPolicy,
     OrgDomain, OrgInvitation, OrgMembership, OrgRole, Organization, OrganizationId, Realm, RealmId,
     RefreshToken, RefreshTokenId, Role, RoleId, Session, SessionId, TokenFamilyId, User, UserId,
     UserProfile,
 };
-use geonosis_core::id::{AgentId, OrgInvitationId, OrgRoleId};
 use geonosis_federation_ldap::LdapFederationConfig;
 
 use crate::error::StorageError;
@@ -66,8 +66,7 @@ struct Tables {
     org_invitations_by_token: HashMap<String, OrgInvitationId>,
     org_consent_policies: HashMap<(OrganizationId, ClientId), OrgConsentPolicy>,
     org_idp_bindings: HashMap<(OrganizationId, String), OrgIdpBinding>,
-    saml_persistent_ids:
-        HashMap<(RealmId, UserId, String), crate::traits::SamlPersistentIdRow>,
+    saml_persistent_ids: HashMap<(RealmId, UserId, String), crate::traits::SamlPersistentIdRow>,
 }
 
 pub struct MemoryStorage {
@@ -187,11 +186,7 @@ impl Storage for MemoryStorage {
             .ok_or(StorageError::NotFound)
     }
 
-    async fn get_user_by_email(
-        &self,
-        realm: RealmId,
-        email: &str,
-    ) -> Result<User, StorageError> {
+    async fn get_user_by_email(&self, realm: RealmId, email: &str) -> Result<User, StorageError> {
         let t = self.inner.read();
         let id = t
             .users_by_email
@@ -212,11 +207,7 @@ impl Storage for MemoryStorage {
         Ok(())
     }
 
-    async fn list_users(
-        &self,
-        realm: RealmId,
-        limit: usize,
-    ) -> Result<Vec<User>, StorageError> {
+    async fn list_users(&self, realm: RealmId, limit: usize) -> Result<Vec<User>, StorageError> {
         Ok(self
             .inner
             .read()
@@ -375,7 +366,10 @@ impl Storage for MemoryStorage {
 
     async fn delete_session(&self, id: &SessionId) -> Result<(), StorageError> {
         let mut t = self.inner.write();
-        t.sessions.remove(id).ok_or(StorageError::NotFound).map(|_| ())
+        t.sessions
+            .remove(id)
+            .ok_or(StorageError::NotFound)
+            .map(|_| ())
     }
 
     // ---- Code grant ----
@@ -401,10 +395,7 @@ impl Storage for MemoryStorage {
         Ok(())
     }
 
-    async fn get_refresh_token(
-        &self,
-        id: &RefreshTokenId,
-    ) -> Result<RefreshToken, StorageError> {
+    async fn get_refresh_token(&self, id: &RefreshTokenId) -> Result<RefreshToken, StorageError> {
         let t = self.inner.read();
         t.refresh_tokens
             .get(id)
@@ -514,7 +505,10 @@ impl Storage for MemoryStorage {
 
     async fn delete_flow_state(&self, id: &FlowStateId) -> Result<(), StorageError> {
         let mut t = self.inner.write();
-        t.flow_states.remove(id).ok_or(StorageError::NotFound).map(|_| ())
+        t.flow_states
+            .remove(id)
+            .ok_or(StorageError::NotFound)
+            .map(|_| ())
     }
 
     async fn save_auth_flow(
@@ -522,10 +516,9 @@ impl Storage for MemoryStorage {
         flow: geonosis_flow::FlowDefinition,
     ) -> Result<(), StorageError> {
         let mut t = self.inner.write();
-        if t.auth_flows
-            .values()
-            .any(|f| f.realm_id == flow.realm_id && f.alias == flow.alias && f.version == flow.version)
-            && !t.auth_flows.contains_key(&(flow.realm_id, flow.id))
+        if t.auth_flows.values().any(|f| {
+            f.realm_id == flow.realm_id && f.alias == flow.alias && f.version == flow.version
+        }) && !t.auth_flows.contains_key(&(flow.realm_id, flow.id))
         {
             return Err(StorageError::Conflict(format!(
                 "auth_flow ({}, {}, v{}) already exists",
@@ -727,10 +720,7 @@ impl Storage for MemoryStorage {
     }
 
     // ---- LDAP federation source ----
-    async fn upsert_ldap_source(
-        &self,
-        source: LdapFederationConfig,
-    ) -> Result<(), StorageError> {
+    async fn upsert_ldap_source(&self, source: LdapFederationConfig) -> Result<(), StorageError> {
         let mut t = self.inner.write();
         t.ldap_sources
             .insert((source.realm_id, source.alias.clone()), source);
@@ -764,11 +754,7 @@ impl Storage for MemoryStorage {
             .collect())
     }
 
-    async fn delete_ldap_source(
-        &self,
-        realm: RealmId,
-        alias: &str,
-    ) -> Result<(), StorageError> {
+    async fn delete_ldap_source(&self, realm: RealmId, alias: &str) -> Result<(), StorageError> {
         self.inner
             .write()
             .ldap_sources
@@ -820,11 +806,7 @@ impl Storage for MemoryStorage {
             .collect())
     }
 
-    async fn delete_wasm_module(
-        &self,
-        realm: RealmId,
-        alias: &str,
-    ) -> Result<(), StorageError> {
+    async fn delete_wasm_module(&self, realm: RealmId, alias: &str) -> Result<(), StorageError> {
         self.inner
             .write()
             .wasm_modules
@@ -834,12 +816,10 @@ impl Storage for MemoryStorage {
     }
 
     // ---- SPI bindings ----
-    async fn create_spi_binding(
-        &self,
-        binding: SpiBindingRow,
-    ) -> Result<(), StorageError> {
+    async fn create_spi_binding(&self, binding: SpiBindingRow) -> Result<(), StorageError> {
         let mut t = self.inner.write();
-        t.spi_bindings.insert((binding.realm_id, binding.id), binding);
+        t.spi_bindings
+            .insert((binding.realm_id, binding.id), binding);
         Ok(())
     }
 
@@ -858,15 +838,13 @@ impl Storage for MemoryStorage {
             .collect())
     }
 
-    async fn update_spi_binding(
-        &self,
-        binding: SpiBindingRow,
-    ) -> Result<(), StorageError> {
+    async fn update_spi_binding(&self, binding: SpiBindingRow) -> Result<(), StorageError> {
         let mut t = self.inner.write();
         if !t.spi_bindings.contains_key(&(binding.realm_id, binding.id)) {
             return Err(StorageError::NotFound);
         }
-        t.spi_bindings.insert((binding.realm_id, binding.id), binding);
+        t.spi_bindings
+            .insert((binding.realm_id, binding.id), binding);
         Ok(())
     }
 
@@ -890,10 +868,9 @@ impl Storage for MemoryStorage {
         if t.roles.contains_key(&key) {
             return Err(StorageError::Conflict("role exists".into()));
         }
-        if t.roles
-            .values()
-            .any(|r| r.realm_id == role.realm_id && r.client_id == role.client_id && r.name == role.name)
-        {
+        if t.roles.values().any(|r| {
+            r.realm_id == role.realm_id && r.client_id == role.client_id && r.name == role.name
+        }) {
             return Err(StorageError::Conflict("role name taken".into()));
         }
         t.roles.insert(key, role);
@@ -951,9 +928,7 @@ impl Storage for MemoryStorage {
 
     async fn delete_role(&self, realm: RealmId, id: RoleId) -> Result<(), StorageError> {
         let mut t = self.inner.write();
-        t.roles
-            .remove(&(realm, id))
-            .ok_or(StorageError::NotFound)?;
+        t.roles.remove(&(realm, id)).ok_or(StorageError::NotFound)?;
         // Cascade unassign.
         for v in t.user_roles.values_mut() {
             v.retain(|r| *r != id);
@@ -1036,11 +1011,7 @@ impl Storage for MemoryStorage {
             .ok_or(StorageError::NotFound)
     }
 
-    async fn get_group_by_path(
-        &self,
-        realm: RealmId,
-        path: &str,
-    ) -> Result<Group, StorageError> {
+    async fn get_group_by_path(&self, realm: RealmId, path: &str) -> Result<Group, StorageError> {
         self.inner
             .read()
             .groups
@@ -1179,10 +1150,7 @@ impl Storage for MemoryStorage {
     }
 
     // ---- User Profile schema ----
-    async fn get_user_profile_schema(
-        &self,
-        realm: RealmId,
-    ) -> Result<UserProfile, StorageError> {
+    async fn get_user_profile_schema(&self, realm: RealmId) -> Result<UserProfile, StorageError> {
         Ok(self
             .inner
             .read()
@@ -1192,10 +1160,7 @@ impl Storage for MemoryStorage {
             .unwrap_or_else(|| UserProfile::default_for(realm)))
     }
 
-    async fn save_user_profile_schema(
-        &self,
-        profile: UserProfile,
-    ) -> Result<(), StorageError> {
+    async fn save_user_profile_schema(&self, profile: UserProfile) -> Result<(), StorageError> {
         self.inner
             .write()
             .user_profile_schemas
@@ -1229,11 +1194,7 @@ impl Storage for MemoryStorage {
             .ok_or(StorageError::NotFound)
     }
 
-    async fn get_agent_by_alias(
-        &self,
-        realm: RealmId,
-        alias: &str,
-    ) -> Result<Agent, StorageError> {
+    async fn get_agent_by_alias(&self, realm: RealmId, alias: &str) -> Result<Agent, StorageError> {
         self.inner
             .read()
             .agents
@@ -1318,10 +1279,7 @@ impl Storage for MemoryStorage {
             .ok_or(StorageError::NotFound)
     }
 
-    async fn list_organizations(
-        &self,
-        realm: RealmId,
-    ) -> Result<Vec<Organization>, StorageError> {
+    async fn list_organizations(&self, realm: RealmId) -> Result<Vec<Organization>, StorageError> {
         Ok(self
             .inner
             .read()
@@ -1412,24 +1370,21 @@ impl Storage for MemoryStorage {
         domain: &str,
     ) -> Result<Option<Organization>, StorageError> {
         let t = self.inner.read();
-        let Some(d) = t.org_domains.values().find(|d| {
-            d.realm_id == realm && d.domain == domain && d.verified
-        }) else {
+        let Some(d) = t
+            .org_domains
+            .values()
+            .find(|d| d.realm_id == realm && d.domain == domain && d.verified)
+        else {
             return Ok(None);
         };
-        Ok(t.organizations
-            .get(&(realm, d.organization_id))
-            .cloned())
+        Ok(t.organizations.get(&(realm, d.organization_id)).cloned())
     }
 
-    async fn upsert_org_membership(
-        &self,
-        membership: OrgMembership,
-    ) -> Result<(), StorageError> {
-        self.inner.write().org_memberships.insert(
-            (membership.organization_id, membership.user_id),
-            membership,
-        );
+    async fn upsert_org_membership(&self, membership: OrgMembership) -> Result<(), StorageError> {
+        self.inner
+            .write()
+            .org_memberships
+            .insert((membership.organization_id, membership.user_id), membership);
         Ok(())
     }
 
@@ -1501,11 +1456,7 @@ impl Storage for MemoryStorage {
         Ok(())
     }
 
-    async fn get_org_role(
-        &self,
-        realm: RealmId,
-        id: OrgRoleId,
-    ) -> Result<OrgRole, StorageError> {
+    async fn get_org_role(&self, realm: RealmId, id: OrgRoleId) -> Result<OrgRole, StorageError> {
         self.inner
             .read()
             .org_roles
@@ -1539,11 +1490,7 @@ impl Storage for MemoryStorage {
         Ok(())
     }
 
-    async fn delete_org_role(
-        &self,
-        realm: RealmId,
-        id: OrgRoleId,
-    ) -> Result<(), StorageError> {
+    async fn delete_org_role(&self, realm: RealmId, id: OrgRoleId) -> Result<(), StorageError> {
         self.inner
             .write()
             .org_roles
@@ -1552,10 +1499,7 @@ impl Storage for MemoryStorage {
             .map(|_| ())
     }
 
-    async fn create_org_invitation(
-        &self,
-        invitation: OrgInvitation,
-    ) -> Result<(), StorageError> {
+    async fn create_org_invitation(&self, invitation: OrgInvitation) -> Result<(), StorageError> {
         use geonosis_core::Secret;
         let mut t = self.inner.write();
         // Take the token plaintext for the lookup index. Secret<String> stays
@@ -1600,10 +1544,7 @@ impl Storage for MemoryStorage {
             .collect())
     }
 
-    async fn mark_org_invitation_accepted(
-        &self,
-        id: OrgInvitationId,
-    ) -> Result<(), StorageError> {
+    async fn mark_org_invitation_accepted(&self, id: OrgInvitationId) -> Result<(), StorageError> {
         let mut t = self.inner.write();
         let i = t
             .org_invitations
@@ -1613,10 +1554,7 @@ impl Storage for MemoryStorage {
         Ok(())
     }
 
-    async fn delete_org_invitation(
-        &self,
-        id: OrgInvitationId,
-    ) -> Result<(), StorageError> {
+    async fn delete_org_invitation(&self, id: OrgInvitationId) -> Result<(), StorageError> {
         let mut t = self.inner.write();
         let i = t
             .org_invitations
@@ -1680,17 +1618,11 @@ impl Storage for MemoryStorage {
             .map(|_| ())
     }
 
-    async fn upsert_org_idp_binding(
-        &self,
-        binding: OrgIdpBinding,
-    ) -> Result<(), StorageError> {
-        self.inner
-            .write()
-            .org_idp_bindings
-            .insert(
-                (binding.organization_id, binding.idp_alias.clone()),
-                binding,
-            );
+    async fn upsert_org_idp_binding(&self, binding: OrgIdpBinding) -> Result<(), StorageError> {
+        self.inner.write().org_idp_bindings.insert(
+            (binding.organization_id, binding.idp_alias.clone()),
+            binding,
+        );
         Ok(())
     }
 
@@ -1776,7 +1708,6 @@ impl Storage for MemoryStorage {
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -1912,5 +1843,4 @@ mod tests {
         static C: AtomicU64 = AtomicU64::new(0);
         C.fetch_add(1, Ordering::Relaxed).to_string()
     }
-
 }

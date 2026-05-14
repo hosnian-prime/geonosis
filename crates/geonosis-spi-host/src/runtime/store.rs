@@ -64,7 +64,9 @@ impl ModuleStore {
         // dedicated unsafe-allowed module) can use them.
         let c = Component::new(engine, bytes).map_err(|e| RuntimeError::Compile(e.to_string()))?;
         if let Some(p) = cwasm_path.as_ref() {
-            let bytes_out = c.serialize().map_err(|e| RuntimeError::Compile(e.to_string()))?;
+            let bytes_out = c
+                .serialize()
+                .map_err(|e| RuntimeError::Compile(e.to_string()))?;
             if let Some(parent) = p.parent() {
                 let _ = std::fs::create_dir_all(parent);
             }

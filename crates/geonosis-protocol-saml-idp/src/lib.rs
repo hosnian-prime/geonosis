@@ -27,10 +27,10 @@ pub use logout::{
 };
 pub use post_signature::{verify_post_authn_request_signature, PostSigError};
 pub use redirect::{
-    decode_redirect_payload, verify_redirect_signature, RedirectDecodeError,
-    RedirectSigError, RedirectSignatureCheck, REDIRECT_SIG_ALG_RSA_SHA256,
+    decode_redirect_payload, verify_redirect_signature, RedirectDecodeError, RedirectSigError,
+    RedirectSignatureCheck, REDIRECT_SIG_ALG_RSA_SHA256,
 };
-pub use request::{parse_authn_request, ParsedAuthnRequest, ParseError as AuthnRequestParseError};
+pub use request::{parse_authn_request, ParseError as AuthnRequestParseError, ParsedAuthnRequest};
 pub use sign::{sign_assertion, KeyInfoMaterial, SignError};
 pub use xml::{
     embed_signature, render_signature_block, render_signed_info, serialize_assertion,
@@ -363,10 +363,12 @@ mod tests {
         family: Option<&str>,
         attrs: Vec<(&str, geonosis_core::AttributeValue)>,
     ) -> geonosis_core::User {
-        let mut u = geonosis_core::User::default();
-        u.username = username.into();
-        u.email = email.map(String::from);
-        u.email_verified = email.is_some();
+        let mut u = geonosis_core::User {
+            username: username.into(),
+            email: email.map(String::from),
+            email_verified: email.is_some(),
+            ..geonosis_core::User::default()
+        };
         u.name = Some(geonosis_core::PersonName {
             given: given.map(String::from),
             family: family.map(String::from),
@@ -454,7 +456,13 @@ mod tests {
 
     #[test]
     fn email_givenname_familyname_sources() {
-        let user = user_with("ada", Some("ada@x.com"), Some("Ada"), Some("Lovelace"), vec![]);
+        let user = user_with(
+            "ada",
+            Some("ada@x.com"),
+            Some("Ada"),
+            Some("Lovelace"),
+            vec![],
+        );
         let m = vec![
             SamlAttributeMapping {
                 saml_name: "email".into(),

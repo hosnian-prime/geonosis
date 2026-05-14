@@ -630,7 +630,9 @@ pub async fn list_idp_bindings(
         .list_org_idp_bindings(realm.id, org.id)
         .await
         .map_err(AdminError::from)?;
-    Ok(Json(bindings.into_iter().map(IdpBindingView::from).collect()))
+    Ok(Json(
+        bindings.into_iter().map(IdpBindingView::from).collect(),
+    ))
 }
 
 pub async fn upsert_idp_binding(

@@ -19,8 +19,8 @@ pub mod types;
 
 pub use mapper::{apply_all as apply_mappers, DraftUser, MapperBinding, MapperKind};
 pub use types::{
-    BrokerAssertion, BrokerAuthnState, BrokerError, BrokerLink, ClientAuthMethod,
-    IdentityProvider, IdpConfig, IdpKind, OidcIdpConfig, SamlIdpConfig,
+    BrokerAssertion, BrokerAuthnState, BrokerError, BrokerLink, ClientAuthMethod, IdentityProvider,
+    IdpConfig, IdpKind, OidcIdpConfig, SamlIdpConfig,
 };
 
 #[cfg(feature = "broker-runtime")]
@@ -39,6 +39,4 @@ pub use oidc::{exchange_code, fetch_discovery, fetch_jwks, OidcDiscovery, TokenR
 #[cfg(feature = "broker-runtime")]
 pub use pkce::PkcePair;
 #[cfg(feature = "broker-runtime")]
-pub use saml::{
-    build_authn_request, parse_response, verify_response_signature, SamlResponse,
-};
+pub use saml::{build_authn_request, parse_response, verify_response_signature, SamlResponse};

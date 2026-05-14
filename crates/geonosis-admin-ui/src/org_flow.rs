@@ -107,7 +107,12 @@ pub async fn build_org_claim_for(
     let role_names: Vec<String> = membership
         .roles
         .iter()
-        .filter_map(|rid| all_roles.iter().find(|r| r.id == *rid).map(|r| r.name.clone()))
+        .filter_map(|rid| {
+            all_roles
+                .iter()
+                .find(|r| r.id == *rid)
+                .map(|r| r.name.clone())
+        })
         .collect();
     Ok(Some(OrgClaim {
         alias: org.alias,

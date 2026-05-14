@@ -51,7 +51,8 @@ impl LdapFederationConfig {
     /// substituted into the `{username}` placeholder. The substitution
     /// is RFC 4515 escaped to defeat filter injection.
     pub fn render_user_filter(&self, username: &str) -> String {
-        self.user_filter.replace("{username}", &escape_filter(username))
+        self.user_filter
+            .replace("{username}", &escape_filter(username))
     }
 }
 
@@ -91,7 +92,10 @@ impl AttributeMap {
     /// Used by the `search` module to ask for the minimum set.
     pub fn request_attrs(&self) -> Vec<String> {
         let mut out = vec![self.uid.clone(), self.username.clone()];
-        for v in [&self.email, &self.first_name, &self.last_name].into_iter().flatten() {
+        for v in [&self.email, &self.first_name, &self.last_name]
+            .into_iter()
+            .flatten()
+        {
             out.push(v.clone());
         }
         if let Some(uac) = &self.user_account_control {

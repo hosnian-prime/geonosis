@@ -18,11 +18,11 @@ use axum::Json;
 use chrono::{Duration as ChronoDuration, Utc};
 use serde::Serialize;
 
+use geonosis_core::scope::parse_scope_string;
 use geonosis_core::{
     AuthnLevel, CodeId, GrantType, RefreshToken, RefreshTokenId, ScopeName, Session, SessionId,
     Subject, User, UserId,
 };
-use geonosis_core::scope::parse_scope_string;
 use geonosis_crypto::refresh_token_hash;
 use geonosis_protocol_oauth::{
     assert_grant_permitted, AuthorizationCodeGrant, ClientCredentialsGrant, IssuedTokens,
@@ -93,16 +93,12 @@ pub async fn token(
     let issuer = build_issuer(&state, &realm.slug);
 
     let result: Result<IssuedTokens, OAuthError> = match grant_type {
-        GrantType::AuthorizationCode => {
-            handle_auth_code(&form, &state, &issuer, &client, &realm)
-                .await
-                .map_err(into_oauth_err)
-        }
-        GrantType::RefreshToken => {
-            handle_refresh(&form, &state, &issuer, &client, &realm)
-                .await
-                .map_err(into_oauth_err)
-        }
+        GrantType::AuthorizationCode => handle_auth_code(&form, &state, &issuer, &client, &realm)
+            .await
+            .map_err(into_oauth_err),
+        GrantType::RefreshToken => handle_refresh(&form, &state, &issuer, &client, &realm)
+            .await
+            .map_err(into_oauth_err),
         GrantType::ClientCredentials => {
             let scope = parse_scope_string(form.get("scope").map(String::as_str).unwrap_or(""))
                 .unwrap_or_default();
@@ -229,30 +225,30 @@ async fn handle_refresh(
         .cloned()
         .ok_or_else(|| OAuthError::invalid_request("missing refresh_token"))?;
     let storage_arc: Arc<dyn geonosis_storage::Storage> = state.storage.clone();
-    let outcome =
-        geonosis_protocol_oauth::validate_refresh(&storage_arc, &presented, &state.refresh_hash_key)
-            .await
-            .map_err(|e| match e {
-                geonosis_protocol_oauth::RefreshRotateError::NotFound => {
-                    OAuthError::invalid_grant("unknown refresh token")
-                }
-                geonosis_protocol_oauth::RefreshRotateError::Expired => {
-                    OAuthError::invalid_grant("refresh token expired")
-                }
-                geonosis_protocol_oauth::RefreshRotateError::Reuse => {
-                    // Critical security signal — refresh-token reuse
-                    // means a token leaked or was replayed. Bump the
-                    // counter feeding the `GeonosisTokenReuse` alert
-                    // (severity=critical in
-                    // `deploy/prometheus-rules/geonosis-alerts.yaml`).
-                    state
-                        .metrics
-                        .token_reuse_detected
-                        .inc(&[&realm.slug]);
-                    OAuthError::invalid_grant("refresh token reuse — family burned")
-                }
-                geonosis_protocol_oauth::RefreshRotateError::Storage(s) => server_err(s),
-            })?;
+    let outcome = geonosis_protocol_oauth::validate_refresh(
+        &storage_arc,
+        &presented,
+        &state.refresh_hash_key,
+    )
+    .await
+    .map_err(|e| match e {
+        geonosis_protocol_oauth::RefreshRotateError::NotFound => {
+            OAuthError::invalid_grant("unknown refresh token")
+        }
+        geonosis_protocol_oauth::RefreshRotateError::Expired => {
+            OAuthError::invalid_grant("refresh token expired")
+        }
+        geonosis_protocol_oauth::RefreshRotateError::Reuse => {
+            // Critical security signal — refresh-token reuse
+            // means a token leaked or was replayed. Bump the
+            // counter feeding the `GeonosisTokenReuse` alert
+            // (severity=critical in
+            // `deploy/prometheus-rules/geonosis-alerts.yaml`).
+            state.metrics.token_reuse_detected.inc(&[&realm.slug]);
+            OAuthError::invalid_grant("refresh token reuse — family burned")
+        }
+        geonosis_protocol_oauth::RefreshRotateError::Storage(s) => server_err(s),
+    })?;
     let prior = match outcome {
         geonosis_protocol_oauth::RefreshOutcome::Ok { prior } => prior,
     };
@@ -266,7 +262,11 @@ async fn handle_refresh(
         .mint_access_token(realm, client, &subject, &prior.session_id, &scope)
         .await?;
     let id_token = if scope.iter().any(|s| s.as_str() == "openid") {
-        Some(issuer.mint_id_token(realm, client, &subject, &prior.session_id, &scope, None).await?)
+        Some(
+            issuer
+                .mint_id_token(realm, client, &subject, &prior.session_id, &scope, None)
+                .await?,
+        )
     } else {
         None
     };
@@ -274,7 +274,10 @@ async fn handle_refresh(
     // Rotate the refresh token.
     let new_secret = geonosis_crypto::RefreshTokenSecret::generate();
     let new_token = RefreshToken {
-        id: RefreshTokenId(refresh_token_hash(new_secret.as_str(), &state.refresh_hash_key)),
+        id: RefreshTokenId(refresh_token_hash(
+            new_secret.as_str(),
+            &state.refresh_hash_key,
+        )),
         family_id: prior.family_id,
         realm_id: prior.realm_id,
         client_id: prior.client_id,
@@ -468,10 +471,7 @@ async fn handle_token_exchange(
             .map_err(|e| OAuthError::invalid_request(e.0))?,
         None => original_scope.clone(),
     };
-    if !requested_scope
-        .iter()
-        .all(|s| original_scope.contains(s))
-    {
+    if !requested_scope.iter().all(|s| original_scope.contains(s)) {
         return Err(OAuthError::new(
             geonosis_protocol_oauth::OAuthErrorCode::InvalidScope,
             "requested scope must be a subset of subject_token scope",
@@ -519,7 +519,14 @@ async fn handle_token_exchange(
         audience,
     };
     let (access, exp) = issuer
-        .mint_access_token_with_extras(realm, client, &subject, &session_id, &requested_scope, extras)
+        .mint_access_token_with_extras(
+            realm,
+            client,
+            &subject,
+            &session_id,
+            &requested_scope,
+            extras,
+        )
         .await
         .map_err(into_oauth_err)?;
 
@@ -541,10 +548,7 @@ async fn handle_token_exchange(
 /// Compose the `act` claim per RFC 8693 §2.2. New actor wraps any
 /// prior chain in its own `act` field, preserving the lineage from
 /// the original user all the way to the latest delegating client.
-fn build_actor_chain(
-    actor_sub: String,
-    inner: Option<serde_json::Value>,
-) -> serde_json::Value {
+fn build_actor_chain(actor_sub: String, inner: Option<serde_json::Value>) -> serde_json::Value {
     let mut obj = serde_json::Map::new();
     obj.insert("sub".into(), serde_json::Value::String(actor_sub));
     if let Some(prior) = inner {
@@ -637,4 +641,3 @@ async fn issue_user_tokens(
         session_id,
     })
 }
-

@@ -195,7 +195,7 @@ pub async fn run(client: &AdminClient, cmd: OrgCmd) -> anyhow::Result<()> {
         OrgCmd::List { realm } => {
             let path = format!("/admin/v1/realms/{realm}/orgs");
             let rows: Vec<OrgRow> = client.get(&path).await?;
-            println!("{:<24} {:<32} {}", "ALIAS", "DISPLAY NAME", "ENABLED");
+            println!("{:<24} {:<32} ENABLED", "ALIAS", "DISPLAY NAME");
             for r in rows {
                 println!(
                     "{:<24} {:<32} {}",
@@ -216,15 +216,22 @@ pub async fn run(client: &AdminClient, cmd: OrgCmd) -> anyhow::Result<()> {
                 .await?;
             println!("deleted org realm={realm} alias={alias}");
         }
-        OrgCmd::DomainAdd { realm, alias, domain } => {
+        OrgCmd::DomainAdd {
+            realm,
+            alias,
+            domain,
+        } => {
             let path = format!("/admin/v1/realms/{realm}/orgs/{alias}/domains");
             let body = DomainBody { domain: &domain };
             let _: serde_json::Value = client.post(&path, &body).await?;
             println!("added domain={domain} (unverified) realm={realm} org={alias}");
         }
-        OrgCmd::DomainVerify { realm, alias, domain } => {
-            let path =
-                format!("/admin/v1/realms/{realm}/orgs/{alias}/domains/{domain}/verify");
+        OrgCmd::DomainVerify {
+            realm,
+            alias,
+            domain,
+        } => {
+            let path = format!("/admin/v1/realms/{realm}/orgs/{alias}/domains/{domain}/verify");
             client.post_empty(&path).await?;
             println!("verified domain={domain} realm={realm} org={alias}");
         }
@@ -233,16 +240,27 @@ pub async fn run(client: &AdminClient, cmd: OrgCmd) -> anyhow::Result<()> {
             let rows: serde_json::Value = client.get(&path).await?;
             println!("{}", serde_json::to_string_pretty(&rows)?);
         }
-        OrgCmd::DomainDelete { realm, alias, domain } => {
+        OrgCmd::DomainDelete {
+            realm,
+            alias,
+            domain,
+        } => {
             client
-                .delete(&format!("/admin/v1/realms/{realm}/orgs/{alias}/domains/{domain}"))
+                .delete(&format!(
+                    "/admin/v1/realms/{realm}/orgs/{alias}/domains/{domain}"
+                ))
                 .await?;
             println!("deleted domain={domain} realm={realm} org={alias}");
         }
-        OrgCmd::MemberAdd { realm, alias, user_id } => {
+        OrgCmd::MemberAdd {
+            realm,
+            alias,
+            user_id,
+        } => {
             let path = format!("/admin/v1/realms/{realm}/orgs/{alias}/memberships");
-            let _: serde_json::Value =
-                client.post(&path, &MemberBody { user_id: &user_id }).await?;
+            let _: serde_json::Value = client
+                .post(&path, &MemberBody { user_id: &user_id })
+                .await?;
             println!("added member user_id={user_id} realm={realm} org={alias}");
         }
         OrgCmd::MemberList { realm, alias } => {
@@ -250,13 +268,24 @@ pub async fn run(client: &AdminClient, cmd: OrgCmd) -> anyhow::Result<()> {
             let rows: serde_json::Value = client.get(&path).await?;
             println!("{}", serde_json::to_string_pretty(&rows)?);
         }
-        OrgCmd::MemberRemove { realm, alias, user_id } => {
+        OrgCmd::MemberRemove {
+            realm,
+            alias,
+            user_id,
+        } => {
             client
-                .delete(&format!("/admin/v1/realms/{realm}/orgs/{alias}/memberships/{user_id}"))
+                .delete(&format!(
+                    "/admin/v1/realms/{realm}/orgs/{alias}/memberships/{user_id}"
+                ))
                 .await?;
             println!("removed member user_id={user_id} realm={realm} org={alias}");
         }
-        OrgCmd::Invite { realm, alias, email, invited_by } => {
+        OrgCmd::Invite {
+            realm,
+            alias,
+            email,
+            invited_by,
+        } => {
             let path = format!("/admin/v1/realms/{realm}/orgs/{alias}/invitations");
             let inv: serde_json::Value = client
                 .post(
@@ -269,7 +298,12 @@ pub async fn run(client: &AdminClient, cmd: OrgCmd) -> anyhow::Result<()> {
                 .await?;
             println!("invitation for email={email} token={}", inv["token"]);
         }
-        OrgCmd::IdpBind { realm, alias, idp_alias, priority } => {
+        OrgCmd::IdpBind {
+            realm,
+            alias,
+            idp_alias,
+            priority,
+        } => {
             let path = format!("/admin/v1/realms/{realm}/orgs/{alias}/idps");
             let _: serde_json::Value = client
                 .post(
@@ -283,7 +317,12 @@ pub async fn run(client: &AdminClient, cmd: OrgCmd) -> anyhow::Result<()> {
                 .await?;
             println!("bound idp={idp_alias} → org={alias} priority={priority}");
         }
-        OrgCmd::RoleCreate { realm, alias, name, description } => {
+        OrgCmd::RoleCreate {
+            realm,
+            alias,
+            name,
+            description,
+        } => {
             let path = format!("/admin/v1/realms/{realm}/orgs/{alias}/roles");
             let _: serde_json::Value = client
                 .post(

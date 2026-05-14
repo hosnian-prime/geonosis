@@ -16,7 +16,7 @@ use geonosis_crypto::hash::{ct_eq, token_hash};
 
 use crate::context::AuthnContext;
 use crate::traits::{
-    AuthnError, AuthnInput, AuthnOutput, Authenticator, FailureKind, RenderInstruction,
+    Authenticator, AuthnError, AuthnInput, AuthnOutput, FailureKind, RenderInstruction,
 };
 
 /// `builtin:authn:recovery-code`.
@@ -117,9 +117,18 @@ fn generate_one() -> String {
         .collect();
     format!(
         "{}{}{}{}-{}{}{}{}-{}{}{}{}",
-        chars[0], chars[1], chars[2], chars[3],
-        chars[4], chars[5], chars[6], chars[7],
-        chars[8], chars[9], chars[10], chars[11],
+        chars[0],
+        chars[1],
+        chars[2],
+        chars[3],
+        chars[4],
+        chars[5],
+        chars[6],
+        chars[7],
+        chars[8],
+        chars[9],
+        chars[10],
+        chars[11],
     )
 }
 
@@ -174,8 +183,10 @@ mod tests {
         let storage: Arc<dyn Storage> = Arc::new(MemoryStorage::new());
         let mut u = user(realm);
         let hashes: Vec<String> = codes.iter().map(|c| code_hash(c, &key)).collect();
-        u.attributes
-            .insert("recovery-codes:hashes".into(), AttributeValue::Strings(hashes));
+        u.attributes.insert(
+            "recovery-codes:hashes".into(),
+            AttributeValue::Strings(hashes),
+        );
         let uid = u.id;
         storage.create_user(u).await.unwrap();
         let ctx = AuthnContext {
@@ -246,7 +257,10 @@ mod tests {
             .await
             .unwrap();
         match out {
-            AuthnOutput::Success { credentials_satisfied, .. } => {
+            AuthnOutput::Success {
+                credentials_satisfied,
+                ..
+            } => {
                 assert_eq!(credentials_satisfied, vec![CredentialKind::RecoveryCode]);
             }
             other => panic!("expected Success, got {other:?}"),
@@ -265,7 +279,10 @@ mod tests {
             .process(&mut ctx, AuthnInput::Submit(form))
             .await
             .unwrap();
-        assert!(matches!(out, AuthnOutput::Failure(FailureKind::InvalidCredential)));
+        assert!(matches!(
+            out,
+            AuthnOutput::Failure(FailureKind::InvalidCredential)
+        ));
     }
 
     #[tokio::test]
@@ -277,6 +294,9 @@ mod tests {
             .process(&mut ctx, AuthnInput::Submit(form))
             .await
             .unwrap();
-        assert!(matches!(out, AuthnOutput::Failure(FailureKind::RequiresEnrollment)));
+        assert!(matches!(
+            out,
+            AuthnOutput::Failure(FailureKind::RequiresEnrollment)
+        ));
     }
 }
