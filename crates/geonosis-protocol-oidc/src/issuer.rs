@@ -85,6 +85,10 @@ impl<K: KeyManagementService + ?Sized + 'static> TokenIssuer for OidcIssuer<K> {
             // here because the broker/admin contexts may override it
             // via the `?org=` selector at authorize-time.
             org: None,
+            // `act` chain is only set by the Token Exchange path; the
+            // base `mint_access_token` call is for the user/client
+            // grant flow which has no upstream actor.
+            act: None,
             ext: Default::default(),
         };
         let header = JwsHeader::new(alg, kid.to_string(), "JWT");
@@ -140,6 +144,77 @@ impl<K: KeyManagementService + ?Sized + 'static> TokenIssuer for OidcIssuer<K> {
 
     fn refresh_hash_key(&self, _realm: RealmId) -> [u8; 32] {
         self.refresh_hash_key
+    }
+}
+
+/// Optional non-default fields that handlers (Token Exchange,
+/// organization-scoped login) want injected into the signed access
+/// token. Keeping it as a single struct avoids breaking
+/// `TokenIssuer::mint_access_token` whenever a new claim joins.
+#[derive(Debug, Default, Clone)]
+pub struct AccessTokenExtras {
+    pub org: Option<geonosis_core::OrgClaim>,
+    pub act: Option<serde_json::Value>,
+    pub audience: Option<Vec<String>>,
+}
+
+impl<K: KeyManagementService + ?Sized + 'static> OidcIssuer<K> {
+    /// Mint an access token with caller-provided extras (`org`, `act`,
+    /// explicit audience). Used by the Token Exchange handler and the
+    /// org-aware authorize path. The base trait method keeps its
+    /// simpler signature for the everyday flow.
+    pub async fn mint_access_token_with_extras(
+        &self,
+        realm: &Realm,
+        client: &Client,
+        subject: &Subject,
+        session_id: &SessionId,
+        scope: &[ScopeName],
+        extras: AccessTokenExtras,
+    ) -> Result<(String, i64), GrantError> {
+        let alg = client
+            .access_token_signing_alg
+            .unwrap_or(realm.token_policy.default_signing_alg);
+        let kid = self
+            .kms
+            .active_signing_kid(realm.id, alg)
+            .await
+            .map_err(|e| GrantError::Internal(e.to_string()))?;
+        let private = self
+            .kms
+            .load_private(&kid)
+            .await
+            .map_err(|e| GrantError::Internal(e.to_string()))?;
+
+        let now = Utc::now();
+        let exp_secs = realm.token_policy.access_token_lifespan.as_secs() as i64;
+        let aud = extras
+            .audience
+            .unwrap_or_else(|| vec![client.client_id.clone()]);
+        let claims = AccessTokenClaims {
+            iss: issuer_url(&self.issuer_base, &realm.slug),
+            sub: subject.token_sub(),
+            aud,
+            exp: now.timestamp() + exp_secs,
+            iat: now.timestamp(),
+            jti: geonosis_crypto::random::random_token(),
+            scope: scope
+                .iter()
+                .map(geonosis_core::ScopeName::as_str)
+                .collect::<Vec<_>>()
+                .join(" "),
+            azp: client.client_id.clone(),
+            sid: Some(session_id.to_string()),
+            realm_access: None,
+            resource_access: Default::default(),
+            groups: None,
+            org: extras.org,
+            act: extras.act,
+            ext: Default::default(),
+        };
+        let header = JwsHeader::new(alg, kid.to_string(), "JWT");
+        let jwt = sign_jwt_compat(&header, &claims, &private).map_err(GrantError::Internal)?;
+        Ok((jwt, exp_secs))
     }
 }
 
