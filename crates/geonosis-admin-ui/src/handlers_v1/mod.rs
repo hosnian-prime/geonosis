@@ -29,6 +29,7 @@ pub mod agents;
 pub mod clients;
 pub mod events;
 pub mod extractors;
+pub mod flows;
 pub mod groups;
 pub mod idps;
 pub mod keys;
@@ -203,6 +204,17 @@ pub fn router(state: Arc<AdminState>) -> Router {
         .route(
             "/admin/v1/realms/:slug/orgs/:alias/idps/:idp_alias",
             delete(orgs::remove_idp_binding),
+        )
+        // ---- Flows (dry-run) ----
+        //
+        // GET / PUT for the flow definition itself stays on the legacy
+        // `/admin/v1/realms/:slug/flows/:alias` route in `handlers.rs`
+        // until that endpoint migrates to handlers_v1. The dry-run
+        // sub-resource lives here because it's the first of the v0.1
+        // flow-editor admin endpoints to land on the new surface.
+        .route(
+            "/admin/v1/realms/:slug/flows/:alias/dry-run",
+            post(flows::dry_run_post),
         )
         // ---- Sessions ----
         .route("/admin/v1/realms/:slug/sessions", get(sessions::list))
