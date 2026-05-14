@@ -1,0 +1,15 @@
+[package]
+name = "geonosis-ui-kit"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Maud-based component primitives + design tokens."
+
+[lints]
+workspace = true
+
+[dependencies]
+maud.workspace = true
+serde.workspace = true

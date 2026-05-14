@@ -17,6 +17,10 @@ members = [
     "crates/geonosis-spi-host",
     "crates/geonosis-spi-api",
     "crates/geonosis-audit",
+    "crates/geonosis-ui-kit",
+    "crates/geonosis-theme",
+    "crates/geonosis-i18n",
+    "crates/geonosis-admin-ui",
     "crates/geonosis-server",
     "crates/geonosis-cli",
 ]
@@ -123,3 +127,11 @@ config = { version = "0.14", default-features = false, features = ["toml"] }
 tokio-test = "0.4"
 pretty_assertions = "1"
 proptest = "1"
+
+# Admin UI
+maud = { version = "0.26", features = ["axum"] }
+fluent = "0.16"
+fluent-syntax = "0.11"
+unic-langid = "0.9"
+rust-embed = { version = "8", features = ["debug-embed"] }
+notify = "6"
