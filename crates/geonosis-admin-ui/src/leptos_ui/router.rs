@@ -293,9 +293,10 @@ async fn page_flow_edit(
     let json =
         serde_json::to_string_pretty(&flow).map_err(|e| AdminError::Storage(e.to_string()))?;
     let s = realm.slug;
-    Ok(render(
-        move || view! { <FlowEditPage realm_slug=s alias=alias json=json/> },
-    ))
+    let flow_for_view = Some(flow);
+    Ok(render(move || {
+        view! { <FlowEditPage realm_slug=s alias=alias flow=flow_for_view json=json/> }
+    }))
 }
 
 #[derive(Debug, Deserialize)]
@@ -342,12 +343,19 @@ async fn post_flow_save(
             Ok(Redirect::to(&target).into_response())
         }
         Err(error) => {
+            // Best-effort: try to re-parse the body so the canvas can
+            // still render. If it fails to parse the canvas degrades to
+            // JSON-only — the textarea still shows the operator's
+            // (broken) input so they can fix the validation error.
+            let flow_for_view =
+                serde_json::from_str::<geonosis_flow::FlowDefinition>(&form.definition).ok();
             let s = realm.slug;
             let body = render(move || {
                 view! {
                     <FlowEditPage
                         realm_slug=s
                         alias=alias
+                        flow=flow_for_view
                         json=form.definition
                         error=error
                     />
