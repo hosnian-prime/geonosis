@@ -1,21 +1,9 @@
-//! `geonosis:mapper@0.1.0` invocation glue.
+//! `geonosis:user-profile-validator@0.1.0` invocation glue.
 //!
-//! Per `wit/mapper.wit`, the export signature is:
-//!
-//! ```wit
-//! map-claims: func(
-//!     ctx-realm: string,
-//!     input: list<u8>,            // claim-set as JSON bytes
-//!     config: list<u8>,
-//! ) -> result<list<u8>, plugin-error>;
-//! ```
-//!
-//! We do NOT pull in `wasmtime::component::bindgen!` for v0.1 — the
-//! macro needs the WIT package files at compile time relative to a
-//! fixed root, which complicates the workspace layout. Instead the
-//! runtime looks up the export by name and pins the signature to the
-//! published WIT contract. A version drift surfaces as
-//! `RuntimeError::Plugin("export not found")`.
+//! Single export `validate(attribute, values, config) -> result<_, validation-error>`.
+//! Dispatch mode: NamedAttach — validators bind to specific attribute
+//! names via `AttributeValidator::Custom`; the router runs each
+//! validator once per attribute it's attached to.
 
 use std::sync::Arc;
 
@@ -26,14 +14,14 @@ use crate::runtime::engine::{RuntimeError, WasmEngine};
 use crate::runtime::host_state::HostState;
 use crate::runtime::limits::ResourceLimits;
 
-pub struct WasmMapperRuntime {
+pub struct WasmUserProfileValidatorRuntime {
     engine: Arc<WasmEngine>,
     component: Component,
     component_sha256: String,
     limits: ResourceLimits,
 }
 
-impl WasmMapperRuntime {
+impl WasmUserProfileValidatorRuntime {
     pub fn compile(
         engine: Arc<WasmEngine>,
         wasm_bytes: &[u8],
@@ -52,23 +40,19 @@ impl WasmMapperRuntime {
         &self.component_sha256
     }
 
-    /// Apply the mapper to `claim-set` bytes. The plugin owns the wire
-    /// shape; v0.1 standardises on JSON-encoded UTF-8 so the host
-    /// stays struct-agnostic.
-    pub async fn map_claims(
+    /// Returns `Ok(None)` on success; `Ok(Some(error))` when the
+    /// plugin's validation logic rejected the value. The host distinguishes
+    /// these so a localized `validation-error` can flow into the form
+    /// error display without raising a 5xx.
+    pub async fn validate(
         &self,
         host_state: HostState,
-        realm: &str,
-        input: &[u8],
+        attribute: &str,
+        values: Vec<String>,
         config: &[u8],
-    ) -> Result<Vec<u8>, RuntimeError> {
+    ) -> Result<Option<wire::ValidationError>, RuntimeError> {
         let mut store = self.fresh_store(host_state)?;
         let linker: Linker<HostState> = Linker::new(self.engine.engine());
-        // v0.1 mapper world doesn't import http-client; the canonical
-        // mappers are pure transforms. Logging + secrets imports are
-        // added behind their own feature switch when we wire up the
-        // typed bindgen pipeline.
-
         let instance = linker
             .instantiate_async(&mut store, &self.component)
             .await
@@ -76,14 +60,14 @@ impl WasmMapperRuntime {
 
         let func = instance
             .get_typed_func::<
-                (String, Vec<u8>, Vec<u8>),
-                (Result<Vec<u8>, super::wire_error::Wire>,),
-            >(&mut store, "map-claims")
+                (String, Vec<String>, Vec<u8>),
+                (Result<(), wire::ValidationError>,),
+            >(&mut store, "validate")
             .map_err(|e| RuntimeError::Plugin(format!("export not found: {e}")))?;
 
         let call = func.call_async(
             &mut store,
-            (realm.to_string(), input.to_vec(), config.to_vec()),
+            (attribute.to_string(), values, config.to_vec()),
         );
         let res = tokio::time::timeout(self.limits.wall_clock(), call)
             .await
@@ -97,11 +81,8 @@ impl WasmMapperRuntime {
             .map_err(|e: anyhow::Error| RuntimeError::Call(e.to_string()))?;
 
         match res.0 {
-            Ok(bytes) => Ok(bytes),
-            Err(w) => Err(RuntimeError::Plugin(format!(
-                "{}: {} (retryable={})",
-                w.kind, w.message, w.retryable
-            ))),
+            Ok(()) => Ok(None),
+            Err(ve) => Ok(Some(ve)),
         }
     }
 
@@ -113,9 +94,6 @@ impl WasmMapperRuntime {
             .set_fuel(self.limits.fuel)
             .map_err(|e| RuntimeError::Engine(e.to_string()))?;
         store.epoch_deadline_trap();
-        // Compute the deadline tick count from the configured tick
-        // period so the wall-clock budget bounds the call regardless
-        // of how slow the underlying instruction stream is.
         let tick_ms = self.engine.config().epoch_tick_ms.max(1);
         let ticks_needed = (self.limits.wall_clock_ms + tick_ms - 1) / tick_ms;
         store.set_epoch_deadline(ticks_needed.max(1));
@@ -126,3 +104,14 @@ impl WasmMapperRuntime {
     }
 }
 
+pub mod wire {
+    use wasmtime::component::{ComponentType, Lift, Lower};
+
+    #[derive(Debug, Clone, ComponentType, Lift, Lower)]
+    #[component(record)]
+    pub struct ValidationError {
+        pub attribute: String,
+        pub kind: String,
+        pub message: String,
+    }
+}

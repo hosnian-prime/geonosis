@@ -1,16 +1,21 @@
 //! Server-side `AuthnDispatcher` bridge.
 //!
-//! Connects `geonosis-flow::DefaultExecutor` to the
-//! `BuiltinAuthenticators` registry. The bridge:
-//! 1. Resolves the realm + client from storage.
-//! 2. Constructs an `AuthnContext` from the `FlowState` snapshot.
-//! 3. Maps `StepInput` ↔ `AuthnInput` and `AuthnOutput` ↔
-//!    `AuthnStepOutcome`.
-//! 4. Runs `BuiltinAuthenticators.dispatch(urn, ctx, input)`.
+//! Connects `geonosis-flow::DefaultExecutor` to the v0.1 authenticator
+//! population — built-in trait implementations AND WASM plugins.
+//! Dispatch order:
 //!
-//! WASM-backed authenticators land here in B4 — the same bridge will
-//! delegate to a `WasmAuthnRuntime` when the URN's
-//! `ProviderBinding.origin` is `ProviderOrigin::Wasm`.
+//! 1. Look up the URN in the `ProviderRegistry` (per realm). If a
+//!    binding exists with `ProviderOrigin::Wasm`, load the module
+//!    bytecode from storage and dispatch through
+//!    [`geonosis_spi_host::WasmAuthnRuntime`].
+//! 2. Otherwise fall through to `BuiltinAuthenticators.dispatch(urn)`
+//!    which calls into the in-tree `dyn Authenticator` registered
+//!    under that URN.
+//!
+//! The single `AuthnDispatcher` trait covers BOTH paths — built-in
+//! and WASM authenticators are interchangeable from the flow
+//! executor's perspective. That is the v0.1 promise of doc 07
+//! §"Built-ins-as-plugins".
 
 use std::sync::Arc;
 
@@ -21,6 +26,9 @@ use geonosis_core::Amr;
 use geonosis_flow::authenticator::{AuthnDispatcher, AuthnStepOutcome};
 use geonosis_flow::executor::{FlowError, FlowFailure, RenderInstruction, StepInput};
 use geonosis_flow::state::FlowState;
+use geonosis_spi_host::registry::{ProviderBinding, ProviderOrigin};
+use geonosis_spi_host::runtime::{HostState, ResourceLimits, WasmAuthnRuntime, WasmEngine};
+use geonosis_spi_host::{ProviderRegistry, WitInterfaceName};
 use geonosis_storage::Storage;
 
 use crate::authenticators::BuiltinAuthenticators;
@@ -29,6 +37,12 @@ pub struct BuiltinAuthnDispatcher {
     authenticators: Arc<BuiltinAuthenticators>,
     storage: Arc<dyn Storage>,
     realm_hash_key: [u8; 32],
+    /// `ProviderRegistry` we consult to see if the URN resolves to a
+    /// WASM plugin instead of the in-tree built-in.
+    providers: Arc<ProviderRegistry>,
+    /// Shared wasmtime engine. Cheap to clone (Arc); per-call store
+    /// instances handle the per-realm sandboxing.
+    wasm_engine: Arc<WasmEngine>,
 }
 
 impl BuiltinAuthnDispatcher {
@@ -36,11 +50,15 @@ impl BuiltinAuthnDispatcher {
         authenticators: Arc<BuiltinAuthenticators>,
         storage: Arc<dyn Storage>,
         realm_hash_key: [u8; 32],
+        providers: Arc<ProviderRegistry>,
+        wasm_engine: Arc<WasmEngine>,
     ) -> Self {
         Self {
             authenticators,
             storage,
             realm_hash_key,
+            providers,
+            wasm_engine,
         }
     }
 
@@ -96,6 +114,87 @@ impl BuiltinAuthnDispatcher {
             brute_force: realm.brute_force,
         })
     }
+
+    /// Consult `ProviderRegistry` for a binding matching the URN. The
+    /// caller decides what to do with the binding (built-in vs Wasm
+    /// dispatch). Returns `None` if no binding exists — the dispatcher
+    /// then assumes a built-in URN that lives directly in
+    /// `BuiltinAuthenticators`.
+    fn wasm_binding(&self, realm: geonosis_core::RealmId, urn: &str) -> Option<ProviderBinding> {
+        let iface = WitInterfaceName(WitInterfaceName::AUTHN.into());
+        let bindings = self.providers.list(realm, &iface);
+        bindings
+            .into_iter()
+            .find(|b| b.provider_urn == urn && b.enabled && matches!(b.origin, ProviderOrigin::Wasm { .. }))
+    }
+
+    async fn dispatch_wasm(
+        &self,
+        binding: ProviderBinding,
+        state: &FlowState,
+        input: &StepInput,
+    ) -> Result<AuthnStepOutcome, FlowError> {
+        let ProviderOrigin::Wasm { alias, .. } = &binding.origin else {
+            return Err(FlowError::Internal("non-wasm binding in wasm dispatch".into()));
+        };
+        let module = self
+            .storage
+            .get_wasm_module(state.realm_id, alias)
+            .await
+            .map_err(|e| FlowError::Internal(format!("get_wasm_module: {e}")))?;
+        let runtime = WasmAuthnRuntime::compile(
+            self.wasm_engine.clone(),
+            &module.bytecode,
+            ResourceLimits::authn(),
+        )
+        .map_err(|e| FlowError::Internal(format!("wasm compile: {e}")))?;
+
+        // Serialize FlowContext + form into JSON for the plugin's wire
+        // input. JSON keeps the host struct-agnostic (per doc 07).
+        let ctx_json = serde_json::to_vec(&state.context)
+            .map_err(|e| FlowError::Internal(format!("ctx json: {e}")))?;
+        let form_json = match input {
+            StepInput::Submit(m) => serde_json::to_vec(m),
+            StepInput::IdpCallback(cb) => {
+                let mut merged = cb.query.clone();
+                for (k, v) in &cb.body {
+                    merged.insert(k.clone(), v.clone());
+                }
+                serde_json::to_vec(&merged)
+            }
+            StepInput::Start | StepInput::Resume => Ok(b"{}".to_vec()),
+        }
+        .map_err(|e| FlowError::Internal(format!("form json: {e}")))?;
+        let config_bytes = serde_json::to_vec(&binding.config)
+            .map_err(|e| FlowError::Internal(format!("config json: {e}")))?;
+
+        let host_state = HostState::builder(binding.provider_urn.clone()).build();
+        let realm_str = state.realm_id.to_string();
+        let step_output = runtime
+            .process(host_state, &realm_str, &ctx_json, &form_json, &config_bytes)
+            .await
+            .map_err(|e| FlowError::Internal(format!("wasm process: {e}")))?;
+
+        use geonosis_spi_host::runtime::authn::wire::StepOutput;
+        match step_output {
+            StepOutput::Success(payload) => Ok(AuthnStepOutcome::Success {
+                amr: payload.amr,
+                authn_level_delta: 1,
+                user_id: state.context.user_id.clone(),
+                locals: state.context.locals.clone(),
+            }),
+            StepOutput::Challenge(payload) => {
+                let locals: std::collections::BTreeMap<String, serde_json::Value> =
+                    serde_json::from_slice(&payload.locals).unwrap_or_default();
+                Ok(AuthnStepOutcome::Render(RenderInstruction {
+                    template: payload.template,
+                    locals,
+                }))
+            }
+            StepOutput::Failure(msg) => Ok(AuthnStepOutcome::Failure(FlowFailure::Other(msg))),
+            StepOutput::Skip => Ok(AuthnStepOutcome::Skip),
+        }
+    }
 }
 
 #[async_trait]
@@ -106,16 +205,18 @@ impl AuthnDispatcher for BuiltinAuthnDispatcher {
         state: &FlowState,
         input: &StepInput,
     ) -> Result<AuthnStepOutcome, FlowError> {
+        // 1. WASM path: registry-resolved binding wins over built-ins.
+        if let Some(binding) = self.wasm_binding(state.realm_id, provider_urn) {
+            return self.dispatch_wasm(binding, state, input).await;
+        }
+
+        // 2. Built-in path (the v0.0 behavior).
         let mut ctx = self.build_context(state).await?;
         let authn_input = match input {
             StepInput::Start => AuthnInput::Init,
             StepInput::Resume => AuthnInput::Resume,
             StepInput::Submit(form) => AuthnInput::Submit(form.clone()),
             StepInput::IdpCallback(cb) => {
-                // Flatten the IdP callback's query + body into a single
-                // form-shaped map. The idp-redirect authenticator reads
-                // `code`/`state`/`error` keys; the rest are kept for
-                // future broker-callback authenticators.
                 let mut m = cb.query.clone();
                 for (k, v) in &cb.body {
                     m.insert(k.clone(), v.clone());

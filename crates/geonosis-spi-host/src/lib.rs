@@ -39,5 +39,7 @@ pub use router::{
 #[cfg(feature = "wasm-runtime")]
 pub use runtime::{
     HostAllowlist, HostState, ModuleStore, ResourceLimits, RuntimeError, SandboxConfig,
-    WasmEngine, WasmMapperRuntime,
+    WasmAuthnRuntime, WasmBrokerAdapterRuntime, WasmEngine, WasmEventRuntime,
+    WasmMapperRuntime, WasmPolicyRuntime, WasmUiComponentRuntime,
+    WasmUserProfileValidatorRuntime, WasmUserStorageRuntime,
 };

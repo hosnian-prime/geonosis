@@ -125,6 +125,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         broker_adapters: Arc::new(geonosis_broker::BuiltinAdapters::default()),
         broker: Arc::new(geonosis_server::broker::BrokerRuntime::new()),
         ldap: Arc::new(geonosis_server::ldap::LdapRuntime::new()),
+        wasm_engine: geonosis_spi_host::runtime::WasmEngine::new(
+            geonosis_spi_host::runtime::SandboxConfig::default(),
+        )?,
         metrics: Arc::new(geonosis_server::metrics::MetricsState::new()),
         rate_limiter: Arc::new(
             geonosis_server::rate_limit::PerRealmRateLimiter::default_v0_1(),
