@@ -132,6 +132,77 @@ pub trait Storage: Send + Sync {
         user_id: UserId,
         client_id: ClientId,
     ) -> Result<(), StorageError>;
+
+    // ---- WASM SPI modules ----
+    async fn upload_wasm_module(&self, module: WasmModule) -> Result<(), StorageError>;
+    async fn get_wasm_module(
+        &self,
+        realm: RealmId,
+        alias: &str,
+    ) -> Result<WasmModule, StorageError>;
+    async fn list_wasm_modules(
+        &self,
+        realm: RealmId,
+    ) -> Result<Vec<WasmModuleHeader>, StorageError>;
+    async fn delete_wasm_module(&self, realm: RealmId, alias: &str)
+        -> Result<(), StorageError>;
+
+    // ---- SPI bindings ----
+    async fn create_spi_binding(&self, binding: SpiBindingRow)
+        -> Result<(), StorageError>;
+    async fn list_spi_bindings(
+        &self,
+        realm: RealmId,
+        interface: &str,
+    ) -> Result<Vec<SpiBindingRow>, StorageError>;
+    async fn update_spi_binding(&self, binding: SpiBindingRow)
+        -> Result<(), StorageError>;
+    async fn delete_spi_binding(
+        &self,
+        realm: RealmId,
+        binding_id: geonosis_core::id::SpiBindingId,
+    ) -> Result<(), StorageError>;
+}
+
+/// Stored WASM module — bytecode + metadata for the per-pod loader.
+#[derive(Debug, Clone)]
+pub struct WasmModule {
+    pub id: geonosis_core::id::WasmModuleId,
+    pub realm_id: RealmId,
+    pub alias: String,
+    pub interface: String,
+    pub sha256_hex: String,
+    pub size_bytes: i64,
+    pub bytecode: Vec<u8>,
+    pub uploaded_by: Option<UserId>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// `WasmModule` without the bytecode — used by listing endpoints.
+#[derive(Debug, Clone)]
+pub struct WasmModuleHeader {
+    pub id: geonosis_core::id::WasmModuleId,
+    pub realm_id: RealmId,
+    pub alias: String,
+    pub interface: String,
+    pub sha256_hex: String,
+    pub size_bytes: i64,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Persisted SPI binding row. Mirrors the doc `SpiBinding` shape.
+#[derive(Debug, Clone)]
+pub struct SpiBindingRow {
+    pub id: geonosis_core::id::SpiBindingId,
+    pub realm_id: RealmId,
+    pub interface: String,
+    pub provider_urn: String,
+    pub priority: i32,
+    pub enabled: bool,
+    pub config: serde_json::Value,
+    pub replaces: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 /// Persisted user-level consent grant for a `(user, client)` pair.

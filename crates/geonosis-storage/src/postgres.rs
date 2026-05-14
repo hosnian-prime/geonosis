@@ -24,7 +24,10 @@ use geonosis_core::{
 };
 
 use crate::error::StorageError;
-use crate::traits::{ConsentGrant, DeviceGrant, DeviceGrantStatus, FlowStateRow, ParRequest, Storage};
+use crate::traits::{
+    ConsentGrant, DeviceGrant, DeviceGrantStatus, FlowStateRow, ParRequest, SpiBindingRow,
+    Storage, WasmModule, WasmModuleHeader,
+};
 
 pub struct PostgresStorage {
     pool: PgPool,
@@ -1007,6 +1010,267 @@ impl Storage for PostgresStorage {
         tx.commit().await.map_err(sqlx_err)?;
         Ok(())
     }
+
+    // ---- WASM module store ----
+    async fn upload_wasm_module(&self, m: WasmModule) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, m.realm_id).await?;
+        sqlx::query(
+            "INSERT INTO wasm_module (id, realm_id, alias, interface, sha256_hex,
+                size_bytes, bytecode, uploaded_by, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             ON CONFLICT (realm_id, alias) DO UPDATE SET
+                interface = EXCLUDED.interface,
+                sha256_hex = EXCLUDED.sha256_hex,
+                size_bytes = EXCLUDED.size_bytes,
+                bytecode = EXCLUDED.bytecode,
+                uploaded_by = EXCLUDED.uploaded_by",
+        )
+        .bind(m.id.to_string())
+        .bind(m.realm_id.to_string())
+        .bind(&m.alias)
+        .bind(&m.interface)
+        .bind(&m.sha256_hex)
+        .bind(m.size_bytes)
+        .bind(&m.bytecode)
+        .bind(m.uploaded_by.map(|u| u.to_string()))
+        .bind(m.created_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
+    }
+
+    async fn get_wasm_module(
+        &self,
+        realm: RealmId,
+        alias: &str,
+    ) -> Result<WasmModule, StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let row = sqlx::query(
+            "SELECT * FROM wasm_module WHERE realm_id = $1 AND alias = $2",
+        )
+        .bind(realm.to_string())
+        .bind(alias)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(sqlx_err)?
+        .ok_or(StorageError::NotFound)?;
+        let m = wasm_module_from_row(&row)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(m)
+    }
+
+    async fn list_wasm_modules(
+        &self,
+        realm: RealmId,
+    ) -> Result<Vec<WasmModuleHeader>, StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let rows = sqlx::query(
+            "SELECT id, realm_id, alias, interface, sha256_hex, size_bytes, created_at
+             FROM wasm_module WHERE realm_id = $1 ORDER BY alias ASC",
+        )
+        .bind(realm.to_string())
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        let mut out = Vec::with_capacity(rows.len());
+        for r in &rows {
+            out.push(wasm_module_header_from_row(r)?);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(out)
+    }
+
+    async fn delete_wasm_module(
+        &self,
+        realm: RealmId,
+        alias: &str,
+    ) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let n = sqlx::query("DELETE FROM wasm_module WHERE realm_id = $1 AND alias = $2")
+            .bind(realm.to_string())
+            .bind(alias)
+            .execute(&mut *tx)
+            .await
+            .map_err(sqlx_err)?
+            .rows_affected();
+        if n == 0 {
+            return Err(StorageError::NotFound);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
+    }
+
+    // ---- SPI bindings ----
+    async fn create_spi_binding(
+        &self,
+        b: SpiBindingRow,
+    ) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, b.realm_id).await?;
+        sqlx::query(
+            "INSERT INTO spi_binding (id, realm_id, interface, provider_urn, priority,
+                enabled, replaces, config, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)",
+        )
+        .bind(b.id.to_string())
+        .bind(b.realm_id.to_string())
+        .bind(&b.interface)
+        .bind(&b.provider_urn)
+        .bind(b.priority)
+        .bind(b.enabled)
+        .bind(b.replaces.as_deref())
+        .bind(&b.config)
+        .bind(b.created_at)
+        .bind(b.updated_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
+    }
+
+    async fn list_spi_bindings(
+        &self,
+        realm: RealmId,
+        interface: &str,
+    ) -> Result<Vec<SpiBindingRow>, StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let rows = sqlx::query(
+            "SELECT * FROM spi_binding WHERE realm_id = $1 AND interface = $2
+             ORDER BY priority ASC",
+        )
+        .bind(realm.to_string())
+        .bind(interface)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        let mut out = Vec::with_capacity(rows.len());
+        for r in &rows {
+            out.push(spi_binding_from_row(r)?);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(out)
+    }
+
+    async fn update_spi_binding(
+        &self,
+        b: SpiBindingRow,
+    ) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, b.realm_id).await?;
+        let n = sqlx::query(
+            "UPDATE spi_binding SET priority = $3, enabled = $4, replaces = $5,
+                config = $6, updated_at = now()
+             WHERE realm_id = $1 AND id = $2",
+        )
+        .bind(b.realm_id.to_string())
+        .bind(b.id.to_string())
+        .bind(b.priority)
+        .bind(b.enabled)
+        .bind(b.replaces.as_deref())
+        .bind(&b.config)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?
+        .rows_affected();
+        if n == 0 {
+            return Err(StorageError::NotFound);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
+    }
+
+    async fn delete_spi_binding(
+        &self,
+        realm: RealmId,
+        binding_id: geonosis_core::id::SpiBindingId,
+    ) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let n = sqlx::query("DELETE FROM spi_binding WHERE realm_id = $1 AND id = $2")
+            .bind(realm.to_string())
+            .bind(binding_id.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(sqlx_err)?
+            .rows_affected();
+        if n == 0 {
+            return Err(StorageError::NotFound);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
+    }
+}
+
+fn wasm_module_from_row(row: &sqlx::postgres::PgRow) -> Result<WasmModule, StorageError> {
+    let id: String = row.try_get("id").map_err(sqlx_err)?;
+    let realm_id: String = row.try_get("realm_id").map_err(sqlx_err)?;
+    let alias: String = row.try_get("alias").map_err(sqlx_err)?;
+    let interface: String = row.try_get("interface").map_err(sqlx_err)?;
+    let sha: String = row.try_get("sha256_hex").map_err(sqlx_err)?;
+    let size: i64 = row.try_get("size_bytes").map_err(sqlx_err)?;
+    let bytecode: Vec<u8> = row.try_get("bytecode").map_err(sqlx_err)?;
+    let uploaded_by: Option<String> = row.try_get("uploaded_by").map_err(sqlx_err)?;
+    let created_at: DateTime<Utc> = row.try_get("created_at").map_err(sqlx_err)?;
+    Ok(WasmModule {
+        id: id.parse().map_err(invalid_id)?,
+        realm_id: realm_id.parse().map_err(invalid_id)?,
+        alias,
+        interface,
+        sha256_hex: sha,
+        size_bytes: size,
+        bytecode,
+        uploaded_by: uploaded_by
+            .map(|s| s.parse())
+            .transpose()
+            .map_err(invalid_id)?,
+        created_at,
+    })
+}
+
+fn wasm_module_header_from_row(
+    row: &sqlx::postgres::PgRow,
+) -> Result<WasmModuleHeader, StorageError> {
+    let id: String = row.try_get("id").map_err(sqlx_err)?;
+    let realm_id: String = row.try_get("realm_id").map_err(sqlx_err)?;
+    let alias: String = row.try_get("alias").map_err(sqlx_err)?;
+    let interface: String = row.try_get("interface").map_err(sqlx_err)?;
+    let sha: String = row.try_get("sha256_hex").map_err(sqlx_err)?;
+    let size: i64 = row.try_get("size_bytes").map_err(sqlx_err)?;
+    let created_at: DateTime<Utc> = row.try_get("created_at").map_err(sqlx_err)?;
+    Ok(WasmModuleHeader {
+        id: id.parse().map_err(invalid_id)?,
+        realm_id: realm_id.parse().map_err(invalid_id)?,
+        alias,
+        interface,
+        sha256_hex: sha,
+        size_bytes: size,
+        created_at,
+    })
+}
+
+fn spi_binding_from_row(row: &sqlx::postgres::PgRow) -> Result<SpiBindingRow, StorageError> {
+    let id: String = row.try_get("id").map_err(sqlx_err)?;
+    let realm_id: String = row.try_get("realm_id").map_err(sqlx_err)?;
+    let interface: String = row.try_get("interface").map_err(sqlx_err)?;
+    let provider_urn: String = row.try_get("provider_urn").map_err(sqlx_err)?;
+    let priority: i32 = row.try_get("priority").map_err(sqlx_err)?;
+    let enabled: bool = row.try_get("enabled").map_err(sqlx_err)?;
+    let replaces: Option<String> = row.try_get("replaces").map_err(sqlx_err)?;
+    let config: serde_json::Value = row.try_get("config").map_err(sqlx_err)?;
+    let created_at: DateTime<Utc> = row.try_get("created_at").map_err(sqlx_err)?;
+    let updated_at: DateTime<Utc> = row.try_get("updated_at").map_err(sqlx_err)?;
+    Ok(SpiBindingRow {
+        id: id.parse().map_err(invalid_id)?,
+        realm_id: realm_id.parse().map_err(invalid_id)?,
+        interface,
+        provider_urn,
+        priority,
+        enabled,
+        config,
+        replaces,
+        created_at,
+        updated_at,
+    })
 }
 
 fn authn_level_to_str(level: geonosis_core::AuthnLevel) -> &'static str {

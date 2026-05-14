@@ -1,0 +1,44 @@
+// Host imports — what the runtime hands to every plugin.
+
+package geonosis:host@0.1.0;
+
+interface logging {
+    enum log-level { trace, debug, info, warn, error }
+    log: func(level: log-level, msg: string);
+}
+
+interface secrets {
+    /// Resolve a secret declared in the provider's config under a named
+    /// key. The host knows the binding; the plugin never sees raw env
+    /// or filesystem state.
+    read: func(key: string) -> result<list<u8>, string>;
+}
+
+interface http-client {
+    record http-header {
+        name: string,
+        value: string,
+    }
+
+    record http-request {
+        method: string,
+        url: string,
+        headers: list<http-header>,
+        body: option<list<u8>>,
+    }
+
+    record http-response {
+        status: u16,
+        headers: list<http-header>,
+        body: list<u8>,
+    }
+
+    /// Egress is gated by an allowlist owned by the host.
+    request: func(req: http-request) -> result<http-response, string>;
+}
+
+world host {
+    import logging;
+    import secrets;
+    import http-client;
+}

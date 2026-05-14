@@ -1,0 +1,25 @@
+// `geonosis:mapper@0.1.0` — claim transformation interface.
+// Dispatch mode: Chain.
+
+package geonosis:mapper@0.1.0;
+
+interface mapper {
+    use geonosis:types/types@0.1.0.{provider-info, plugin-error, claim-set};
+
+    describe: func() -> provider-info;
+
+    /// Given the current claim set + the binding's config bytes,
+    /// return the next claim set. Mappers MUST be deterministic and
+    /// side-effect free.
+    map-claims: func(
+        ctx-realm: string,
+        input: claim-set,
+        config: list<u8>,
+    ) -> result<claim-set, plugin-error>;
+}
+
+world mapper-provider {
+    import geonosis:host/logging@0.1.0;
+    import geonosis:host/secrets@0.1.0;
+    export mapper;
+}

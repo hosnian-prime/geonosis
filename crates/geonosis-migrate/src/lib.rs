@@ -144,7 +144,7 @@ mod tests {
             .collect();
         // Each `.up.sql` is one migration; sqlx strips the timestamp
         // prefix into the description.
-        assert_eq!(names.len(), 8, "migrations: {names:?}");
+        assert_eq!(names.len(), 9, "migrations: {names:?}");
         for n in &names {
             eprintln!("migration: {n}");
         }
