@@ -34,6 +34,10 @@ pub fn router(state: AppState) -> Router {
             "/realms/:slug/protocol/saml/sso",
             get(handlers::saml_sso_get).post(handlers::saml_sso_post),
         )
+        .route(
+            "/realms/:slug/protocol/saml/slo",
+            post(handlers::saml_slo_post),
+        )
         // Prometheus exposition endpoint — `docs/13-observability.md`.
         .route(
             "/metrics",

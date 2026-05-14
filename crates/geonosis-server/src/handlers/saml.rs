@@ -133,6 +133,131 @@ async fn build_signing_certs(
 }
 
 #[derive(Debug, serde::Deserialize)]
+pub struct SamlSloForm {
+    #[serde(rename = "SAMLRequest", default)]
+    pub saml_request: String,
+    #[serde(rename = "RelayState", default)]
+    pub relay_state: Option<String>,
+}
+
+/// `POST /realms/:slug/protocol/saml/slo` — SP-initiated SLO entry
+/// via the HTTP-POST binding.
+///
+/// v0.1 handles single-session revocation:
+/// 1. Parse the LogoutRequest, validate Issuer matches the
+///    registered SP.
+/// 2. Look up the realm session via the request's `SessionIndex`
+///    (which the SAML branch wrote as the local Geonosis
+///    `SessionId` per `SessionIndexStrategy::UseSessionId`).
+/// 3. Delete the session (clearing all OIDC + SAML state).
+/// 4. Return a signed `<LogoutResponse>` to the SP's
+///    `slo_url`, base64'd, via the same ACS auto-POST form
+///    pattern.
+///
+/// Multi-SP front-channel propagation (logout fan-out across every
+/// SP the user was logged into in that session) lands in v0.1.x
+/// once per-SP session participation is tracked on
+/// `Session.clients`.
+pub async fn slo_post(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    Form(form): Form<SamlSloForm>,
+) -> Response {
+    use geonosis_protocol_saml_idp::{parse_logout_request, serialize_logout_response};
+
+    let realm = match state.storage.get_realm_by_slug(&slug).await {
+        Ok(r) => r,
+        Err(_) => return reject("realm not found", StatusCode::NOT_FOUND),
+    };
+    if form.saml_request.is_empty() {
+        return reject("missing SAMLRequest", StatusCode::BAD_REQUEST);
+    }
+    let xml_bytes = match B64.decode(form.saml_request.as_bytes()) {
+        Ok(b) => b,
+        Err(e) => {
+            return reject(
+                &format!("SAMLRequest base64 decode failed: {e}"),
+                StatusCode::BAD_REQUEST,
+            )
+        }
+    };
+    let parsed = match parse_logout_request(&xml_bytes) {
+        Ok(p) => p,
+        Err(e) => {
+            return reject(
+                &format!("LogoutRequest parse failed: {e}"),
+                StatusCode::BAD_REQUEST,
+            )
+        }
+    };
+
+    // Resolve SP by Issuer.
+    let client = match state
+        .storage
+        .get_client_by_client_id(realm.id, &parsed.issuer)
+        .await
+    {
+        Ok(c) => c,
+        Err(_) => {
+            return reject(
+                &format!("unknown SP Issuer {}", parsed.issuer),
+                StatusCode::BAD_REQUEST,
+            )
+        }
+    };
+    if !matches!(client.kind, geonosis_core::ClientKind::SamlServiceProvider) {
+        return reject(
+            "client is not registered as a SAML SP",
+            StatusCode::BAD_REQUEST,
+        );
+    }
+    let raw_config = match &client.saml_sp_config {
+        Some(v) => v,
+        None => return reject("SP has no saml_sp_config", StatusCode::BAD_REQUEST),
+    };
+    let sp_config = match SamlSpClientConfig::try_from_value(raw_config) {
+        Ok(c) => c,
+        Err(e) => {
+            return reject(
+                &format!("invalid SP config: {e}"),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
+    };
+
+    // Revoke the session. The SAML branch wrote the local
+    // SessionId as the SAML SessionIndex, so the look-up is direct.
+    if let Some(session_index) = parsed.session_index.as_deref() {
+        let session_id = geonosis_core::SessionId(session_index.to_string());
+        let _ = state.storage.delete_session(&session_id).await;
+    }
+
+    // Build a signed LogoutResponse. SLO destination = the SP's
+    // slo_url. v0.1 emits unsigned LogoutResponse here — signing
+    // the response itself lands once the LogoutRequest signature
+    // verification path does in v0.1.x (the same DSig harness).
+    let response_id = format!("_slo_{}", geonosis_crypto::random::random_token());
+    let issuer_base = state.public_base_url.as_str().trim_end_matches('/');
+    let idp_issuer = format!("{issuer_base}/realms/{}", realm.slug);
+    let slo_destination = sp_config
+        .slo_url
+        .as_ref()
+        .map(|u| u.as_str().to_string())
+        .unwrap_or_else(|| format!("{}/slo", sp_config.entity_id));
+    let response_xml = serialize_logout_response(
+        &response_id,
+        chrono::Utc::now(),
+        &idp_issuer,
+        &slo_destination,
+        &parsed.id,
+    );
+    let response_b64 = B64.encode(response_xml.as_bytes());
+
+    let html = acs_auto_post_form(&slo_destination, &response_b64, form.relay_state.as_deref());
+    Html(html).into_response()
+}
+
+#[derive(Debug, serde::Deserialize)]
 pub struct SamlSsoForm {
     #[serde(rename = "SAMLRequest", default)]
     pub saml_request: String,
