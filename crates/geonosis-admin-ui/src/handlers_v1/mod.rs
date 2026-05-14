@@ -26,21 +26,59 @@ use axum::Router;
 use crate::state::AdminState;
 
 pub mod agents;
+pub mod clients;
 pub mod events;
 pub mod extractors;
 pub mod groups;
 pub mod idps;
 pub mod keys;
 pub mod orgs;
+pub mod realms;
 pub mod roles;
 pub mod sessions;
 pub mod user_profile;
+pub mod users;
 
 /// Build the v1 admin REST sub-router. Composed into
 /// `geonosis_admin_ui::router` so the existing `/admin/v1/realms/...`
 /// surface keeps responding from one place.
 pub fn router(state: Arc<AdminState>) -> Router {
     Router::new()
+        // ---- Realms (top-level — no realm slug in path) ----
+        .route(
+            "/admin/v1/realms",
+            get(realms::list).post(realms::create),
+        )
+        .route(
+            "/admin/v1/realms/:slug",
+            get(realms::get).put(realms::update).delete(realms::delete_),
+        )
+        // ---- Clients (OIDC + SAML SP) ----
+        .route(
+            "/admin/v1/realms/:slug/clients",
+            get(clients::list).post(clients::create),
+        )
+        .route(
+            "/admin/v1/realms/:slug/clients/:client_id",
+            get(clients::get).put(clients::update).delete(clients::delete_),
+        )
+        // ---- Users ----
+        .route(
+            "/admin/v1/realms/:slug/users",
+            get(users::list).post(users::create),
+        )
+        .route(
+            "/admin/v1/realms/:slug/users/:username",
+            get(users::get).put(users::update).delete(users::delete_),
+        )
+        .route(
+            "/admin/v1/realms/:slug/users/:username/verify-email",
+            post(users::verify_email),
+        )
+        .route(
+            "/admin/v1/realms/:slug/users/:username/password",
+            put(users::set_password),
+        )
         // ---- User profile (single schema per realm) ----
         .route(
             "/admin/v1/realms/:slug/user-profile",

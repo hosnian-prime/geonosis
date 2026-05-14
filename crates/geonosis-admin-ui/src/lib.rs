@@ -58,20 +58,12 @@ pub fn router(state: AdminState) -> Router {
             "/admin/realms/:slug/events",
             get(handlers::page_events_html),
         )
-        // REST API.
-        .route("/admin/v1/realms", get(handlers::api_realms_list))
-        .route(
-            "/admin/v1/realms/:slug",
-            get(handlers::api_realm_get),
-        )
-        .route(
-            "/admin/v1/realms/:slug/clients",
-            get(handlers::api_clients_list),
-        )
-        .route(
-            "/admin/v1/realms/:slug/users",
-            get(handlers::api_users_list),
-        )
+        // REST API — only the routes not yet superseded by
+        // handlers_v1 live here. realms/clients/users have moved
+        // into handlers_v1 (full CRUD); the legacy list-only
+        // handlers stay reachable only via the Maud-rendered HTML
+        // pages above. /spi list + /flows GET/PUT remain here until
+        // handlers_v1 absorbs them.
         .route(
             "/admin/v1/realms/:slug/spi",
             get(handlers::api_spi_list),
