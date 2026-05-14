@@ -275,20 +275,87 @@ pub async fn sso_post(
     handle_sso(state, slug, form).await
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct SamlSsoQuery {
+    #[serde(rename = "SAMLRequest", default)]
+    pub saml_request: String,
+    #[serde(rename = "RelayState", default)]
+    pub relay_state: Option<String>,
+    /// `SigAlg` + `Signature` query params (the
+    /// Redirect-binding signed-request envelope). v0.1 records them
+    /// for G3's verification path; this commit lands the decode
+    /// chain only.
+    #[serde(default, rename = "SigAlg")]
+    pub _sig_alg: Option<String>,
+    #[serde(default, rename = "Signature")]
+    pub _signature: Option<String>,
+}
+
 /// `GET /realms/:slug/protocol/saml/sso` — HTTP-Redirect binding
-/// landing. v0.1 returns a structured error explaining the
-/// DEFLATE-decode path is v0.1.x; SPs configured for POST binding
-/// hit `sso_post` above and work end-to-end.
+/// entry. The `SAMLRequest` query parameter is base64'd DEFLATE-
+/// compressed XML per SAML 2.0 Bindings §3.4.4; we decode in place
+/// and re-enter the common SSO dispatch.
 pub async fn sso_get(
     State(state): State<AppState>,
     Path(slug): Path<String>,
+    axum::extract::Query(q): axum::extract::Query<SamlSsoQuery>,
 ) -> Response {
-    let _ = state.storage.get_realm_by_slug(&slug).await;
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        "HTTP-Redirect binding (DEFLATE-encoded SAMLRequest) lands in v0.1.x — configure your SP to use the HTTP-POST binding for now.",
-    )
-        .into_response()
+    if q.saml_request.is_empty() {
+        return reject("missing SAMLRequest", StatusCode::BAD_REQUEST);
+    }
+    let xml = match geonosis_protocol_saml_idp::decode_redirect_payload(
+        &q.saml_request,
+        REDIRECT_BINDING_DECOMPRESS_CAP,
+    ) {
+        Ok(b) => b,
+        Err(e) => {
+            return reject(
+                &format!("Redirect-binding decode failed: {e}"),
+                StatusCode::BAD_REQUEST,
+            )
+        }
+    };
+    // Hand the decoded XML to the same handler the POST binding
+    // uses — wrap it in the POST-binding shape with the bytes
+    // already in XML form (re-base64 so the inner decoder is a
+    // no-op).
+    let form = SamlSsoForm {
+        saml_request: base64::engine::general_purpose::STANDARD.encode(&xml),
+        relay_state: q.relay_state,
+    };
+    handle_sso(state, slug, form).await
+}
+
+const REDIRECT_BINDING_DECOMPRESS_CAP: usize = 64 * 1024;
+
+/// `GET /realms/:slug/protocol/saml/slo` — Redirect-binding logout
+/// entry. Same decode chain as `sso_get`, dispatched into the
+/// common SLO handler.
+pub async fn slo_get(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    axum::extract::Query(q): axum::extract::Query<SamlSsoQuery>,
+) -> Response {
+    if q.saml_request.is_empty() {
+        return reject("missing SAMLRequest", StatusCode::BAD_REQUEST);
+    }
+    let xml = match geonosis_protocol_saml_idp::decode_redirect_payload(
+        &q.saml_request,
+        REDIRECT_BINDING_DECOMPRESS_CAP,
+    ) {
+        Ok(b) => b,
+        Err(e) => {
+            return reject(
+                &format!("Redirect-binding decode failed: {e}"),
+                StatusCode::BAD_REQUEST,
+            )
+        }
+    };
+    let form = SamlSloForm {
+        saml_request: base64::engine::general_purpose::STANDARD.encode(&xml),
+        relay_state: q.relay_state,
+    };
+    slo_post(State(state), Path(slug), Form(form)).await
 }
 
 async fn handle_sso(state: AppState, slug: String, form: SamlSsoForm) -> Response {

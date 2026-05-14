@@ -69,3 +69,4 @@ tokio.workspace = true
 ed25519-dalek.workspace = true
 pkcs8.workspace = true
 rand.workspace = true
+flate2.workspace = true
