@@ -29,6 +29,9 @@ services:
       - "5432:5432"
 
   geonosis:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
     image: ghcr.io/hosnian-prime/geonosis-server:0.1.0
     depends_on:
       postgres:
