@@ -132,6 +132,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         rate_limiter: Arc::new(
             geonosis_server::rate_limit::PerRealmRateLimiter::default_v0_1(),
         ),
+        draining: Arc::new(std::sync::atomic::AtomicBool::new(false)),
     };
 
     // Spawn the cache invalidation listener + audit-retention runner
