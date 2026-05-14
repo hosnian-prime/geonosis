@@ -114,6 +114,9 @@ wit-bindgen = "0.36"
 # LDAP
 ldap3 = { version = "0.11", default-features = false, features = ["tls-rustls"] }
 
+# Redis — feature-gated as v0.1 default cache backend per doc 09.
+redis = { version = "0.27", default-features = false, features = ["tokio-rustls-comp", "aio", "connection-manager"] }
+
 # Outbound HTTP — OIDC discovery, JWKS, broker token exchange, vendor
 # userinfo composition, and the SPI host's WASM `http-client` import.
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip"] }
