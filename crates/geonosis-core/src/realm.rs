@@ -207,6 +207,102 @@ pub enum PasswordRule {
     BlacklistRegex { pattern: String },
 }
 
+/// Outcome of running [`PasswordPolicy::validate`].
+///
+/// `violations` is empty on success and populated with a stable code
+/// per failed rule otherwise. The codes mirror the variant names of
+/// [`PasswordRule`] in kebab-case so error responses stay
+/// machine-readable.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PasswordPolicyReport {
+    pub violations: Vec<String>,
+}
+
+impl PasswordPolicyReport {
+    pub fn is_ok(&self) -> bool {
+        self.violations.is_empty()
+    }
+}
+
+impl PasswordPolicy {
+    /// Evaluate every input-time rule against `password`. Rules that
+    /// only apply at credential-store time (HashIterations,
+    /// HashAlgorithm, PasswordHistory, Pwned, Expire) are evaluated
+    /// elsewhere — this function only reports the rules a write-path
+    /// handler can decide on synchronously from the supplied
+    /// (password, username, email) tuple.
+    ///
+    /// Per `docs/02-data-model.md` §"Password policy" violations
+    /// MUST stop the credential write before the hash is computed.
+    pub fn validate(
+        &self,
+        password: &str,
+        username: &str,
+        email: Option<&str>,
+    ) -> PasswordPolicyReport {
+        let mut violations: Vec<String> = Vec::new();
+        for rule in &self.rules {
+            match rule {
+                PasswordRule::Length { min } => {
+                    if (password.chars().count() as u32) < *min {
+                        violations.push("length".into());
+                    }
+                }
+                PasswordRule::SpecialChars { min } => {
+                    let n = password
+                        .chars()
+                        .filter(|c| !c.is_alphanumeric() && !c.is_whitespace())
+                        .count() as u32;
+                    if n < *min {
+                        violations.push("special-chars".into());
+                    }
+                }
+                PasswordRule::UpperCase { min } => {
+                    let n = password.chars().filter(|c| c.is_uppercase()).count() as u32;
+                    if n < *min {
+                        violations.push("upper-case".into());
+                    }
+                }
+                PasswordRule::LowerCase { min } => {
+                    let n = password.chars().filter(|c| c.is_lowercase()).count() as u32;
+                    if n < *min {
+                        violations.push("lower-case".into());
+                    }
+                }
+                PasswordRule::Digits { min } => {
+                    let n = password.chars().filter(|c| c.is_ascii_digit()).count() as u32;
+                    if n < *min {
+                        violations.push("digits".into());
+                    }
+                }
+                PasswordRule::NotUsername => {
+                    if !username.is_empty()
+                        && password.eq_ignore_ascii_case(username)
+                    {
+                        violations.push("not-username".into());
+                    }
+                }
+                PasswordRule::NotEmail => {
+                    if let Some(e) = email {
+                        if !e.is_empty() && password.eq_ignore_ascii_case(e) {
+                            violations.push("not-email".into());
+                        }
+                    }
+                }
+                // The remaining variants are credential-store / login
+                // time concerns; the validator is a no-op for them.
+                PasswordRule::HashIterations { .. }
+                | PasswordRule::HashAlgorithm { .. }
+                | PasswordRule::PasswordHistory { .. }
+                | PasswordRule::Pwned
+                | PasswordRule::Expire { .. }
+                | PasswordRule::BlacklistRegex { .. } => {}
+            }
+        }
+        PasswordPolicyReport { violations }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OtpPolicy {
     pub kind: OtpKind,
@@ -406,5 +502,56 @@ mod tests {
         let back: Realm = serde_json::from_str(&j).unwrap();
         assert_eq!(back.slug, "acme");
         assert_eq!(back.token_policy.auth_code_lifespan, Duration::from_secs(60));
+    }
+
+    #[test]
+    fn password_policy_default_rejects_short_password() {
+        let policy = PasswordPolicy::default();
+        let r = policy.validate("short", "alice", Some("alice@example.com"));
+        assert!(!r.is_ok());
+        assert!(r.violations.contains(&"length".to_string()));
+    }
+
+    #[test]
+    fn password_policy_default_accepts_strong_password() {
+        let policy = PasswordPolicy::default();
+        let r = policy.validate("supersecret-1", "alice", Some("alice@example.com"));
+        assert!(r.is_ok(), "violations = {:?}", r.violations);
+    }
+
+    #[test]
+    fn password_policy_rejects_password_equal_to_username() {
+        let policy = PasswordPolicy {
+            rules: vec![PasswordRule::Length { min: 1 }, PasswordRule::NotUsername],
+        };
+        let r = policy.validate("ada", "ada", None);
+        assert_eq!(r.violations, vec!["not-username".to_string()]);
+    }
+
+    #[test]
+    fn password_policy_rejects_password_equal_to_email() {
+        let policy = PasswordPolicy {
+            rules: vec![PasswordRule::Length { min: 1 }, PasswordRule::NotEmail],
+        };
+        let r = policy.validate("ada@example.com", "ada", Some("ada@example.com"));
+        assert_eq!(r.violations, vec!["not-email".to_string()]);
+    }
+
+    #[test]
+    fn password_policy_aggregates_all_violations() {
+        let policy = PasswordPolicy {
+            rules: vec![
+                PasswordRule::Length { min: 12 },
+                PasswordRule::UpperCase { min: 1 },
+                PasswordRule::Digits { min: 1 },
+            ],
+        };
+        let r = policy.validate("short", "alice", None);
+        // Length + UpperCase + Digits all fail; the order matches the
+        // rule order, which lets clients render a deterministic list.
+        assert_eq!(
+            r.violations,
+            vec!["length".to_string(), "upper-case".to_string(), "digits".to_string()]
+        );
     }
 }
