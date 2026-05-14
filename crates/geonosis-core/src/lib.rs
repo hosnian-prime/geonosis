@@ -21,6 +21,7 @@ pub mod session;
 pub mod subject;
 pub mod token;
 pub mod user;
+pub mod user_profile;
 
 pub use agent::{Agent, AgentAuthMethod, AgentCapability, AgentKind, AgentRateLimit};
 pub use attribute::{AttributeValue, RequiredAction};
@@ -57,3 +58,7 @@ pub use token::{
     RefreshToken, ResourceAccess,
 };
 pub use user::{FederationLink, PersonName, User};
+pub use user_profile::{
+    AttributeActorSet, AttributePermissions, AttributeValidator, UnmanagedAttributePolicy,
+    UserAttributeDecl, UserAttributeGroup, UserProfile,
+};
