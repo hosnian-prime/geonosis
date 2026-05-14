@@ -14,6 +14,7 @@
 //!   active RSA-SHA256 key via the `KeyManagementService` trait.
 
 pub mod logout;
+pub mod post_signature;
 pub mod redirect;
 pub mod request;
 pub mod sign;
@@ -22,6 +23,7 @@ pub mod xml;
 pub use logout::{
     parse_logout_request, serialize_logout_response, LogoutParseError, ParsedLogoutRequest,
 };
+pub use post_signature::{verify_post_authn_request_signature, PostSigError};
 pub use redirect::{
     decode_redirect_payload, verify_redirect_signature, RedirectDecodeError,
     RedirectSigError, RedirectSignatureCheck, REDIRECT_SIG_ALG_RSA_SHA256,
