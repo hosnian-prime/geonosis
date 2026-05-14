@@ -110,7 +110,7 @@ impl FlowExecutor for DefaultExecutor {
                         outcome: "advance".into(),
                     });
                     let next = flow
-                        .next(node.id, &EdgeCondition::Otherwise)
+                        .next_with_guard(node.id, &EdgeCondition::Otherwise, &state.context)
                         .ok_or_else(|| FlowError::DeadEnd(node.id.to_string()))?;
                     state.current_node = next;
                     // Continue executing the next node in this same step
@@ -133,7 +133,7 @@ impl FlowExecutor for DefaultExecutor {
                         outcome: "submit".into(),
                     });
                     let next = flow
-                        .next(node.id, &EdgeCondition::Success)
+                        .next_with_guard(node.id, &EdgeCondition::Success, &state.context)
                         .or_else(|| flow.next_with_guard(node.id, &EdgeCondition::Otherwise, &state.context))
                         .ok_or_else(|| FlowError::DeadEnd(node.id.to_string()))?;
                     state.current_node = next;
@@ -160,7 +160,11 @@ impl FlowExecutor for DefaultExecutor {
                     // Switch nodes are pure routing; v0.1 supports literal
                     // condition labels which match `EdgeCondition::Status`.
                     let next = flow
-                        .next(node.id, &EdgeCondition::Status(condition.clone()))
+                        .next_with_guard(
+                            node.id,
+                            &EdgeCondition::Status(condition.clone()),
+                            &state.context,
+                        )
                         .or_else(|| flow.next_with_guard(node.id, &EdgeCondition::Otherwise, &state.context))
                         .ok_or_else(|| FlowError::DeadEnd(node.id.to_string()))?;
                     state.current_node = next;
@@ -169,7 +173,7 @@ impl FlowExecutor for DefaultExecutor {
                 (NodeKind::Action { .. }, _) | (NodeKind::SubFlow { .. }, _) => {
                     // v0.1: Action / SubFlow advance via Otherwise edge.
                     let next = flow
-                        .next(node.id, &EdgeCondition::Otherwise)
+                        .next_with_guard(node.id, &EdgeCondition::Otherwise, &state.context)
                         .ok_or_else(|| FlowError::DeadEnd(node.id.to_string()))?;
                     state.current_node = next;
                     continue;
@@ -233,6 +237,7 @@ mod tests {
         let start = node(NodeKind::Start(StartNode::default()));
         let success = node(NodeKind::Success(SuccessNode::default()));
         let def = FlowDefinition {
+            realm_id: geonosis_core::id::RealmId::new(),
             id: FlowId::new(),
             alias: "x".into(),
             display_name: "X".into(),
@@ -266,6 +271,7 @@ mod tests {
         });
         let success = node(NodeKind::Success(SuccessNode::default()));
         let def = FlowDefinition {
+            realm_id: geonosis_core::id::RealmId::new(),
             id: FlowId::new(),
             alias: "x".into(),
             display_name: "X".into(),
@@ -313,6 +319,7 @@ mod tests {
         let start = node(NodeKind::Start(StartNode::default()));
         let success = node(NodeKind::Success(SuccessNode::default()));
         let def = FlowDefinition {
+            realm_id: geonosis_core::id::RealmId::new(),
             id: FlowId::new(),
             alias: "x".into(),
             display_name: "X".into(),

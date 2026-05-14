@@ -180,6 +180,7 @@ mod tests {
         let start = n(NodeKind::Start(StartNode::default()));
         let success = n(NodeKind::Success(SuccessNode::default()));
         let def = FlowDefinition {
+            realm_id: geonosis_core::id::RealmId::new(),
             id: FlowId::new(),
             alias: "x".into(),
             display_name: "X".into(),
@@ -200,6 +201,7 @@ mod tests {
     fn missing_success_is_rejected() {
         let start = n(NodeKind::Start(StartNode::default()));
         let def = FlowDefinition {
+            realm_id: geonosis_core::id::RealmId::new(),
             id: FlowId::new(),
             alias: "x".into(),
             display_name: "X".into(),
@@ -220,6 +222,7 @@ mod tests {
             template: "x".into(),
         });
         let def = FlowDefinition {
+            realm_id: geonosis_core::id::RealmId::new(),
             id: FlowId::new(),
             alias: "x".into(),
             display_name: "X".into(),

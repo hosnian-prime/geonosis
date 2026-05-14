@@ -8,6 +8,7 @@
 //!   against the version they were started on.
 //! - Per-step requirement: Required, Optional, Alternative, Disabled.
 
+pub mod builtin;
 pub mod compile;
 pub mod dsl;
 pub mod executor;

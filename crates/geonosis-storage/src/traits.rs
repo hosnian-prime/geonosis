@@ -137,6 +137,29 @@ pub trait Storage: Send + Sync {
     async fn get_flow_state(&self, id: &geonosis_core::FlowStateId) -> Result<FlowStateRow, StorageError>;
     async fn delete_flow_state(&self, id: &geonosis_core::FlowStateId) -> Result<(), StorageError>;
 
+    // ---- Auth flow definitions (per (realm, alias, version)) ----
+    async fn save_auth_flow(
+        &self,
+        flow: geonosis_flow::FlowDefinition,
+    ) -> Result<(), StorageError>;
+    /// Return the highest-version flow row for `(realm, alias)`. The
+    /// older versions stay in the table so in-flight `FlowState`
+    /// objects can resolve against the version they were started on.
+    async fn get_auth_flow_by_alias(
+        &self,
+        realm: RealmId,
+        alias: &str,
+    ) -> Result<geonosis_flow::FlowDefinition, StorageError>;
+    async fn list_auth_flows(
+        &self,
+        realm: RealmId,
+    ) -> Result<Vec<geonosis_flow::FlowDefinition>, StorageError>;
+    async fn delete_auth_flow(
+        &self,
+        realm: RealmId,
+        id: geonosis_core::FlowId,
+    ) -> Result<(), StorageError>;
+
     // ---- Consent grants (OIDC consent screen) ----
     async fn save_consent_grant(&self, grant: ConsentGrant) -> Result<(), StorageError>;
     async fn get_consent_grant(

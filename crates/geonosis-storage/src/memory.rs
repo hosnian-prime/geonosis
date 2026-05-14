@@ -49,6 +49,7 @@ struct Tables {
     ldap_sources: HashMap<(RealmId, String), LdapFederationConfig>,
     wasm_modules: HashMap<(RealmId, String), WasmModule>,
     spi_bindings: HashMap<(RealmId, geonosis_core::id::SpiBindingId), SpiBindingRow>,
+    auth_flows: HashMap<(RealmId, geonosis_core::FlowId), geonosis_flow::FlowDefinition>,
     roles: HashMap<(RealmId, RoleId), Role>,
     user_roles: HashMap<(RealmId, UserId), Vec<RoleId>>,
     groups: HashMap<(RealmId, GroupId), Group>,
@@ -512,6 +513,71 @@ impl Storage for MemoryStorage {
     async fn delete_flow_state(&self, id: &FlowStateId) -> Result<(), StorageError> {
         let mut t = self.inner.write();
         t.flow_states.remove(id).ok_or(StorageError::NotFound).map(|_| ())
+    }
+
+    async fn save_auth_flow(
+        &self,
+        flow: geonosis_flow::FlowDefinition,
+    ) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        if t.auth_flows
+            .values()
+            .any(|f| f.realm_id == flow.realm_id && f.alias == flow.alias && f.version == flow.version)
+            && !t.auth_flows.contains_key(&(flow.realm_id, flow.id))
+        {
+            return Err(StorageError::Conflict(format!(
+                "auth_flow ({}, {}, v{}) already exists",
+                flow.realm_id, flow.alias, flow.version
+            )));
+        }
+        t.auth_flows.insert((flow.realm_id, flow.id), flow);
+        Ok(())
+    }
+
+    async fn get_auth_flow_by_alias(
+        &self,
+        realm: RealmId,
+        alias: &str,
+    ) -> Result<geonosis_flow::FlowDefinition, StorageError> {
+        self.inner
+            .read()
+            .auth_flows
+            .values()
+            .filter(|f| f.realm_id == realm && f.alias == alias)
+            .max_by_key(|f| f.version)
+            .cloned()
+            .ok_or(StorageError::NotFound)
+    }
+
+    async fn list_auth_flows(
+        &self,
+        realm: RealmId,
+    ) -> Result<Vec<geonosis_flow::FlowDefinition>, StorageError> {
+        use std::collections::BTreeMap as Map;
+        let mut latest: Map<String, geonosis_flow::FlowDefinition> = Map::new();
+        let t = self.inner.read();
+        for f in t.auth_flows.values().filter(|f| f.realm_id == realm) {
+            match latest.get(f.alias.as_str()) {
+                Some(prev) if prev.version >= f.version => {}
+                _ => {
+                    latest.insert(f.alias.clone(), f.clone());
+                }
+            }
+        }
+        Ok(latest.into_values().collect())
+    }
+
+    async fn delete_auth_flow(
+        &self,
+        realm: RealmId,
+        id: geonosis_core::FlowId,
+    ) -> Result<(), StorageError> {
+        self.inner
+            .write()
+            .auth_flows
+            .remove(&(realm, id))
+            .ok_or(StorageError::NotFound)
+            .map(|_| ())
     }
 
     // ---- Consent grants ----
