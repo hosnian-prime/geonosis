@@ -18,14 +18,23 @@
 
 pub mod dispatch;
 pub mod error;
+pub mod manifest;
 pub mod registry;
+pub mod router;
 
 #[cfg(feature = "wasm-runtime")]
 pub mod runtime;
 
 pub use dispatch::{DispatchMode, WitInterfaceName};
 pub use error::{ProviderError, ProviderResult};
+pub use manifest::{
+    check_trusted, verify_bytecode_sha256, verify_signature, ManifestError, PluginManifest,
+};
 pub use registry::{LookupOutcome, ProviderBinding, ProviderCapabilities, ProviderRegistry};
+pub use router::{
+    active_bindings, chain, fire_forget, first_decision, first_match, named_attach,
+    named_select, Decision, DispatchError,
+};
 
 #[cfg(feature = "wasm-runtime")]
 pub use runtime::{
