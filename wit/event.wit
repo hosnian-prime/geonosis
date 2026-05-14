@@ -1,0 +1,20 @@
+// `geonosis:event@0.1.0` — fire-and-forget event sink.
+
+package geonosis:event@0.1.0;
+
+interface event-listener {
+    use geonosis:types/types@0.1.0.{provider-info, plugin-error};
+
+    describe: func() -> provider-info;
+
+    /// `event-bytes` is a bincode-encoded `AuditEvent`. Failures are
+    /// logged but never propagated to the triggering operation.
+    on-event: func(event-bytes: list<u8>) -> result<_, plugin-error>;
+}
+
+world event-listener-provider {
+    import geonosis:host/logging@0.1.0;
+    import geonosis:host/secrets@0.1.0;
+    import geonosis:host/http-client@0.1.0;
+    export event-listener;
+}

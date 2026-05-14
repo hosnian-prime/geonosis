@@ -14,7 +14,10 @@ use geonosis_core::{
 use geonosis_federation_ldap::LdapFederationConfig;
 
 use crate::error::StorageError;
-use crate::traits::{ConsentGrant, DeviceGrant, FlowStateRow, ParRequest, Storage};
+use crate::traits::{
+    ConsentGrant, DeviceGrant, FlowStateRow, ParRequest, SpiBindingRow, Storage, WasmModule,
+    WasmModuleHeader,
+};
 
 #[derive(Default)]
 struct Tables {
@@ -41,6 +44,8 @@ struct Tables {
     broker_states: HashMap<(RealmId, String), BrokerAuthnState>,
     broker_links: HashMap<(RealmId, String, String), BrokerLink>,
     ldap_sources: HashMap<(RealmId, String), LdapFederationConfig>,
+    wasm_modules: HashMap<(RealmId, String), WasmModule>,
+    spi_bindings: HashMap<(RealmId, geonosis_core::id::SpiBindingId), SpiBindingRow>,
 }
 
 pub struct MemoryStorage {
@@ -657,6 +662,112 @@ impl Storage for MemoryStorage {
             .write()
             .ldap_sources
             .remove(&(realm, alias.to_string()))
+            .ok_or(StorageError::NotFound)
+            .map(|_| ())
+    }
+
+    // ---- WASM modules ----
+    async fn upload_wasm_module(&self, module: WasmModule) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        t.wasm_modules
+            .insert((module.realm_id, module.alias.clone()), module);
+        Ok(())
+    }
+
+    async fn get_wasm_module(
+        &self,
+        realm: RealmId,
+        alias: &str,
+    ) -> Result<WasmModule, StorageError> {
+        self.inner
+            .read()
+            .wasm_modules
+            .get(&(realm, alias.to_string()))
+            .cloned()
+            .ok_or(StorageError::NotFound)
+    }
+
+    async fn list_wasm_modules(
+        &self,
+        realm: RealmId,
+    ) -> Result<Vec<WasmModuleHeader>, StorageError> {
+        Ok(self
+            .inner
+            .read()
+            .wasm_modules
+            .iter()
+            .filter(|((r, _), _)| *r == realm)
+            .map(|(_, m)| WasmModuleHeader {
+                id: m.id,
+                realm_id: m.realm_id,
+                alias: m.alias.clone(),
+                interface: m.interface.clone(),
+                sha256_hex: m.sha256_hex.clone(),
+                size_bytes: m.size_bytes,
+                created_at: m.created_at,
+            })
+            .collect())
+    }
+
+    async fn delete_wasm_module(
+        &self,
+        realm: RealmId,
+        alias: &str,
+    ) -> Result<(), StorageError> {
+        self.inner
+            .write()
+            .wasm_modules
+            .remove(&(realm, alias.to_string()))
+            .ok_or(StorageError::NotFound)
+            .map(|_| ())
+    }
+
+    // ---- SPI bindings ----
+    async fn create_spi_binding(
+        &self,
+        binding: SpiBindingRow,
+    ) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        t.spi_bindings.insert((binding.realm_id, binding.id), binding);
+        Ok(())
+    }
+
+    async fn list_spi_bindings(
+        &self,
+        realm: RealmId,
+        interface: &str,
+    ) -> Result<Vec<SpiBindingRow>, StorageError> {
+        Ok(self
+            .inner
+            .read()
+            .spi_bindings
+            .iter()
+            .filter(|((r, _), v)| *r == realm && v.interface == interface)
+            .map(|(_, v)| v.clone())
+            .collect())
+    }
+
+    async fn update_spi_binding(
+        &self,
+        binding: SpiBindingRow,
+    ) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        if !t.spi_bindings.contains_key(&(binding.realm_id, binding.id)) {
+            return Err(StorageError::NotFound);
+        }
+        t.spi_bindings.insert((binding.realm_id, binding.id), binding);
+        Ok(())
+    }
+
+    async fn delete_spi_binding(
+        &self,
+        realm: RealmId,
+        binding_id: geonosis_core::id::SpiBindingId,
+    ) -> Result<(), StorageError> {
+        self.inner
+            .write()
+            .spi_bindings
+            .remove(&(realm, binding_id))
             .ok_or(StorageError::NotFound)
             .map(|_| ())
     }
