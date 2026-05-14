@@ -11,7 +11,9 @@
 
 pub mod app;
 pub mod authenticators;
+pub mod broker;
 pub mod handlers;
+pub mod ldap;
 pub mod state;
 pub mod token_verify;
 

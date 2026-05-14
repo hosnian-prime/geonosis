@@ -18,10 +18,12 @@ use chrono::{DateTime, Utc};
 use sqlx::postgres::PgPool;
 use sqlx::Row;
 
+use geonosis_broker::{BrokerAuthnState, BrokerLink, IdentityProvider};
 use geonosis_core::{
     Client, ClientId, CodeGrant, CodeId, Realm, RealmId, RefreshToken, RefreshTokenId, Session,
     SessionId, TokenFamilyId, User, UserId,
 };
+use geonosis_federation_ldap::LdapFederationConfig;
 
 use crate::error::StorageError;
 use crate::traits::{
@@ -1011,6 +1013,295 @@ impl Storage for PostgresStorage {
         Ok(())
     }
 
+    // ---- IdP ----
+    async fn create_idp(&self, idp: IdentityProvider) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, idp.realm_id).await?;
+        let config = serde_json::to_value(&idp.config)
+            .map_err(|e| StorageError::Backend(e.to_string()))?;
+        sqlx::query(
+            "INSERT INTO identity_provider (id, realm_id, alias, display_name, kind,
+                adapter_urn, enabled, link_only, first_login_flow_alias, post_login_flow_alias, config)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+        )
+        .bind(idp.id.to_string())
+        .bind(idp.realm_id.to_string())
+        .bind(&idp.alias)
+        .bind(&idp.display_name)
+        .bind(match idp.kind {
+            geonosis_broker::IdpKind::Oidc => "oidc",
+            geonosis_broker::IdpKind::Saml => "saml",
+        })
+        .bind(idp.adapter_urn.as_deref())
+        .bind(idp.enabled)
+        .bind(idp.link_only)
+        .bind(&idp.first_login_flow_alias)
+        .bind(idp.post_login_flow_alias.as_deref())
+        .bind(config)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
+    }
+
+    async fn get_idp_by_alias(
+        &self,
+        realm: RealmId,
+        alias: &str,
+    ) -> Result<IdentityProvider, StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let row = sqlx::query(
+            "SELECT * FROM identity_provider WHERE realm_id = $1 AND alias = $2",
+        )
+        .bind(realm.to_string())
+        .bind(alias)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(sqlx_err)?
+        .ok_or(StorageError::NotFound)?;
+        let idp = idp_from_row(&row)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(idp)
+    }
+
+    async fn list_idps(&self, realm: RealmId) -> Result<Vec<IdentityProvider>, StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let rows = sqlx::query("SELECT * FROM identity_provider WHERE realm_id = $1")
+            .bind(realm.to_string())
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(sqlx_err)?;
+        let mut out = Vec::with_capacity(rows.len());
+        for r in &rows {
+            out.push(idp_from_row(r)?);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(out)
+    }
+
+    async fn delete_idp(&self, realm: RealmId, alias: &str) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let n = sqlx::query("DELETE FROM identity_provider WHERE realm_id = $1 AND alias = $2")
+            .bind(realm.to_string())
+            .bind(alias)
+            .execute(&mut *tx)
+            .await
+            .map_err(sqlx_err)?
+            .rows_affected();
+        if n == 0 {
+            return Err(StorageError::NotFound);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
+    }
+
+    // ---- BrokerAuthnState ----
+    async fn save_broker_state(&self, state: BrokerAuthnState) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, state.realm_id).await?;
+        sqlx::query(
+            "INSERT INTO broker_authn_state (id, realm_id, idp_alias, state, nonce,
+                pkce_verifier, return_to_flow_state, created_at, expires_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)",
+        )
+        .bind(state.id.to_string())
+        .bind(state.realm_id.to_string())
+        .bind(&state.idp_alias)
+        .bind(&state.state)
+        .bind(state.nonce.as_deref())
+        .bind(state.pkce_verifier.as_ref().map(|s| s.expose().clone()))
+        .bind(state.return_to_flow_state.to_string())
+        .bind(state.created_at)
+        .bind(state.expires_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
+    }
+
+    async fn consume_broker_state(
+        &self,
+        realm: RealmId,
+        state: &str,
+    ) -> Result<BrokerAuthnState, StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let row = sqlx::query(
+            "DELETE FROM broker_authn_state WHERE realm_id = $1 AND state = $2 RETURNING *",
+        )
+        .bind(realm.to_string())
+        .bind(state)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(sqlx_err)?
+        .ok_or(StorageError::NotFound)?;
+        let s = broker_state_from_row(&row)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(s)
+    }
+
+    // ---- BrokerLink ----
+    async fn upsert_broker_link(&self, link: BrokerLink) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, link.realm_id).await?;
+        sqlx::query(
+            "INSERT INTO broker_link (id, realm_id, user_id, idp_alias, external_id,
+                external_username, created_at, last_login_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+             ON CONFLICT (realm_id, idp_alias, external_id) DO UPDATE SET
+                user_id = EXCLUDED.user_id,
+                external_username = EXCLUDED.external_username,
+                last_login_at = EXCLUDED.last_login_at",
+        )
+        .bind(link.id.to_string())
+        .bind(link.realm_id.to_string())
+        .bind(link.user_id.to_string())
+        .bind(&link.idp_alias)
+        .bind(&link.external_id)
+        .bind(link.external_username.as_deref())
+        .bind(link.created_at)
+        .bind(link.last_login_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
+    }
+
+    async fn find_broker_link(
+        &self,
+        realm: RealmId,
+        idp_alias: &str,
+        external_id: &str,
+    ) -> Result<Option<BrokerLink>, StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let row = sqlx::query(
+            "SELECT * FROM broker_link WHERE realm_id = $1 AND idp_alias = $2 AND external_id = $3",
+        )
+        .bind(realm.to_string())
+        .bind(idp_alias)
+        .bind(external_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        let link = row.as_ref().map(broker_link_from_row).transpose()?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(link)
+    }
+
+    async fn list_broker_links(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+    ) -> Result<Vec<BrokerLink>, StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let rows = sqlx::query("SELECT * FROM broker_link WHERE realm_id = $1 AND user_id = $2")
+            .bind(realm.to_string())
+            .bind(user_id.to_string())
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(sqlx_err)?;
+        let mut out = Vec::with_capacity(rows.len());
+        for r in &rows {
+            out.push(broker_link_from_row(r)?);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(out)
+    }
+
+    // ---- LDAP federation ----
+    async fn upsert_ldap_source(
+        &self,
+        source: LdapFederationConfig,
+    ) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, source.realm_id).await?;
+        let cfg = serde_json::to_value(&source)
+            .map_err(|e| StorageError::Backend(e.to_string()))?;
+        sqlx::query(
+            "INSERT INTO ldap_federation (id, realm_id, alias, priority, enabled, config)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (realm_id, alias) DO UPDATE SET
+                priority = EXCLUDED.priority,
+                enabled = EXCLUDED.enabled,
+                config = EXCLUDED.config,
+                updated_at = now()",
+        )
+        .bind(source.id.to_string())
+        .bind(source.realm_id.to_string())
+        .bind(&source.alias)
+        .bind(source.priority)
+        .bind(source.enabled)
+        .bind(cfg)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
+    }
+
+    async fn get_ldap_source(
+        &self,
+        realm: RealmId,
+        alias: &str,
+    ) -> Result<LdapFederationConfig, StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let row = sqlx::query(
+            "SELECT config FROM ldap_federation WHERE realm_id = $1 AND alias = $2",
+        )
+        .bind(realm.to_string())
+        .bind(alias)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(sqlx_err)?
+        .ok_or(StorageError::NotFound)?;
+        let cfg: serde_json::Value = row.try_get("config").map_err(sqlx_err)?;
+        let typed: LdapFederationConfig =
+            serde_json::from_value(cfg).map_err(|e| StorageError::Backend(e.to_string()))?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(typed)
+    }
+
+    async fn list_ldap_sources(
+        &self,
+        realm: RealmId,
+    ) -> Result<Vec<LdapFederationConfig>, StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let rows = sqlx::query(
+            "SELECT config FROM ldap_federation WHERE realm_id = $1 ORDER BY priority ASC",
+        )
+        .bind(realm.to_string())
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        let mut out = Vec::with_capacity(rows.len());
+        for r in &rows {
+            let cfg: serde_json::Value = r.try_get("config").map_err(sqlx_err)?;
+            let typed: LdapFederationConfig =
+                serde_json::from_value(cfg).map_err(|e| StorageError::Backend(e.to_string()))?;
+            out.push(typed);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(out)
+    }
+
+    async fn delete_ldap_source(
+        &self,
+        realm: RealmId,
+        alias: &str,
+    ) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let n = sqlx::query("DELETE FROM ldap_federation WHERE realm_id = $1 AND alias = $2")
+            .bind(realm.to_string())
+            .bind(alias)
+            .execute(&mut *tx)
+            .await
+            .map_err(sqlx_err)?
+            .rows_affected();
+        if n == 0 {
+            return Err(StorageError::NotFound);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
+    }
+
     // ---- WASM module store ----
     async fn upload_wasm_module(&self, m: WasmModule) -> Result<(), StorageError> {
         let mut tx = begin_realm(&self.pool, m.realm_id).await?;
@@ -1199,6 +1490,85 @@ impl Storage for PostgresStorage {
         tx.commit().await.map_err(sqlx_err)?;
         Ok(())
     }
+}
+
+fn idp_from_row(row: &sqlx::postgres::PgRow) -> Result<IdentityProvider, StorageError> {
+    use geonosis_broker::{IdpConfig, IdpKind};
+    let id: String = row.try_get("id").map_err(sqlx_err)?;
+    let realm_id: String = row.try_get("realm_id").map_err(sqlx_err)?;
+    let alias: String = row.try_get("alias").map_err(sqlx_err)?;
+    let display_name: String = row.try_get("display_name").map_err(sqlx_err)?;
+    let kind: String = row.try_get("kind").map_err(sqlx_err)?;
+    let adapter_urn: Option<String> = row.try_get("adapter_urn").map_err(sqlx_err)?;
+    let enabled: bool = row.try_get("enabled").map_err(sqlx_err)?;
+    let link_only: bool = row.try_get("link_only").map_err(sqlx_err)?;
+    let first_login_flow_alias: String = row.try_get("first_login_flow_alias").map_err(sqlx_err)?;
+    let post_login_flow_alias: Option<String> = row.try_get("post_login_flow_alias").map_err(sqlx_err)?;
+    let config_json: serde_json::Value = row.try_get("config").map_err(sqlx_err)?;
+    let config: IdpConfig =
+        serde_json::from_value(config_json).map_err(|e| StorageError::Backend(e.to_string()))?;
+    Ok(IdentityProvider {
+        id: id.parse().map_err(invalid_id)?,
+        realm_id: realm_id.parse().map_err(invalid_id)?,
+        alias,
+        display_name,
+        kind: match kind.as_str() {
+            "oidc" => IdpKind::Oidc,
+            "saml" => IdpKind::Saml,
+            other => return Err(StorageError::Backend(format!("unknown idp kind: {other}"))),
+        },
+        config,
+        first_login_flow_alias,
+        post_login_flow_alias,
+        link_only,
+        adapter_urn,
+        enabled,
+    })
+}
+
+fn broker_state_from_row(row: &sqlx::postgres::PgRow) -> Result<BrokerAuthnState, StorageError> {
+    use geonosis_core::secret::Secret;
+    let id: String = row.try_get("id").map_err(sqlx_err)?;
+    let realm_id: String = row.try_get("realm_id").map_err(sqlx_err)?;
+    let idp_alias: String = row.try_get("idp_alias").map_err(sqlx_err)?;
+    let state: String = row.try_get("state").map_err(sqlx_err)?;
+    let nonce: Option<String> = row.try_get("nonce").map_err(sqlx_err)?;
+    let pkce: Option<String> = row.try_get("pkce_verifier").map_err(sqlx_err)?;
+    let return_to: String = row.try_get("return_to_flow_state").map_err(sqlx_err)?;
+    let created_at: DateTime<Utc> = row.try_get("created_at").map_err(sqlx_err)?;
+    let expires_at: DateTime<Utc> = row.try_get("expires_at").map_err(sqlx_err)?;
+    Ok(BrokerAuthnState {
+        id: id.parse().map_err(invalid_id)?,
+        realm_id: realm_id.parse().map_err(invalid_id)?,
+        idp_alias,
+        state,
+        nonce,
+        pkce_verifier: pkce.map(Secret::new),
+        return_to_flow_state: return_to.parse().map_err(invalid_id)?,
+        created_at,
+        expires_at,
+    })
+}
+
+fn broker_link_from_row(row: &sqlx::postgres::PgRow) -> Result<BrokerLink, StorageError> {
+    let id: String = row.try_get("id").map_err(sqlx_err)?;
+    let realm_id: String = row.try_get("realm_id").map_err(sqlx_err)?;
+    let user_id: String = row.try_get("user_id").map_err(sqlx_err)?;
+    let idp_alias: String = row.try_get("idp_alias").map_err(sqlx_err)?;
+    let external_id: String = row.try_get("external_id").map_err(sqlx_err)?;
+    let external_username: Option<String> = row.try_get("external_username").map_err(sqlx_err)?;
+    let created_at: DateTime<Utc> = row.try_get("created_at").map_err(sqlx_err)?;
+    let last_login_at: Option<DateTime<Utc>> = row.try_get("last_login_at").map_err(sqlx_err)?;
+    Ok(BrokerLink {
+        id: id.parse().map_err(invalid_id)?,
+        realm_id: realm_id.parse().map_err(invalid_id)?,
+        user_id: user_id.parse().map_err(invalid_id)?,
+        idp_alias,
+        external_id,
+        external_username,
+        created_at,
+        last_login_at,
+    })
 }
 
 fn wasm_module_from_row(row: &sqlx::postgres::PgRow) -> Result<WasmModule, StorageError> {

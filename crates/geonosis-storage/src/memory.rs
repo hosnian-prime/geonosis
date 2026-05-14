@@ -6,10 +6,12 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use parking_lot::RwLock;
 
+use geonosis_broker::{BrokerAuthnState, BrokerLink, IdentityProvider};
 use geonosis_core::{
     Client, ClientId, CodeGrant, CodeId, FlowStateId, Realm, RealmId, RefreshToken, RefreshTokenId,
     Session, SessionId, TokenFamilyId, User, UserId,
 };
+use geonosis_federation_ldap::LdapFederationConfig;
 
 use crate::error::StorageError;
 use crate::traits::{
@@ -38,6 +40,10 @@ struct Tables {
     device_by_user_code: HashMap<String, String>,
     flow_states: HashMap<FlowStateId, FlowStateRow>,
     consent_grants: HashMap<(RealmId, UserId, ClientId), ConsentGrant>,
+    idps: HashMap<(RealmId, String), IdentityProvider>,
+    broker_states: HashMap<(RealmId, String), BrokerAuthnState>,
+    broker_links: HashMap<(RealmId, String, String), BrokerLink>,
+    ldap_sources: HashMap<(RealmId, String), LdapFederationConfig>,
     wasm_modules: HashMap<(RealmId, String), WasmModule>,
     spi_bindings: HashMap<(RealmId, geonosis_core::id::SpiBindingId), SpiBindingRow>,
 }
@@ -495,6 +501,167 @@ impl Storage for MemoryStorage {
         let mut t = self.inner.write();
         t.consent_grants
             .remove(&(realm, user_id, client_id))
+            .ok_or(StorageError::NotFound)
+            .map(|_| ())
+    }
+
+    // ---- IdP ----
+    async fn create_idp(&self, idp: IdentityProvider) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        let key = (idp.realm_id, idp.alias.clone());
+        if t.idps.contains_key(&key) {
+            return Err(StorageError::Conflict(format!(
+                "idp alias {} taken",
+                idp.alias
+            )));
+        }
+        t.idps.insert(key, idp);
+        Ok(())
+    }
+
+    async fn get_idp_by_alias(
+        &self,
+        realm: RealmId,
+        alias: &str,
+    ) -> Result<IdentityProvider, StorageError> {
+        self.inner
+            .read()
+            .idps
+            .get(&(realm, alias.to_string()))
+            .cloned()
+            .ok_or(StorageError::NotFound)
+    }
+
+    async fn list_idps(&self, realm: RealmId) -> Result<Vec<IdentityProvider>, StorageError> {
+        Ok(self
+            .inner
+            .read()
+            .idps
+            .iter()
+            .filter(|((r, _), _)| *r == realm)
+            .map(|(_, v)| v.clone())
+            .collect())
+    }
+
+    async fn delete_idp(&self, realm: RealmId, alias: &str) -> Result<(), StorageError> {
+        self.inner
+            .write()
+            .idps
+            .remove(&(realm, alias.to_string()))
+            .ok_or(StorageError::NotFound)
+            .map(|_| ())
+    }
+
+    // ---- BrokerAuthnState ----
+    async fn save_broker_state(&self, state: BrokerAuthnState) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        t.broker_states
+            .insert((state.realm_id, state.state.clone()), state);
+        Ok(())
+    }
+
+    async fn consume_broker_state(
+        &self,
+        realm: RealmId,
+        state: &str,
+    ) -> Result<BrokerAuthnState, StorageError> {
+        self.inner
+            .write()
+            .broker_states
+            .remove(&(realm, state.to_string()))
+            .ok_or(StorageError::NotFound)
+    }
+
+    // ---- BrokerLink ----
+    async fn upsert_broker_link(&self, link: BrokerLink) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        t.broker_links.insert(
+            (
+                link.realm_id,
+                link.idp_alias.clone(),
+                link.external_id.clone(),
+            ),
+            link,
+        );
+        Ok(())
+    }
+
+    async fn find_broker_link(
+        &self,
+        realm: RealmId,
+        idp_alias: &str,
+        external_id: &str,
+    ) -> Result<Option<BrokerLink>, StorageError> {
+        Ok(self
+            .inner
+            .read()
+            .broker_links
+            .get(&(realm, idp_alias.to_string(), external_id.to_string()))
+            .cloned())
+    }
+
+    async fn list_broker_links(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+    ) -> Result<Vec<BrokerLink>, StorageError> {
+        Ok(self
+            .inner
+            .read()
+            .broker_links
+            .iter()
+            .filter(|((r, _, _), v)| *r == realm && v.user_id == user_id)
+            .map(|(_, v)| v.clone())
+            .collect())
+    }
+
+    // ---- LDAP federation source ----
+    async fn upsert_ldap_source(
+        &self,
+        source: LdapFederationConfig,
+    ) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        t.ldap_sources
+            .insert((source.realm_id, source.alias.clone()), source);
+        Ok(())
+    }
+
+    async fn get_ldap_source(
+        &self,
+        realm: RealmId,
+        alias: &str,
+    ) -> Result<LdapFederationConfig, StorageError> {
+        self.inner
+            .read()
+            .ldap_sources
+            .get(&(realm, alias.to_string()))
+            .cloned()
+            .ok_or(StorageError::NotFound)
+    }
+
+    async fn list_ldap_sources(
+        &self,
+        realm: RealmId,
+    ) -> Result<Vec<LdapFederationConfig>, StorageError> {
+        Ok(self
+            .inner
+            .read()
+            .ldap_sources
+            .iter()
+            .filter(|((r, _), _)| *r == realm)
+            .map(|(_, v)| v.clone())
+            .collect())
+    }
+
+    async fn delete_ldap_source(
+        &self,
+        realm: RealmId,
+        alias: &str,
+    ) -> Result<(), StorageError> {
+        self.inner
+            .write()
+            .ldap_sources
+            .remove(&(realm, alias.to_string()))
             .ok_or(StorageError::NotFound)
             .map(|_| ())
     }
