@@ -226,6 +226,17 @@ pub async fn set_password(
         .get_user_by_username(realm.id, &username)
         .await
         .map_err(AdminError::from)?;
+    // Enforce the realm's password policy BEFORE the Argon2id hash
+    // is computed — the hash is expensive, and the violation is
+    // user-correctable so we fail fast. Per `docs/02-data-model.md`
+    // §"Password policy".
+    let report =
+        realm
+            .password_policy
+            .validate(&req.password, &user.username, user.email.as_deref());
+    if !report.is_ok() {
+        return Err(AdminError::PasswordPolicy(report.violations));
+    }
     let phc = geonosis_crypto::hash_password(&req.password)
         .map_err(|e| AdminError::Storage(format!("hash_password: {e}")))?;
     state

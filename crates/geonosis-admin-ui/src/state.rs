@@ -57,6 +57,12 @@ pub enum AdminError {
     I18n(String),
     #[error("not found")]
     NotFound,
+    /// Realm policy rejected the supplied input (e.g. password
+    /// policy violation). The `Vec<String>` is the list of stable
+    /// rule codes that failed — clients render them into a
+    /// human-readable list.
+    #[error("policy violation: {0:?}")]
+    PasswordPolicy(Vec<String>),
 }
 
 impl From<geonosis_storage::StorageError> for AdminError {
@@ -71,10 +77,20 @@ impl From<geonosis_storage::StorageError> for AdminError {
 impl axum::response::IntoResponse for AdminError {
     fn into_response(self) -> axum::response::Response {
         use axum::http::StatusCode;
-        let status = match &self {
-            AdminError::NotFound => StatusCode::NOT_FOUND,
-            _ => StatusCode::INTERNAL_SERVER_ERROR,
-        };
-        (status, self.to_string()).into_response()
+        match self {
+            AdminError::NotFound => (StatusCode::NOT_FOUND, "not found".to_string()).into_response(),
+            // Policy violations are client-correctable input errors,
+            // not server faults — surface them as 400 with the
+            // structured violation list so callers can render a
+            // useful message per failed rule.
+            AdminError::PasswordPolicy(violations) => {
+                let body = serde_json::json!({
+                    "error": "password_policy_violation",
+                    "violations": violations,
+                });
+                (StatusCode::BAD_REQUEST, axum::Json(body)).into_response()
+            }
+            err => (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()).into_response(),
+        }
     }
 }
