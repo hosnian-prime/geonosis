@@ -20,6 +20,7 @@
 //! executor + WASM SPI dispatch through the same trait so plugins and
 //! built-ins are interchangeable (per `docs/07-spi-wasm.md`).
 
+pub mod brute_force;
 pub mod consent;
 pub mod context;
 pub mod cookie;
@@ -35,6 +36,7 @@ pub mod risk_score;
 pub mod traits;
 pub mod webauthn;
 
+pub use brute_force::{check_locked, record_failure, record_success, BruteForceError};
 pub use consent::ConsentAuthenticator;
 pub use context::AuthnContext;
 pub use cookie::CookieAuthenticator;

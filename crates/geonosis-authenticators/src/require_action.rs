@@ -127,6 +127,9 @@ mod tests {
             required_flow: None,
             organizations: vec![],
             enabled: true,
+            failed_attempts: 0,
+            locked_until: None,
+            last_failed_at: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
@@ -169,6 +172,7 @@ mod tests {
             amr: vec![],
             locals: Default::default(),
             now: Utc::now(),
+            brute_force: geonosis_core::realm::BruteForcePolicy::default(),
         };
         (ctx, uid)
     }

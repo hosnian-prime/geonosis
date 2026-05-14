@@ -20,7 +20,7 @@ path = "src/lib.rs"
 [dependencies]
 geonosis-core = { path = "../geonosis-core" }
 geonosis-crypto = { path = "../geonosis-crypto" }
-geonosis-storage = { path = "../geonosis-storage" }
+geonosis-storage = { path = "../geonosis-storage", features = ["postgres"] }
 geonosis-cache = { path = "../geonosis-cache" }
 geonosis-flow = { path = "../geonosis-flow" }
 geonosis-protocol-oauth = { path = "../geonosis-protocol-oauth" }
@@ -30,7 +30,9 @@ geonosis-federation-ldap = { path = "../geonosis-federation-ldap" }
 geonosis-broker = { path = "../geonosis-broker" }
 geonosis-spi-host = { path = "../geonosis-spi-host" }
 geonosis-authenticators = { path = "../geonosis-authenticators" }
-geonosis-audit = { path = "../geonosis-audit" }
+geonosis-audit = { path = "../geonosis-audit", features = ["postgres"] }
+geonosis-migrate = { path = "../geonosis-migrate" }
+sqlx.workspace = true
 
 axum.workspace = true
 tower.workspace = true

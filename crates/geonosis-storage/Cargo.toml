@@ -10,10 +10,17 @@ description = "Storage trait + in-memory impl (Postgres impl deferred to v0.1 PR
 [lints]
 workspace = true
 
+[features]
+default = []
+# Enable to compile in the sqlx-backed PostgresStorage. Server builds
+# turn this on; pure unit-test crates can stay on the in-memory backend.
+postgres = ["dep:sqlx", "dep:geonosis-migrate"]
+
 [dependencies]
 geonosis-core = { path = "../geonosis-core" }
 geonosis-crypto = { path = "../geonosis-crypto" }
 geonosis-flow = { path = "../geonosis-flow" }
+geonosis-migrate = { path = "../geonosis-migrate", optional = true }
 
 async-trait.workspace = true
 serde.workspace = true
@@ -23,6 +30,9 @@ tracing.workspace = true
 chrono.workspace = true
 tokio.workspace = true
 parking_lot.workspace = true
+sqlx = { workspace = true, optional = true }
+
+url.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
