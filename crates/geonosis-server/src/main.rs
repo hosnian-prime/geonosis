@@ -86,6 +86,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         refresh_hash_key,
         client_secret_hash_key,
         authenticators: Arc::new(geonosis_server::authenticators::BuiltinAuthenticators::default()),
+        broker_adapters: Arc::new(geonosis_broker::BuiltinAdapters::default()),
+        broker: Arc::new(geonosis_server::broker::BrokerRuntime::new()),
+        ldap: Arc::new(geonosis_server::ldap::LdapRuntime::new()),
     };
 
     let listener = tokio::net::TcpListener::bind(&args.listen).await?;

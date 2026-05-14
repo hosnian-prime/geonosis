@@ -2,10 +2,12 @@
 
 use async_trait::async_trait;
 
+use geonosis_broker::{BrokerAuthnState, BrokerLink, IdentityProvider};
 use geonosis_core::{
     Client, ClientId, CodeGrant, CodeId, Realm, RealmId, RefreshToken, RefreshTokenId, Session,
     SessionId, TokenFamilyId, User, UserId,
 };
+use geonosis_federation_ldap::LdapFederationConfig;
 
 use crate::error::StorageError;
 
@@ -131,6 +133,56 @@ pub trait Storage: Send + Sync {
         realm: RealmId,
         user_id: UserId,
         client_id: ClientId,
+    ) -> Result<(), StorageError>;
+
+    // ---- Identity provider (broker) ----
+    async fn create_idp(&self, idp: IdentityProvider) -> Result<(), StorageError>;
+    async fn get_idp_by_alias(&self, realm: RealmId, alias: &str)
+        -> Result<IdentityProvider, StorageError>;
+    async fn list_idps(&self, realm: RealmId) -> Result<Vec<IdentityProvider>, StorageError>;
+    async fn delete_idp(&self, realm: RealmId, alias: &str) -> Result<(), StorageError>;
+
+    // ---- BrokerAuthnState (per-redirect CSRF bridge) ----
+    async fn save_broker_state(&self, state: BrokerAuthnState) -> Result<(), StorageError>;
+    /// Atomically consume a broker state row by the random `state` value.
+    /// Single-use: the row is deleted at consume time so a replayed
+    /// callback fails with `NotFound`.
+    async fn consume_broker_state(
+        &self,
+        realm: RealmId,
+        state: &str,
+    ) -> Result<BrokerAuthnState, StorageError>;
+
+    // ---- BrokerLink (user_id ↔ external_id) ----
+    async fn upsert_broker_link(&self, link: BrokerLink) -> Result<(), StorageError>;
+    async fn find_broker_link(
+        &self,
+        realm: RealmId,
+        idp_alias: &str,
+        external_id: &str,
+    ) -> Result<Option<BrokerLink>, StorageError>;
+    async fn list_broker_links(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+    ) -> Result<Vec<BrokerLink>, StorageError>;
+
+    // ---- LDAP federation source ----
+    async fn upsert_ldap_source(&self, source: LdapFederationConfig)
+        -> Result<(), StorageError>;
+    async fn get_ldap_source(
+        &self,
+        realm: RealmId,
+        alias: &str,
+    ) -> Result<LdapFederationConfig, StorageError>;
+    async fn list_ldap_sources(
+        &self,
+        realm: RealmId,
+    ) -> Result<Vec<LdapFederationConfig>, StorageError>;
+    async fn delete_ldap_source(
+        &self,
+        realm: RealmId,
+        alias: &str,
     ) -> Result<(), StorageError>;
 
     // ---- WASM SPI modules ----
