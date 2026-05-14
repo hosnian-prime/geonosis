@@ -14,8 +14,8 @@ pub mod refresh;
 
 pub use error::{OAuthError, OAuthErrorCode};
 pub use grants::{
-    AuthorizationCodeGrant, ClientCredentialsGrant, IssuedTokens, TokenExchangeGrant,
-    TokenExchangeSubjectTokenType, TokenIssuer,
+    assert_grant_permitted, AuthorizationCodeGrant, ClientCredentialsGrant, IssuedTokens,
+    TokenExchangeGrant, TokenExchangeSubjectTokenType, TokenIssuer,
 };
 pub use pkce::{
     derive_challenge_s256, validate_code_verifier, verify_code_verifier_against_challenge,

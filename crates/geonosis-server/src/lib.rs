@@ -12,6 +12,7 @@
 pub mod app;
 pub mod handlers;
 pub mod state;
+pub mod token_verify;
 
 pub use app::router;
 pub use state::AppState;

@@ -7,12 +7,12 @@ use async_trait::async_trait;
 use parking_lot::RwLock;
 
 use geonosis_core::{
-    Client, ClientId, CodeGrant, CodeId, Realm, RealmId, RefreshToken, RefreshTokenId, Session,
-    SessionId, TokenFamilyId, User, UserId,
+    Client, ClientId, CodeGrant, CodeId, FlowStateId, Realm, RealmId, RefreshToken, RefreshTokenId,
+    Session, SessionId, TokenFamilyId, User, UserId,
 };
 
 use crate::error::StorageError;
-use crate::traits::Storage;
+use crate::traits::{DeviceGrant, FlowStateRow, ParRequest, Storage};
 
 #[derive(Default)]
 struct Tables {
@@ -30,6 +30,10 @@ struct Tables {
     refresh_tokens: HashMap<RefreshTokenId, RefreshToken>,
     /// family -> set of token ids
     families: HashMap<TokenFamilyId, Vec<RefreshTokenId>>,
+    par_requests: HashMap<String, ParRequest>,
+    device_by_device_code: HashMap<String, DeviceGrant>,
+    device_by_user_code: HashMap<String, String>,
+    flow_states: HashMap<FlowStateId, FlowStateRow>,
 }
 
 pub struct MemoryStorage {
@@ -365,6 +369,94 @@ impl Storage for MemoryStorage {
             }
         }
         Ok(())
+    }
+
+    // ---- PAR ----
+    async fn save_par_request(&self, par: ParRequest) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        t.par_requests.insert(par.request_uri.clone(), par);
+        Ok(())
+    }
+
+    async fn consume_par_request(&self, request_uri: &str) -> Result<ParRequest, StorageError> {
+        let mut t = self.inner.write();
+        t.par_requests
+            .remove(request_uri)
+            .ok_or(StorageError::NotFound)
+    }
+
+    // ---- Device flow ----
+    async fn save_device_grant(&self, grant: DeviceGrant) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        t.device_by_user_code
+            .insert(grant.user_code.clone(), grant.device_code.clone());
+        t.device_by_device_code
+            .insert(grant.device_code.clone(), grant);
+        Ok(())
+    }
+
+    async fn get_device_grant_by_device_code(
+        &self,
+        device_code: &str,
+    ) -> Result<DeviceGrant, StorageError> {
+        let t = self.inner.read();
+        t.device_by_device_code
+            .get(device_code)
+            .cloned()
+            .ok_or(StorageError::NotFound)
+    }
+
+    async fn get_device_grant_by_user_code(
+        &self,
+        user_code: &str,
+    ) -> Result<DeviceGrant, StorageError> {
+        let t = self.inner.read();
+        let dc = t
+            .device_by_user_code
+            .get(user_code)
+            .cloned()
+            .ok_or(StorageError::NotFound)?;
+        t.device_by_device_code
+            .get(&dc)
+            .cloned()
+            .ok_or(StorageError::NotFound)
+    }
+
+    async fn update_device_grant(&self, grant: DeviceGrant) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        if !t.device_by_device_code.contains_key(&grant.device_code) {
+            return Err(StorageError::NotFound);
+        }
+        t.device_by_device_code
+            .insert(grant.device_code.clone(), grant);
+        Ok(())
+    }
+
+    async fn delete_device_grant(&self, device_code: &str) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        let g = t
+            .device_by_device_code
+            .remove(device_code)
+            .ok_or(StorageError::NotFound)?;
+        t.device_by_user_code.remove(&g.user_code);
+        Ok(())
+    }
+
+    // ---- Flow state ----
+    async fn save_flow_state(&self, state: FlowStateRow) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        t.flow_states.insert(state.state.id, state);
+        Ok(())
+    }
+
+    async fn get_flow_state(&self, id: &FlowStateId) -> Result<FlowStateRow, StorageError> {
+        let t = self.inner.read();
+        t.flow_states.get(id).cloned().ok_or(StorageError::NotFound)
+    }
+
+    async fn delete_flow_state(&self, id: &FlowStateId) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        t.flow_states.remove(id).ok_or(StorageError::NotFound).map(|_| ())
     }
 }
 

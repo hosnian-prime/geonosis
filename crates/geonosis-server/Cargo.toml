@@ -47,6 +47,14 @@ tracing-subscriber.workspace = true
 chrono.workspace = true
 url.workspace = true
 clap.workspace = true
+base64.workspace = true
+hex.workspace = true
+percent-encoding.workspace = true
+blake3.workspace = true
+futures.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
+ed25519-dalek.workspace = true
+pkcs8.workspace = true
+rand.workspace = true
