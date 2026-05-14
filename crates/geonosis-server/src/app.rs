@@ -78,6 +78,19 @@ pub fn router(state: AppState) -> Router {
             "/realms/:slug/login-actions/authenticate",
             post(handlers::authenticate_post),
         )
+        // Broker (identity federation) — RP / SP endpoints
+        .route(
+            "/realms/:slug/broker/:alias/login",
+            get(handlers::broker_login),
+        )
+        .route(
+            "/realms/:slug/broker/:alias/endpoint",
+            get(handlers::broker_endpoint_get).post(handlers::broker_endpoint_post),
+        )
+        .route(
+            "/realms/:slug/broker/:alias/metadata",
+            get(handlers::broker_metadata),
+        )
         .layer(TraceLayer::new_for_http())
         .with_state(state)
 }
@@ -149,6 +162,9 @@ mod tests {
             refresh_hash_key: [42u8; 32],
             client_secret_hash_key: [99u8; 32],
             authenticators: Arc::new(crate::authenticators::BuiltinAuthenticators::default()),
+            broker_adapters: Arc::new(geonosis_broker::BuiltinAdapters::default()),
+            broker: Arc::new(crate::broker::BrokerRuntime::new()),
+            ldap: Arc::new(crate::ldap::LdapRuntime::new()),
         }
     }
 
@@ -369,6 +385,141 @@ mod tests {
         let loc = resp.headers().get(axum::http::header::LOCATION).unwrap().to_str().unwrap();
         assert!(loc.starts_with("https://example.com/bye"));
         assert!(loc.contains("state=s1"));
+    }
+
+    #[tokio::test]
+    async fn broker_login_for_unknown_idp_404s() {
+        let r = router(fixture_state().await);
+        let resp = r
+            .oneshot(
+                Request::builder()
+                    .uri("/realms/acme/broker/missing/login")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn broker_metadata_returns_acs_url() {
+        let state = fixture_state().await;
+        let realm = state.storage.get_realm_by_slug("acme").await.unwrap();
+        seed_broker_idp(&state, realm.id, "google").await;
+        let r = router(state);
+        let resp = r
+            .oneshot(
+                Request::builder()
+                    .uri("/realms/acme/broker/google/metadata")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let acs = json["acs_url"].as_str().unwrap();
+        assert!(acs.contains("/broker/google/endpoint"));
+        assert!(acs.starts_with("https://g.example"));
+    }
+
+    #[tokio::test]
+    async fn broker_endpoint_get_rejects_unknown_state() {
+        let state = fixture_state().await;
+        let realm = state.storage.get_realm_by_slug("acme").await.unwrap();
+        seed_broker_idp(&state, realm.id, "google").await;
+        let r = router(state);
+        let resp = r
+            .oneshot(
+                Request::builder()
+                    .uri("/realms/acme/broker/google/endpoint?state=nope&code=xyz")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn broker_login_redirects_to_idp() {
+        let state = fixture_state().await;
+        let realm = state.storage.get_realm_by_slug("acme").await.unwrap();
+        seed_broker_idp(&state, realm.id, "google").await;
+        // Install a fixture so the handler doesn't try to fetch
+        // https://accounts.google.com/.well-known/openid-configuration.
+        state.broker.discovery.install_fixture(
+            "google",
+            geonosis_broker::oidc::OidcDiscovery {
+                issuer: "https://accounts.google.com".into(),
+                authorization_endpoint: "https://accounts.google.com/o/oauth2/v2/auth".into(),
+                token_endpoint: "https://oauth2.googleapis.com/token".into(),
+                userinfo_endpoint: None,
+                jwks_uri: "https://www.googleapis.com/oauth2/v3/certs".into(),
+                end_session_endpoint: None,
+                code_challenge_methods_supported: vec!["S256".into()],
+                id_token_signing_alg_values_supported: vec!["RS256".into()],
+            },
+            vec![],
+        );
+        let r = router(state);
+        let resp = r
+            .oneshot(
+                Request::builder()
+                    .uri("/realms/acme/broker/google/login")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::SEE_OTHER);
+        let loc = resp
+            .headers()
+            .get(axum::http::header::LOCATION)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(loc.starts_with("https://accounts.google.com/o/oauth2/v2/auth?"));
+        assert!(loc.contains("prompt=select"));
+        assert!(loc.contains("code_challenge="));
+        assert!(loc.contains("code_challenge_method=S256"));
+    }
+
+    async fn seed_broker_idp(state: &AppState, realm_id: RealmId, alias: &str) {
+        use geonosis_broker::{IdentityProvider, IdpConfig, IdpKind, OidcIdpConfig};
+        use geonosis_core::id::IdpId;
+        let idp = IdentityProvider {
+            id: IdpId::new(),
+            realm_id,
+            alias: alias.into(),
+            display_name: alias.into(),
+            kind: IdpKind::Oidc,
+            config: IdpConfig::Oidc(OidcIdpConfig {
+                issuer: "https://accounts.google.com".into(),
+                discovery_url: None,
+                authorization_endpoint: None,
+                token_endpoint: None,
+                userinfo_endpoint: None,
+                jwks_uri: None,
+                client_id: "client-abc".into(),
+                client_secret: None,
+                scopes: vec!["openid".into(), "email".into()],
+                pkce: true,
+                accept_unsigned_userinfo: false,
+                client_auth: geonosis_broker::ClientAuthMethod::None,
+                client_assertion_key: None,
+                prompt: None,
+                response_mode: None,
+            }),
+            first_login_flow_alias: "review-profile".into(),
+            post_login_flow_alias: None,
+            link_only: false,
+            adapter_urn: Some(geonosis_broker::adapter::urn::GOOGLE.into()),
+            enabled: true,
+        };
+        state.storage.create_idp(idp).await.unwrap();
     }
 
     #[tokio::test]
