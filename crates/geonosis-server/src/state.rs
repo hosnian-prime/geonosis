@@ -1,5 +1,6 @@
 //! Application state injected into axum handlers.
 
+use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 use url::Url;
@@ -55,4 +56,11 @@ pub struct AppState {
     /// In-process for v0.1; cluster-wide enforcement via Redis lands
     /// in v0.2.
     pub rate_limiter: SharedRateLimiter,
+    /// Per-pod drain flag. `POST /-/drain` flips this to `true`; the
+    /// readiness probe then returns 503 so the ingress controller can
+    /// pull the pod out of rotation before the `preStop` sleep
+    /// elapses. Liveness deliberately ignores it — draining must not
+    /// trigger a restart. Per `docs/11-deployment-k8s.md` §"Rolling
+    /// updates".
+    pub draining: Arc<AtomicBool>,
 }

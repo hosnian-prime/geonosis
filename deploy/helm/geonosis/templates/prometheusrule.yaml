@@ -1,0 +1,83 @@
+{{- if .Values.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "geonosis.fullname" . }}
+  labels:
+    {{- include "geonosis.labels" . | nindent 4 }}
+    {{- with .Values.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: geonosis.rules
+      rules:
+        # Per docs/13 §"Dashboards (shipped)". Thresholds match the
+        # doc table — operators tune via PrometheusRule overlay if
+        # their SLO budget is different.
+        - alert: GeonosisErrorRateHigh
+          expr: |
+            sum(rate(geonosis_http_responses_total{class=~"5xx"}[5m]))
+              /
+            sum(rate(geonosis_http_requests_total[5m])) > 0.01
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Geonosis 5xx error rate > 1% over 5m"
+
+        - alert: GeonosisAuthorizeLatencyHigh
+          expr: |
+            histogram_quantile(0.99,
+              sum by (le) (rate(geonosis_http_request_duration_seconds_bucket{path=~".*authorize.*"}[10m]))
+            ) > 0.25
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: "p99 authorize latency > 250ms over 10m"
+
+        - alert: GeonosisLoginFailureSpike
+          expr: |
+            sum(rate(geonosis_oidc_login_failures_total[5m]))
+              /
+            sum(rate(geonosis_oidc_authorize_total[5m])) > 0.30
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Login failure ratio > 30% over 5m"
+
+        - alert: GeonosisDbPoolSaturated
+          expr: |
+            (geonosis_db_pool_in_use / geonosis_db_pool_size) > 0.8
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Postgres pool > 80% utilized"
+
+        - alert: GeonosisSpiQuarantined
+          expr: increase(geonosis_spi_quarantined_total[10m]) > 0
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "A SPI plugin was quarantined"
+
+        - alert: GeonosisListenerLag
+          expr: geonosis_listener_lag_seconds > 5
+          for: 1m
+          labels:
+            severity: warning
+          annotations:
+            summary: "Cache-invalidation listener lag > 5s"
+
+        - alert: GeonosisTokenReuse
+          expr: increase(geonosis_token_reuse_detected_total[5m]) > 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "Refresh token reuse detected — possible token theft"
+{{- end }}

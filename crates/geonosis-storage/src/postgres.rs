@@ -2980,6 +2980,109 @@ impl Storage for PostgresStorage {
         tx.commit().await.map_err(sqlx_err)?;
         Ok(())
     }
+
+    async fn list_sessions(
+        &self,
+        realm: RealmId,
+        limit: usize,
+    ) -> Result<Vec<Session>, StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let rows = sqlx::query(
+            "SELECT * FROM session WHERE realm_id = $1
+             ORDER BY last_seen_at DESC LIMIT $2",
+        )
+        .bind(realm.to_string())
+        .bind(limit as i64)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        rows.iter().map(session_from_row).collect()
+    }
+
+    async fn list_audit_events(
+        &self,
+        realm: RealmId,
+        filter: &crate::traits::AuditEventFilter<'_>,
+        limit: usize,
+    ) -> Result<Vec<crate::traits::AuditEventRow>, StorageError> {
+        // Bounded-arg query against the partitioned audit table.
+        // Per docs/13, the table is indexed on `(realm_id,
+        // occurred_at DESC)` and `(realm_id, action, occurred_at)`,
+        // so the realm + ORDER BY + optional `action` predicate stay
+        // index-served. `actor` is a JSONB column, so we cast to
+        // text for the substring filter — the row count is already
+        // bounded by realm + occurred_at, keeping the cast safe.
+        let mut sql = String::from(
+            "SELECT id, realm_id, occurred_at, actor, action, target, detail
+             FROM audit_event WHERE realm_id = $1",
+        );
+        let mut idx = 2;
+        if filter.action.is_some() {
+            sql.push_str(&format!(" AND action = ${idx}"));
+            idx += 1;
+        }
+        if filter.actor.is_some() {
+            sql.push_str(&format!(" AND actor::text ILIKE ${idx}"));
+            idx += 1;
+        }
+        if filter.from.is_some() {
+            sql.push_str(&format!(" AND occurred_at >= ${idx}"));
+            idx += 1;
+        }
+        if filter.until.is_some() {
+            sql.push_str(&format!(" AND occurred_at < ${idx}"));
+            idx += 1;
+        }
+        sql.push_str(&format!(" ORDER BY occurred_at DESC LIMIT ${idx}"));
+
+        let mut q = sqlx::query_as::<_, AuditEventRowDb>(&sql).bind(realm.to_string());
+        if let Some(a) = filter.action {
+            q = q.bind(a.to_string());
+        }
+        if let Some(a) = filter.actor {
+            q = q.bind(format!("%{a}%"));
+        }
+        if let Some(f) = filter.from {
+            q = q.bind(f);
+        }
+        if let Some(u) = filter.until {
+            q = q.bind(u);
+        }
+        let rows = q
+            .bind(limit as i64)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(sqlx_err)?;
+        Ok(rows.into_iter().map(Into::into).collect())
+    }
+}
+
+/// Internal row decoder for `audit_event`. Avoids leaking sqlx into
+/// the public storage API.
+#[derive(sqlx::FromRow)]
+struct AuditEventRowDb {
+    id: String,
+    realm_id: String,
+    occurred_at: chrono::DateTime<chrono::Utc>,
+    actor: serde_json::Value,
+    action: String,
+    target: Option<serde_json::Value>,
+    detail: serde_json::Value,
+}
+
+impl From<AuditEventRowDb> for crate::traits::AuditEventRow {
+    fn from(r: AuditEventRowDb) -> Self {
+        Self {
+            id: r.id,
+            realm_id: r.realm_id,
+            occurred_at: r.occurred_at,
+            actor: r.actor,
+            action: r.action,
+            target: r.target,
+            detail: r.detail,
+        }
+    }
 }
 
 fn idp_from_row(row: &sqlx::postgres::PgRow) -> Result<IdentityProvider, StorageError> {

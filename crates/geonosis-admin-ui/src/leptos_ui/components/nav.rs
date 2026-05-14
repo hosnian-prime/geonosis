@@ -19,11 +19,14 @@ pub fn SidebarNav(active: &'static str) -> impl IntoView {
             {item("realms", "Realms", "/admin-next/realms".to_string())}
             {item("clients", "Clients", "/admin-next/clients".to_string())}
             {item("users", "Users", "/admin-next/users".to_string())}
+            {item("roles", "Roles", "/admin-next/roles".to_string())}
+            {item("groups", "Groups", "/admin-next/groups".to_string())}
             {item("orgs", "Organizations", "/admin-next/orgs".to_string())}
             {item("agents", "Agents", "/admin-next/agents".to_string())}
             {item("flows", "Flows", "/admin-next/flows".to_string())}
             {item("idps", "Identity providers", "/admin-next/idps".to_string())}
             {item("spi", "SPI plugins", "/admin-next/spi".to_string())}
+            {item("sessions", "Sessions", "/admin-next/sessions".to_string())}
             {item("events", "Audit events", "/admin-next/events".to_string())}
         </nav>
     }

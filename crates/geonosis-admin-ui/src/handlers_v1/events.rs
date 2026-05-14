@@ -1,10 +1,11 @@
 //! `/admin/v1/realms/:slug/events` — audit event explorer query.
 //!
-//! v0.1.x ships a read-only list endpoint with a small filter surface
-//! (realm-scoped automatically, plus optional `action` / `actor` /
-//! `from` / `until`). The richer query language (full-text over the
-//! `detail` JSON column) lands with the postgres impl of the audit
-//! sink.
+//! Realm-scoped read-only window into the `audit_event` table.
+//! Filters mirror what the Leptos audit-explorer page surfaces:
+//! optional `action` (exact match), `actor` (substring match against
+//! the JSONB `actor` cast to text), and a time window via `from` /
+//! `until`. Hard-capped at `limit=500` so an unfiltered page request
+//! cannot pull megabytes back over the admin tier.
 
 use std::sync::Arc;
 
@@ -14,6 +15,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::handlers_v1::extractors::realm_by_slug;
 use crate::state::{AdminError, AdminState};
+
+const MAX_LIMIT: usize = 500;
 
 #[derive(Debug, Deserialize)]
 pub struct EventQuery {
@@ -38,23 +41,37 @@ pub struct EventRow {
     pub id: String,
     pub realm_id: String,
     pub occurred_at: chrono::DateTime<chrono::Utc>,
-    pub actor: String,
+    pub actor: serde_json::Value,
     pub action: String,
-    pub target: Option<String>,
+    pub target: Option<serde_json::Value>,
     pub detail: serde_json::Value,
 }
 
 pub async fn list(
     State(state): State<Arc<AdminState>>,
     Path(slug): Path<String>,
-    Query(_q): Query<EventQuery>,
+    Query(q): Query<EventQuery>,
 ) -> Result<Json<Vec<EventRow>>, AdminError> {
-    // Resolving the realm authorizes the query and bounds the result
-    // set. The audit sink itself doesn't expose a query trait yet —
-    // doc 13 §"Audit event explorer" is the v0.1.x deliverable for
-    // the SELECT path. We surface the endpoint shape so the Leptos
-    // pages and `geoctl events` have a stable contract while the
-    // sink-side query SPI lands.
-    let _realm = realm_by_slug(&state, &slug).await?;
-    Ok(Json(vec![]))
+    let realm = realm_by_slug(&state, &slug).await?;
+    let limit = q.limit.min(MAX_LIMIT);
+    let filter = geonosis_storage::AuditEventFilter {
+        action: q.action.as_deref(),
+        actor: q.actor.as_deref(),
+        from: q.from,
+        until: q.until,
+    };
+    let rows = state.storage.list_audit_events(realm.id, &filter, limit).await?;
+    let payload = rows
+        .into_iter()
+        .map(|r| EventRow {
+            id: r.id,
+            realm_id: r.realm_id,
+            occurred_at: r.occurred_at,
+            actor: r.actor,
+            action: r.action,
+            target: r.target,
+            detail: r.detail,
+        })
+        .collect();
+    Ok(Json(payload))
 }

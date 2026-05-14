@@ -1720,6 +1720,37 @@ impl Storage for MemoryStorage {
             .ok_or(StorageError::NotFound)
             .map(|_| ())
     }
+
+    async fn list_audit_events(
+        &self,
+        _realm: RealmId,
+        _filter: &crate::traits::AuditEventFilter<'_>,
+        _limit: usize,
+    ) -> Result<Vec<crate::traits::AuditEventRow>, StorageError> {
+        // The in-memory backend is for quickstart / unit tests where
+        // audit ingest goes to a no-op sink. Per docs/13 the audit
+        // table is Postgres-backed in production; reads only return
+        // data when the Postgres storage backend is active.
+        Ok(Vec::new())
+    }
+
+    async fn list_sessions(
+        &self,
+        realm: RealmId,
+        limit: usize,
+    ) -> Result<Vec<Session>, StorageError> {
+        let mut rows: Vec<Session> = self
+            .inner
+            .read()
+            .sessions
+            .values()
+            .filter(|s| s.realm_id == realm)
+            .cloned()
+            .collect();
+        rows.sort_by(|a, b| b.last_seen_at.cmp(&a.last_seen_at));
+        rows.truncate(limit);
+        Ok(rows)
+    }
 }
 
 
