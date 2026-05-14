@@ -137,14 +137,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn migrator_lists_all_eight_bootstrap_migrations() {
+    fn migrator_lists_all_bootstrap_migrations() {
         let names: Vec<&str> = MIGRATIONS
             .iter()
             .map(|m| m.description.as_ref())
             .collect();
         // Each `.up.sql` is one migration; sqlx strips the timestamp
         // prefix into the description.
-        assert_eq!(names.len(), 8, "migrations: {names:?}");
+        assert_eq!(names.len(), 9, "migrations: {names:?}");
         for n in &names {
             eprintln!("migration: {n}");
         }
