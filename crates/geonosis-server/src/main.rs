@@ -154,7 +154,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // alert rule `GeonosisDbPoolSaturated` reads these gauges.
         state.metrics.install_db_pool(pool.clone());
         let cache: Arc<dyn geonosis_cache::Cache> = state.cache.clone();
-        geonosis_cache::listen::spawn_listener(pool, cache);
+        // Wire the lag observer so `geonosis_listener_lag_seconds`
+        // reflects the real staleness of the cache-invalidation
+        // pipeline. The G7 metric primitive was declared in F-
+        // metrics; this call site closes the gap.
+        let metrics_for_observer = state.metrics.clone();
+        let observer: geonosis_cache::listen::LagObserver = std::sync::Arc::new(
+            move |channel: &str, secs: f64| {
+                metrics_for_observer.record_listener_lag(channel, secs);
+            },
+        );
+        geonosis_cache::listen::spawn_listener_with_observer(pool, cache, Some(observer));
         tracing::info!(
             channel = geonosis_cache::listen::CHANNEL,
             "cache invalidation listener spawned",
