@@ -1,0 +1,100 @@
+name: ci
+
+on:
+  push:
+    branches: [main, hive]
+  pull_request:
+    branches: [main, hive]
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-Dwarnings"
+  # Stable rather than nightly: docs/14-roadmap.md leaves nightly to v0.2+
+  # tooling work and we ship on stable for predictability.
+  RUST_VERSION: "1.83"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fmt:
+    name: cargo fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: cargo clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy --workspace --all-targets --locked -- -Dwarnings
+
+  test:
+    name: cargo test (workspace, lib)
+    runs-on: ubuntu-latest
+    # v0.1 unit test surface runs entirely against `MemoryStorage`;
+    # Postgres-backed integration tests are opt-in via
+    # `GEONOSIS_TEST_DATABASE_URL` and skipped when unset. We add a
+    # Postgres service in v0.2 once the conformance suite lands.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --locked --lib --no-fail-fast
+
+  css-logical:
+    name: CSS logical-properties lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Per `docs/08-admin-ui.md` + roadmap done-signal: the design
+      # system must use logical CSS properties only so RTL works on
+      # day one. This lint blocks physical-axis properties in the
+      # ui-kit and bundled themes.
+      - name: forbid physical-axis CSS in ui-kit + themes
+        run: |
+          set -e
+          # Match `margin-left:`, `padding-right:`, `border-left:`,
+          # `text-align: left;`, etc., in source files that ship as
+          # part of the design system. The negated paths skip
+          # generated output and the recipe markdown which can use
+          # incidental physical terms.
+          FOUND=$(grep -rE \
+            -e 'margin-(left|right)\s*:' \
+            -e 'padding-(left|right)\s*:' \
+            -e 'border-(left|right)\s*:' \
+            -e 'text-align:\s*(left|right)' \
+            crates/geonosis-ui-kit/src \
+            crates/geonosis-theme \
+            themes 2>/dev/null || true)
+          if [ -n "$FOUND" ]; then
+            echo "::error::physical-axis CSS detected — use logical properties (margin-inline-start, etc.)"
+            echo "$FOUND"
+            exit 1
+          fi
+          echo "ok: ui-kit + themes use logical properties only"
+
+  migrations:
+    name: migration discipline
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Compile-time tests in `crates/geonosis-migrate/src/lib.rs`
+      # already assert: every migration creates a table, every
+      # tenanted table has an RLS policy, every RLS policy reads
+      # `current_setting('geonosis.realm_id', true)`. This job runs
+      # them in isolation so a migration-discipline regression
+      # blocks the PR even when other tests are skipped.
+      - run: cargo test -p geonosis-migrate --locked --all-targets
