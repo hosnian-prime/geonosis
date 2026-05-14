@@ -41,7 +41,7 @@ pub use id::{
 };
 pub use organization::{
     MembershipState, OrgConsentMode, OrgConsentPolicy, OrgDomain, OrgInvitation, OrgMembership,
-    OrgPermission, OrgRole, Organization,
+    OrgPermission, OrgRole, Organization, OrganizationBranding, OrganizationPolicy,
 };
 pub use realm::{
     AcrLevel, AcrPolicy, AcrRequirement, BruteForcePolicy, EventConfig, LocalizationPolicy,

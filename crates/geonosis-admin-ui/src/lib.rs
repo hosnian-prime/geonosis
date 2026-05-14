@@ -15,6 +15,7 @@
 
 pub mod assets;
 pub mod handlers;
+pub mod handlers_v1;
 pub mod html;
 pub mod leptos_ui;
 pub mod state;
@@ -81,5 +82,7 @@ pub fn router(state: AdminState) -> Router {
         )
         .with_state(shared.clone());
 
-    maud_routes.merge(leptos_ui::leptos_router(shared))
+    maud_routes
+        .merge(leptos_ui::leptos_router(shared.clone()))
+        .merge(handlers_v1::router(shared))
 }
