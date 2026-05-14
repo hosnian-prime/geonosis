@@ -1,0 +1,32 @@
+// Shared types referenced by every Geonosis WIT interface.
+//
+// Kept terse — the host marshals more elaborate Rust types behind
+// these. Plugin authors see this surface only.
+
+package geonosis:types@0.1.0;
+
+interface types {
+    record provider-info {
+        urn: string,
+        display-name: string,
+        version: string,
+    }
+
+    /// Generic plugin error. `kind` is a stable machine-readable tag;
+    /// `message` is human-readable. `retryable` is a hint to the host.
+    record plugin-error {
+        kind: string,
+        message: string,
+        retryable: bool,
+    }
+
+    /// Bincode-encoded `serde_json::Value`-like claim set passed
+    /// between the host and a plugin. Wire shape is a JSON object
+    /// serialized as UTF-8 bytes.
+    type claim-set = list<u8>;
+
+    record key-value {
+        key: string,
+        value: string,
+    }
+}

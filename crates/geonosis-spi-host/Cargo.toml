@@ -10,12 +10,44 @@ description = "WASM SPI host (wasmtime + WIT) + provider registry."
 [lints]
 workspace = true
 
+[features]
+default = []
+# Pull the wasmtime component runtime in. Without this the crate is
+# the registry-only surface (host-typed traits + URN scheme).
+wasm-runtime = [
+    "dep:wasmtime",
+    "dep:wasmtime-wasi",
+    "dep:wasmtime-wasi-http",
+    "dep:tokio",
+    "dep:async-trait",
+    "dep:reqwest",
+    "dep:sha2",
+    "dep:hex",
+    "dep:moka",
+    "dep:anyhow",
+    "dep:url",
+]
+
 [dependencies]
 geonosis-core = { path = "../geonosis-core" }
 
-async-trait.workspace = true
+async-trait = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 parking_lot.workspace = true
+
+wasmtime = { workspace = true, optional = true }
+wasmtime-wasi = { workspace = true, optional = true }
+wasmtime-wasi-http = { version = "26", optional = true }
+tokio = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
+moka = { workspace = true, optional = true }
+anyhow = { workspace = true, optional = true }
+url = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio.workspace = true

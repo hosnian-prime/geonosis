@@ -110,8 +110,8 @@ wit-bindgen = "0.36"
 # LDAP
 ldap3 = { version = "0.11", default-features = false, features = ["tls-rustls"] }
 
-# Outbound HTTP (OIDC discovery, JWKS, broker token exchange, vendor
-# userinfo composition). Rustls so we don't drag in OpenSSL.
+# Outbound HTTP — OIDC discovery, JWKS, broker token exchange, vendor
+# userinfo composition, and the SPI host's WASM `http-client` import.
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "gzip"] }
 
 # XML — SAML AuthnRequest / SAML Response handling.
