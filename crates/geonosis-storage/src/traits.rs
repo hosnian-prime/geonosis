@@ -4,9 +4,11 @@ use async_trait::async_trait;
 
 use geonosis_broker::{BrokerAuthnState, BrokerLink, IdentityProvider};
 use geonosis_core::{
-    Client, ClientId, CodeGrant, CodeId, Realm, RealmId, RefreshToken, RefreshTokenId, Session,
-    SessionId, TokenFamilyId, User, UserId,
+    Agent, Client, ClientId, CodeGrant, CodeId, Group, GroupId, OrgConsentPolicy, OrgInvitation,
+    OrgMembership, OrgRole, Organization, OrganizationId, Realm, RealmId, RefreshToken,
+    RefreshTokenId, Role, RoleId, Session, SessionId, TokenFamilyId, User, UserId, UserProfile,
 };
+use geonosis_core::id::{AgentId, OrgInvitationId, OrgRoleId};
 use geonosis_federation_ldap::LdapFederationConfig;
 
 use crate::error::StorageError;
@@ -214,6 +216,270 @@ pub trait Storage: Send + Sync {
         realm: RealmId,
         binding_id: geonosis_core::id::SpiBindingId,
     ) -> Result<(), StorageError>;
+
+    // ---- Role (realm + client-scoped) ----
+    async fn create_role(&self, role: Role) -> Result<(), StorageError>;
+    async fn get_role(&self, realm: RealmId, id: RoleId) -> Result<Role, StorageError>;
+    async fn get_role_by_name(
+        &self,
+        realm: RealmId,
+        client_id: Option<ClientId>,
+        name: &str,
+    ) -> Result<Role, StorageError>;
+    async fn list_roles(
+        &self,
+        realm: RealmId,
+        client_id: Option<ClientId>,
+    ) -> Result<Vec<Role>, StorageError>;
+    async fn update_role(&self, role: Role) -> Result<(), StorageError>;
+    async fn delete_role(&self, realm: RealmId, id: RoleId) -> Result<(), StorageError>;
+
+    async fn assign_user_role(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+        role_id: RoleId,
+    ) -> Result<(), StorageError>;
+    async fn unassign_user_role(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+        role_id: RoleId,
+    ) -> Result<(), StorageError>;
+    async fn list_user_roles(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+    ) -> Result<Vec<Role>, StorageError>;
+
+    // ---- Group (hierarchical) ----
+    async fn create_group(&self, group: Group) -> Result<(), StorageError>;
+    async fn get_group(&self, realm: RealmId, id: GroupId) -> Result<Group, StorageError>;
+    async fn get_group_by_path(
+        &self,
+        realm: RealmId,
+        path: &str,
+    ) -> Result<Group, StorageError>;
+    async fn list_groups(&self, realm: RealmId) -> Result<Vec<Group>, StorageError>;
+    async fn update_group(&self, group: Group) -> Result<(), StorageError>;
+    async fn delete_group(&self, realm: RealmId, id: GroupId) -> Result<(), StorageError>;
+
+    async fn assign_user_group(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+        group_id: GroupId,
+    ) -> Result<(), StorageError>;
+    async fn unassign_user_group(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+        group_id: GroupId,
+    ) -> Result<(), StorageError>;
+    async fn list_user_groups(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+    ) -> Result<Vec<Group>, StorageError>;
+
+    async fn assign_group_role(
+        &self,
+        realm: RealmId,
+        group_id: GroupId,
+        role_id: RoleId,
+    ) -> Result<(), StorageError>;
+    async fn unassign_group_role(
+        &self,
+        realm: RealmId,
+        group_id: GroupId,
+        role_id: RoleId,
+    ) -> Result<(), StorageError>;
+    async fn list_group_roles(
+        &self,
+        realm: RealmId,
+        group_id: GroupId,
+    ) -> Result<Vec<Role>, StorageError>;
+
+    // ---- User Profile schema (per realm) ----
+    async fn get_user_profile_schema(
+        &self,
+        realm: RealmId,
+    ) -> Result<UserProfile, StorageError>;
+    async fn save_user_profile_schema(
+        &self,
+        profile: UserProfile,
+    ) -> Result<(), StorageError>;
+
+    // ---- Agent identity ----
+    async fn create_agent(&self, agent: Agent) -> Result<(), StorageError>;
+    async fn get_agent(&self, realm: RealmId, id: AgentId) -> Result<Agent, StorageError>;
+    async fn get_agent_by_alias(
+        &self,
+        realm: RealmId,
+        alias: &str,
+    ) -> Result<Agent, StorageError>;
+    async fn list_agents(&self, realm: RealmId) -> Result<Vec<Agent>, StorageError>;
+    async fn update_agent(&self, agent: Agent) -> Result<(), StorageError>;
+    async fn revoke_agent(&self, realm: RealmId, id: AgentId) -> Result<(), StorageError>;
+
+    // ---- Organization ----
+    async fn create_organization(&self, org: Organization) -> Result<(), StorageError>;
+    async fn get_organization(
+        &self,
+        realm: RealmId,
+        id: OrganizationId,
+    ) -> Result<Organization, StorageError>;
+    async fn get_organization_by_alias(
+        &self,
+        realm: RealmId,
+        alias: &str,
+    ) -> Result<Organization, StorageError>;
+    async fn list_organizations(
+        &self,
+        realm: RealmId,
+    ) -> Result<Vec<Organization>, StorageError>;
+    async fn update_organization(&self, org: Organization) -> Result<(), StorageError>;
+    async fn delete_organization(
+        &self,
+        realm: RealmId,
+        id: OrganizationId,
+    ) -> Result<(), StorageError>;
+
+    async fn upsert_org_domain(
+        &self,
+        domain: geonosis_core::OrgDomain,
+    ) -> Result<(), StorageError>;
+    async fn list_org_domains(
+        &self,
+        realm: RealmId,
+        organization_id: OrganizationId,
+    ) -> Result<Vec<geonosis_core::OrgDomain>, StorageError>;
+    async fn delete_org_domain(
+        &self,
+        realm: RealmId,
+        organization_id: OrganizationId,
+        domain: &str,
+    ) -> Result<(), StorageError>;
+    async fn find_org_by_verified_domain(
+        &self,
+        realm: RealmId,
+        domain: &str,
+    ) -> Result<Option<Organization>, StorageError>;
+
+    async fn upsert_org_membership(
+        &self,
+        membership: OrgMembership,
+    ) -> Result<(), StorageError>;
+    async fn get_org_membership(
+        &self,
+        realm: RealmId,
+        organization_id: OrganizationId,
+        user_id: UserId,
+    ) -> Result<OrgMembership, StorageError>;
+    async fn list_org_memberships(
+        &self,
+        realm: RealmId,
+        organization_id: OrganizationId,
+    ) -> Result<Vec<OrgMembership>, StorageError>;
+    async fn list_user_orgs(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+    ) -> Result<Vec<OrgMembership>, StorageError>;
+    async fn delete_org_membership(
+        &self,
+        realm: RealmId,
+        organization_id: OrganizationId,
+        user_id: UserId,
+    ) -> Result<(), StorageError>;
+
+    async fn create_org_role(&self, role: OrgRole) -> Result<(), StorageError>;
+    async fn get_org_role(
+        &self,
+        realm: RealmId,
+        id: OrgRoleId,
+    ) -> Result<OrgRole, StorageError>;
+    async fn list_org_roles(
+        &self,
+        realm: RealmId,
+        organization_id: OrganizationId,
+    ) -> Result<Vec<OrgRole>, StorageError>;
+    async fn update_org_role(&self, role: OrgRole) -> Result<(), StorageError>;
+    async fn delete_org_role(
+        &self,
+        realm: RealmId,
+        id: OrgRoleId,
+    ) -> Result<(), StorageError>;
+
+    async fn create_org_invitation(
+        &self,
+        invitation: OrgInvitation,
+    ) -> Result<(), StorageError>;
+    async fn get_org_invitation_by_token(
+        &self,
+        token: &str,
+    ) -> Result<OrgInvitation, StorageError>;
+    async fn list_org_invitations(
+        &self,
+        realm: RealmId,
+        organization_id: OrganizationId,
+    ) -> Result<Vec<OrgInvitation>, StorageError>;
+    async fn mark_org_invitation_accepted(
+        &self,
+        id: OrgInvitationId,
+    ) -> Result<(), StorageError>;
+    async fn delete_org_invitation(
+        &self,
+        id: OrgInvitationId,
+    ) -> Result<(), StorageError>;
+
+    async fn upsert_org_consent_policy(
+        &self,
+        policy: OrgConsentPolicy,
+    ) -> Result<(), StorageError>;
+    async fn get_org_consent_policy(
+        &self,
+        realm: RealmId,
+        organization_id: OrganizationId,
+        client_id: ClientId,
+    ) -> Result<Option<OrgConsentPolicy>, StorageError>;
+    async fn list_org_consent_policies(
+        &self,
+        realm: RealmId,
+        organization_id: OrganizationId,
+    ) -> Result<Vec<OrgConsentPolicy>, StorageError>;
+    async fn delete_org_consent_policy(
+        &self,
+        realm: RealmId,
+        organization_id: OrganizationId,
+        client_id: ClientId,
+    ) -> Result<(), StorageError>;
+
+    async fn upsert_org_idp_binding(
+        &self,
+        binding: OrgIdpBinding,
+    ) -> Result<(), StorageError>;
+    async fn list_org_idp_bindings(
+        &self,
+        realm: RealmId,
+        organization_id: OrganizationId,
+    ) -> Result<Vec<OrgIdpBinding>, StorageError>;
+    async fn delete_org_idp_binding(
+        &self,
+        realm: RealmId,
+        organization_id: OrganizationId,
+        idp_alias: &str,
+    ) -> Result<(), StorageError>;
+}
+
+/// Per-org binding to one of the realm's identity providers.
+#[derive(Debug, Clone)]
+pub struct OrgIdpBinding {
+    pub organization_id: OrganizationId,
+    pub realm_id: RealmId,
+    pub idp_alias: String,
+    pub priority: i32,
+    pub enabled: bool,
 }
 
 /// Stored WASM module — bytecode + metadata for the per-pod loader.

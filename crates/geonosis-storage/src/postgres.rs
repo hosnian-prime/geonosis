@@ -20,16 +20,29 @@ use sqlx::Row;
 
 use geonosis_broker::{BrokerAuthnState, BrokerLink, IdentityProvider};
 use geonosis_core::{
-    Client, ClientId, CodeGrant, CodeId, Realm, RealmId, RefreshToken, RefreshTokenId, Session,
-    SessionId, TokenFamilyId, User, UserId,
+    Agent, Client, ClientId, CodeGrant, CodeId, Group, GroupId, OrgConsentPolicy, OrgDomain,
+    OrgInvitation, OrgMembership, OrgRole, Organization, OrganizationId, Realm, RealmId,
+    RefreshToken, RefreshTokenId, Role, RoleId, Session, SessionId, TokenFamilyId, User, UserId,
+    UserProfile,
 };
+use geonosis_core::id::{AgentId, OrgInvitationId, OrgRoleId};
 use geonosis_federation_ldap::LdapFederationConfig;
 
 use crate::error::StorageError;
 use crate::traits::{
-    ConsentGrant, DeviceGrant, DeviceGrantStatus, FlowStateRow, ParRequest, SpiBindingRow,
-    Storage, WasmModule, WasmModuleHeader,
+    ConsentGrant, DeviceGrant, DeviceGrantStatus, FlowStateRow, OrgIdpBinding, ParRequest,
+    SpiBindingRow, Storage, WasmModule, WasmModuleHeader,
 };
+
+/// Placeholder for postgres methods whose v0.1.x SQL still needs to be
+/// authored. v0.1 ships with `MemoryStorage` as the default; the postgres
+/// rows below are stubs that surface a clear error if hit and never silently
+/// succeed. Each is annotated with the doc/migration that owns the shape.
+fn pg_pending(what: &'static str) -> StorageError {
+    StorageError::Backend(format!(
+        "postgres impl pending for {what} (v0.1.x); switch to memory backend or wait for follow-up"
+    ))
+}
 
 pub struct PostgresStorage {
     pool: PgPool,
@@ -1489,6 +1502,377 @@ impl Storage for PostgresStorage {
         }
         tx.commit().await.map_err(sqlx_err)?;
         Ok(())
+    }
+
+    // ---- Phase-0 additions (Role / Group / UserProfile / Agent / Org-ext) ----
+    // SQL implementations follow in v0.1.x. Memory backend is the v0.1
+    // default per doc 01 §Runtime; these stubs keep the trait surface
+    // intact so the workspace builds against both backends.
+
+    async fn create_role(&self, _role: Role) -> Result<(), StorageError> {
+        Err(pg_pending("create_role"))
+    }
+    async fn get_role(&self, _realm: RealmId, _id: RoleId) -> Result<Role, StorageError> {
+        Err(pg_pending("get_role"))
+    }
+    async fn get_role_by_name(
+        &self,
+        _realm: RealmId,
+        _client_id: Option<ClientId>,
+        _name: &str,
+    ) -> Result<Role, StorageError> {
+        Err(pg_pending("get_role_by_name"))
+    }
+    async fn list_roles(
+        &self,
+        _realm: RealmId,
+        _client_id: Option<ClientId>,
+    ) -> Result<Vec<Role>, StorageError> {
+        Err(pg_pending("list_roles"))
+    }
+    async fn update_role(&self, _role: Role) -> Result<(), StorageError> {
+        Err(pg_pending("update_role"))
+    }
+    async fn delete_role(&self, _realm: RealmId, _id: RoleId) -> Result<(), StorageError> {
+        Err(pg_pending("delete_role"))
+    }
+    async fn assign_user_role(
+        &self,
+        _realm: RealmId,
+        _user_id: UserId,
+        _role_id: RoleId,
+    ) -> Result<(), StorageError> {
+        Err(pg_pending("assign_user_role"))
+    }
+    async fn unassign_user_role(
+        &self,
+        _realm: RealmId,
+        _user_id: UserId,
+        _role_id: RoleId,
+    ) -> Result<(), StorageError> {
+        Err(pg_pending("unassign_user_role"))
+    }
+    async fn list_user_roles(
+        &self,
+        _realm: RealmId,
+        _user_id: UserId,
+    ) -> Result<Vec<Role>, StorageError> {
+        Err(pg_pending("list_user_roles"))
+    }
+
+    async fn create_group(&self, _group: Group) -> Result<(), StorageError> {
+        Err(pg_pending("create_group"))
+    }
+    async fn get_group(&self, _realm: RealmId, _id: GroupId) -> Result<Group, StorageError> {
+        Err(pg_pending("get_group"))
+    }
+    async fn get_group_by_path(
+        &self,
+        _realm: RealmId,
+        _path: &str,
+    ) -> Result<Group, StorageError> {
+        Err(pg_pending("get_group_by_path"))
+    }
+    async fn list_groups(&self, _realm: RealmId) -> Result<Vec<Group>, StorageError> {
+        Err(pg_pending("list_groups"))
+    }
+    async fn update_group(&self, _group: Group) -> Result<(), StorageError> {
+        Err(pg_pending("update_group"))
+    }
+    async fn delete_group(&self, _realm: RealmId, _id: GroupId) -> Result<(), StorageError> {
+        Err(pg_pending("delete_group"))
+    }
+    async fn assign_user_group(
+        &self,
+        _realm: RealmId,
+        _user_id: UserId,
+        _group_id: GroupId,
+    ) -> Result<(), StorageError> {
+        Err(pg_pending("assign_user_group"))
+    }
+    async fn unassign_user_group(
+        &self,
+        _realm: RealmId,
+        _user_id: UserId,
+        _group_id: GroupId,
+    ) -> Result<(), StorageError> {
+        Err(pg_pending("unassign_user_group"))
+    }
+    async fn list_user_groups(
+        &self,
+        _realm: RealmId,
+        _user_id: UserId,
+    ) -> Result<Vec<Group>, StorageError> {
+        Err(pg_pending("list_user_groups"))
+    }
+    async fn assign_group_role(
+        &self,
+        _realm: RealmId,
+        _group_id: GroupId,
+        _role_id: RoleId,
+    ) -> Result<(), StorageError> {
+        Err(pg_pending("assign_group_role"))
+    }
+    async fn unassign_group_role(
+        &self,
+        _realm: RealmId,
+        _group_id: GroupId,
+        _role_id: RoleId,
+    ) -> Result<(), StorageError> {
+        Err(pg_pending("unassign_group_role"))
+    }
+    async fn list_group_roles(
+        &self,
+        _realm: RealmId,
+        _group_id: GroupId,
+    ) -> Result<Vec<Role>, StorageError> {
+        Err(pg_pending("list_group_roles"))
+    }
+
+    async fn get_user_profile_schema(
+        &self,
+        realm: RealmId,
+    ) -> Result<UserProfile, StorageError> {
+        // Read-side fallback: return the default schema instead of erroring
+        // so admin UIs / userinfo emission can render against a brand-new
+        // realm before the operator has saved a custom schema.
+        Ok(UserProfile::default_for(realm))
+    }
+    async fn save_user_profile_schema(
+        &self,
+        _profile: UserProfile,
+    ) -> Result<(), StorageError> {
+        Err(pg_pending("save_user_profile_schema"))
+    }
+
+    async fn create_agent(&self, _agent: Agent) -> Result<(), StorageError> {
+        Err(pg_pending("create_agent"))
+    }
+    async fn get_agent(
+        &self,
+        _realm: RealmId,
+        _id: AgentId,
+    ) -> Result<Agent, StorageError> {
+        Err(pg_pending("get_agent"))
+    }
+    async fn get_agent_by_alias(
+        &self,
+        _realm: RealmId,
+        _alias: &str,
+    ) -> Result<Agent, StorageError> {
+        Err(pg_pending("get_agent_by_alias"))
+    }
+    async fn list_agents(&self, _realm: RealmId) -> Result<Vec<Agent>, StorageError> {
+        Err(pg_pending("list_agents"))
+    }
+    async fn update_agent(&self, _agent: Agent) -> Result<(), StorageError> {
+        Err(pg_pending("update_agent"))
+    }
+    async fn revoke_agent(&self, _realm: RealmId, _id: AgentId) -> Result<(), StorageError> {
+        Err(pg_pending("revoke_agent"))
+    }
+
+    async fn create_organization(&self, _org: Organization) -> Result<(), StorageError> {
+        Err(pg_pending("create_organization"))
+    }
+    async fn get_organization(
+        &self,
+        _realm: RealmId,
+        _id: OrganizationId,
+    ) -> Result<Organization, StorageError> {
+        Err(pg_pending("get_organization"))
+    }
+    async fn get_organization_by_alias(
+        &self,
+        _realm: RealmId,
+        _alias: &str,
+    ) -> Result<Organization, StorageError> {
+        Err(pg_pending("get_organization_by_alias"))
+    }
+    async fn list_organizations(
+        &self,
+        _realm: RealmId,
+    ) -> Result<Vec<Organization>, StorageError> {
+        Err(pg_pending("list_organizations"))
+    }
+    async fn update_organization(&self, _org: Organization) -> Result<(), StorageError> {
+        Err(pg_pending("update_organization"))
+    }
+    async fn delete_organization(
+        &self,
+        _realm: RealmId,
+        _id: OrganizationId,
+    ) -> Result<(), StorageError> {
+        Err(pg_pending("delete_organization"))
+    }
+    async fn upsert_org_domain(&self, _domain: OrgDomain) -> Result<(), StorageError> {
+        Err(pg_pending("upsert_org_domain"))
+    }
+    async fn list_org_domains(
+        &self,
+        _realm: RealmId,
+        _organization_id: OrganizationId,
+    ) -> Result<Vec<OrgDomain>, StorageError> {
+        Err(pg_pending("list_org_domains"))
+    }
+    async fn delete_org_domain(
+        &self,
+        _realm: RealmId,
+        _organization_id: OrganizationId,
+        _domain: &str,
+    ) -> Result<(), StorageError> {
+        Err(pg_pending("delete_org_domain"))
+    }
+    async fn find_org_by_verified_domain(
+        &self,
+        _realm: RealmId,
+        _domain: &str,
+    ) -> Result<Option<Organization>, StorageError> {
+        Err(pg_pending("find_org_by_verified_domain"))
+    }
+    async fn upsert_org_membership(
+        &self,
+        _membership: OrgMembership,
+    ) -> Result<(), StorageError> {
+        Err(pg_pending("upsert_org_membership"))
+    }
+    async fn get_org_membership(
+        &self,
+        _realm: RealmId,
+        _organization_id: OrganizationId,
+        _user_id: UserId,
+    ) -> Result<OrgMembership, StorageError> {
+        Err(pg_pending("get_org_membership"))
+    }
+    async fn list_org_memberships(
+        &self,
+        _realm: RealmId,
+        _organization_id: OrganizationId,
+    ) -> Result<Vec<OrgMembership>, StorageError> {
+        Err(pg_pending("list_org_memberships"))
+    }
+    async fn list_user_orgs(
+        &self,
+        _realm: RealmId,
+        _user_id: UserId,
+    ) -> Result<Vec<OrgMembership>, StorageError> {
+        Err(pg_pending("list_user_orgs"))
+    }
+    async fn delete_org_membership(
+        &self,
+        _realm: RealmId,
+        _organization_id: OrganizationId,
+        _user_id: UserId,
+    ) -> Result<(), StorageError> {
+        Err(pg_pending("delete_org_membership"))
+    }
+    async fn create_org_role(&self, _role: OrgRole) -> Result<(), StorageError> {
+        Err(pg_pending("create_org_role"))
+    }
+    async fn get_org_role(
+        &self,
+        _realm: RealmId,
+        _id: OrgRoleId,
+    ) -> Result<OrgRole, StorageError> {
+        Err(pg_pending("get_org_role"))
+    }
+    async fn list_org_roles(
+        &self,
+        _realm: RealmId,
+        _organization_id: OrganizationId,
+    ) -> Result<Vec<OrgRole>, StorageError> {
+        Err(pg_pending("list_org_roles"))
+    }
+    async fn update_org_role(&self, _role: OrgRole) -> Result<(), StorageError> {
+        Err(pg_pending("update_org_role"))
+    }
+    async fn delete_org_role(
+        &self,
+        _realm: RealmId,
+        _id: OrgRoleId,
+    ) -> Result<(), StorageError> {
+        Err(pg_pending("delete_org_role"))
+    }
+    async fn create_org_invitation(
+        &self,
+        _invitation: OrgInvitation,
+    ) -> Result<(), StorageError> {
+        Err(pg_pending("create_org_invitation"))
+    }
+    async fn get_org_invitation_by_token(
+        &self,
+        _token: &str,
+    ) -> Result<OrgInvitation, StorageError> {
+        Err(pg_pending("get_org_invitation_by_token"))
+    }
+    async fn list_org_invitations(
+        &self,
+        _realm: RealmId,
+        _organization_id: OrganizationId,
+    ) -> Result<Vec<OrgInvitation>, StorageError> {
+        Err(pg_pending("list_org_invitations"))
+    }
+    async fn mark_org_invitation_accepted(
+        &self,
+        _id: OrgInvitationId,
+    ) -> Result<(), StorageError> {
+        Err(pg_pending("mark_org_invitation_accepted"))
+    }
+    async fn delete_org_invitation(
+        &self,
+        _id: OrgInvitationId,
+    ) -> Result<(), StorageError> {
+        Err(pg_pending("delete_org_invitation"))
+    }
+    async fn upsert_org_consent_policy(
+        &self,
+        _policy: OrgConsentPolicy,
+    ) -> Result<(), StorageError> {
+        Err(pg_pending("upsert_org_consent_policy"))
+    }
+    async fn get_org_consent_policy(
+        &self,
+        _realm: RealmId,
+        _organization_id: OrganizationId,
+        _client_id: ClientId,
+    ) -> Result<Option<OrgConsentPolicy>, StorageError> {
+        Err(pg_pending("get_org_consent_policy"))
+    }
+    async fn list_org_consent_policies(
+        &self,
+        _realm: RealmId,
+        _organization_id: OrganizationId,
+    ) -> Result<Vec<OrgConsentPolicy>, StorageError> {
+        Err(pg_pending("list_org_consent_policies"))
+    }
+    async fn delete_org_consent_policy(
+        &self,
+        _realm: RealmId,
+        _organization_id: OrganizationId,
+        _client_id: ClientId,
+    ) -> Result<(), StorageError> {
+        Err(pg_pending("delete_org_consent_policy"))
+    }
+    async fn upsert_org_idp_binding(
+        &self,
+        _binding: OrgIdpBinding,
+    ) -> Result<(), StorageError> {
+        Err(pg_pending("upsert_org_idp_binding"))
+    }
+    async fn list_org_idp_bindings(
+        &self,
+        _realm: RealmId,
+        _organization_id: OrganizationId,
+    ) -> Result<Vec<OrgIdpBinding>, StorageError> {
+        Err(pg_pending("list_org_idp_bindings"))
+    }
+    async fn delete_org_idp_binding(
+        &self,
+        _realm: RealmId,
+        _organization_id: OrganizationId,
+        _idp_alias: &str,
+    ) -> Result<(), StorageError> {
+        Err(pg_pending("delete_org_idp_binding"))
     }
 }
 
