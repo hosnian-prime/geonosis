@@ -134,7 +134,7 @@ impl FlowExecutor for DefaultExecutor {
                     });
                     let next = flow
                         .next(node.id, &EdgeCondition::Success)
-                        .or_else(|| flow.next(node.id, &EdgeCondition::Otherwise))
+                        .or_else(|| flow.next_with_guard(node.id, &EdgeCondition::Otherwise, &state.context))
                         .ok_or_else(|| FlowError::DeadEnd(node.id.to_string()))?;
                     state.current_node = next;
                     continue;
@@ -161,7 +161,7 @@ impl FlowExecutor for DefaultExecutor {
                     // condition labels which match `EdgeCondition::Status`.
                     let next = flow
                         .next(node.id, &EdgeCondition::Status(condition.clone()))
-                        .or_else(|| flow.next(node.id, &EdgeCondition::Otherwise))
+                        .or_else(|| flow.next_with_guard(node.id, &EdgeCondition::Otherwise, &state.context))
                         .ok_or_else(|| FlowError::DeadEnd(node.id.to_string()))?;
                     state.current_node = next;
                     continue;

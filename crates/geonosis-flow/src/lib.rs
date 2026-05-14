@@ -11,6 +11,7 @@
 pub mod compile;
 pub mod dsl;
 pub mod executor;
+pub mod guard;
 pub mod state;
 
 pub use compile::{compile, CompileError, CompiledFlow};
@@ -18,4 +19,5 @@ pub use dsl::{
     Edge, EdgeCondition, FlowDefinition, FlowNode, NodeKind, Requirement, StartNode, SuccessNode,
 };
 pub use executor::{FlowError, FlowExecutor, StepInput, StepOutput};
+pub use guard::eval_guard;
 pub use state::{CsrfToken, FlowContext, FlowHistoryEntry, FlowState};
