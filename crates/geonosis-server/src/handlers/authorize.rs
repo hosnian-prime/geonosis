@@ -56,6 +56,18 @@ async fn handle_authorize(
         Err(_) => return (StatusCode::NOT_FOUND, "realm not found").into_response(),
     };
 
+    // JAR (RFC 9101) signed `request` parameter is not yet wired —
+    // surface as `request_not_supported` per OIDC 1.0 §6.1 instead of
+    // silently accepting unverified claims. PAR remains the supported
+    // alternative.
+    if params.contains_key("request") {
+        return error_redirect(
+            &params,
+            "request_not_supported",
+            "JAR `request` parameter is not yet supported; use PAR instead",
+        );
+    }
+
     // Resolve PAR `request_uri` if presented (RFC 9126 §4).
     if let Some(request_uri) = params.remove("request_uri") {
         match state.storage.consume_par_request(&request_uri).await {
@@ -90,6 +102,50 @@ async fn handle_authorize(
 
     if let Err(e) = req.enforce_client_policy(&client) {
         return authorize_error_to_response(&params, &e);
+    }
+
+    // ---- prompt / max_age / acr_values enforcement (OIDC 1.0 §3.1.2.1) ----
+    //
+    // v0.1 does not yet maintain an SSO browser-cookie surface, so any
+    // request that requires a silently-completable login (`prompt=none`
+    // or a `max_age` that's already elapsed) must surface as the
+    // canonical OIDC error. Per spec the relying party then falls back
+    // to an interactive `prompt=login` retry.
+    if let Some(prompt) = req.prompt.as_deref() {
+        // Spec values: none / login / consent / select_account.
+        for tok in prompt.split_whitespace() {
+            match tok {
+                "none" => {
+                    return error_redirect(
+                        &params,
+                        "login_required",
+                        "user is not authenticated and prompt=none was requested",
+                    );
+                }
+                "login" | "consent" | "select_account" => { /* satisfied by the interactive flow */ }
+                other => {
+                    let msg = format!("unknown prompt value: {other}");
+                    return error_redirect(&params, "invalid_request", &msg);
+                }
+            }
+        }
+    }
+    if let Some(max_age) = req.max_age {
+        if max_age < 0 {
+            return error_redirect(&params, "invalid_request", "max_age must be non-negative");
+        }
+        // With no SSO session cookie yet, every authorize request
+        // starts a fresh interactive login — `auth_time` will equal
+        // "now", so we always satisfy `max_age >= 0`. Once cookies
+        // land we re-evaluate here against `now - session.started_at`.
+    }
+    if let Some(acr_values) = req.acr_values.as_deref() {
+        // ACR enforcement requires the realm's AcrPolicy → AuthnLevel
+        // table from doc 12 + the flow executor surfacing the achieved
+        // level. v0.1 records the requested value so the eventual
+        // step-up authenticator can compare; the actual enforcement
+        // hook lands with the step-up flow node in Phase 4.
+        params.insert("__geonosis_requested_acr_values".into(), acr_values.into());
     }
 
     // Persist a flow state with the request params so the login-actions
