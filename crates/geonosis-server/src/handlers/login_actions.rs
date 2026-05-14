@@ -12,7 +12,6 @@ use axum::response::{IntoResponse, Redirect, Response};
 use chrono::{Duration as ChronoDuration, Utc};
 
 use geonosis_crypto::KeyManagementService;
-use sha2::Digest;
 
 use geonosis_core::token::{CodeChallenge, CodeChallengeMethod, CodeGrant};
 use geonosis_core::{AuthnLevel, CodeId, ScopeName, Session, SessionId};
@@ -367,10 +366,10 @@ async fn try_complete_saml(
 
     // NameID: per docs/20 §"NameID strategies". v0.1 ships
     // emailAddress, persistent (transient mapping), unspecified
-    // (username). Persistent storage of per-(user, SP) IDs lands
-    // in v0.1.x; this commit uses the session ID for transient and
-    // a derived SHA-256(user||sp) string for persistent so the
-    // assertion is verifiable end-to-end today.
+    // (username). Persistent is now table-backed (see
+    // `Storage::get_saml_persistent_id` / `save_saml_persistent_id`)
+    // so the same (user, SP) tuple resolves to the same NameID
+    // across sessions even after server restarts.
     let name_id = match sp_config.name_id_format {
         geonosis_saml_types::NameIdFormat::EmailAddress => user
             .email
@@ -380,11 +379,18 @@ async fn try_complete_saml(
         geonosis_saml_types::NameIdFormat::Transient => session_id.0.clone(),
         geonosis_saml_types::NameIdFormat::Persistent
         | geonosis_saml_types::NameIdFormat::X509SubjectName => {
-            let mut h = sha2::Sha256::new();
-            h.update(user.id.to_string().as_bytes());
-            h.update(b"\x00");
-            h.update(sp_config.entity_id.as_bytes());
-            format!("g_{}", hex::encode(h.finalize()))
+            match resolve_persistent_name_id(state, realm, user, &sp_config.entity_id).await {
+                Ok(name) => name,
+                Err(e) => {
+                    return Some(
+                        (
+                            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                            format!("persistent NameID resolve failed: {e}"),
+                        )
+                            .into_response(),
+                    );
+                }
+            }
         }
     };
 
@@ -513,4 +519,40 @@ async fn build_key_info_for_realm(
     Ok(KeyInfoMaterial::X509Certificate {
         cert_b64: der_to_b64(&der),
     })
+}
+
+/// Resolve (or mint + persist) the persistent SAML NameID for a
+/// `(realm, user, SP)` tuple. The mint format is `g_<ULID-base32>`
+/// — opaque to the SP, never reveals the underlying user_id.
+async fn resolve_persistent_name_id(
+    state: &AppState,
+    realm: &geonosis_core::Realm,
+    user: &geonosis_core::User,
+    sp_entity_id: &str,
+) -> Result<String, String> {
+    if let Some(row) = state
+        .storage
+        .get_saml_persistent_id(realm.id, user.id, sp_entity_id)
+        .await
+        .map_err(|e| e.to_string())?
+    {
+        return Ok(row.name_id);
+    }
+    // Mint a fresh opaque identifier. ULID is order-preserving in
+    // base32 which lets operators eyeball when the SP first started
+    // tracking the user.
+    let name_id = format!("g_{}", geonosis_core::id::UserId::new());
+    let row = geonosis_storage::SamlPersistentIdRow {
+        realm_id: realm.id,
+        user_id: user.id,
+        sp_entity_id: sp_entity_id.to_string(),
+        name_id: name_id.clone(),
+        created_at: chrono::Utc::now(),
+    };
+    state
+        .storage
+        .save_saml_persistent_id(row)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(name_id)
 }
