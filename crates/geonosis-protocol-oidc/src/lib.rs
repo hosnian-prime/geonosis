@@ -8,9 +8,17 @@
 //! - Token issuance helpers (signs via `KeyManagementService`)
 
 pub mod authorize;
+pub mod device;
 pub mod discovery;
+pub mod introspect;
 pub mod issuer;
+pub mod par;
+pub mod userinfo;
 
 pub use authorize::{AuthorizeRequest, AuthorizeRequestError, ResponseType};
+pub use device::{generate_user_code, DeviceAuthorizationResponse, DEVICE_CODE_DEFAULT_TTL_SECS, DEVICE_CODE_DEFAULT_INTERVAL_SECS};
 pub use discovery::{discovery_document, DiscoveryDocument};
+pub use introspect::{IntrospectionResponse, build_introspection};
 pub use issuer::{OidcIssuer, OidcIssuerError};
+pub use par::{ParResponse, generate_request_uri, PAR_DEFAULT_TTL_SECS};
+pub use userinfo::{userinfo_for, UserinfoClaims};

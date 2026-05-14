@@ -95,4 +95,71 @@ pub trait Storage: Send + Sync {
     /// Invalidate every token in a family — invoked when a previously-used
     /// refresh token is presented again (reuse detection).
     async fn revoke_token_family(&self, family: TokenFamilyId) -> Result<(), StorageError>;
+
+    // ---- PAR (RFC 9126) ----
+    async fn save_par_request(&self, par: ParRequest) -> Result<(), StorageError>;
+    async fn consume_par_request(&self, request_uri: &str) -> Result<ParRequest, StorageError>;
+
+    // ---- Device flow (RFC 8628) ----
+    async fn save_device_grant(&self, grant: DeviceGrant) -> Result<(), StorageError>;
+    async fn get_device_grant_by_device_code(
+        &self,
+        device_code: &str,
+    ) -> Result<DeviceGrant, StorageError>;
+    async fn get_device_grant_by_user_code(
+        &self,
+        user_code: &str,
+    ) -> Result<DeviceGrant, StorageError>;
+    async fn update_device_grant(&self, grant: DeviceGrant) -> Result<(), StorageError>;
+    async fn delete_device_grant(&self, device_code: &str) -> Result<(), StorageError>;
+
+    // ---- Flow state ----
+    async fn save_flow_state(&self, state: FlowStateRow) -> Result<(), StorageError>;
+    async fn get_flow_state(&self, id: &geonosis_core::FlowStateId) -> Result<FlowStateRow, StorageError>;
+    async fn delete_flow_state(&self, id: &geonosis_core::FlowStateId) -> Result<(), StorageError>;
+}
+
+/// Pushed authorization request row (RFC 9126).
+#[derive(Debug, Clone)]
+pub struct ParRequest {
+    pub request_uri: String,
+    pub realm_id: RealmId,
+    pub client_id: ClientId,
+    pub params: std::collections::BTreeMap<String, String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Device authorization grant row (RFC 8628).
+#[derive(Debug, Clone)]
+pub struct DeviceGrant {
+    pub device_code: String,
+    pub user_code: String,
+    pub realm_id: RealmId,
+    pub client_id: ClientId,
+    pub scope: Vec<geonosis_core::ScopeName>,
+    pub interval_seconds: u32,
+    pub status: DeviceGrantStatus,
+    pub user_id: Option<UserId>,
+    pub session_id: Option<SessionId>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub expires_at: chrono::DateTime<chrono::Utc>,
+    /// Last poll timestamp — used to enforce `slow_down`.
+    pub last_polled_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeviceGrantStatus {
+    Pending,
+    Approved,
+    Denied,
+    Expired,
+}
+
+/// Persisted flow state row.
+#[derive(Debug, Clone)]
+pub struct FlowStateRow {
+    pub state: geonosis_flow::FlowState,
+    /// Captured authorization-request params so we can mint the code on success.
+    pub authorize_params: std::collections::BTreeMap<String, String>,
 }
