@@ -19,4 +19,10 @@ pub struct AppState {
     pub audit: Arc<Publisher>,
     /// Public base URL for issuer / discovery construction (e.g. `https://geonosis.example`).
     pub public_base_url: Url,
+    /// BLAKE3-keyed hash key for refresh-token storage (per-realm derivation
+    /// is the v0.1.x follow-up; this is a single deployment-wide key).
+    pub refresh_hash_key: [u8; 32],
+    /// BLAKE3-keyed hash key for client_secret storage (separate domain
+    /// from refresh tokens).
+    pub client_secret_hash_key: [u8; 32],
 }

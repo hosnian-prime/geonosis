@@ -1,6 +1,5 @@
 //! `TokenIssuer` implementation backed by `KeyManagementService`.
 
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -28,11 +27,12 @@ pub enum OidcIssuerError {
 }
 
 /// OIDC-aware token issuer. Holds a reference to the realm-scoped KMS and
-/// a per-realm refresh-token hash key. The hash key is derived from the
-/// master key at realm-load time (see `geonosis-server`).
+/// the refresh-token hash key. v0.1 uses a single deployment-wide hash key
+/// (per-realm derivation lands in v0.1.x once master-key derivation is
+/// wired through the server).
 pub struct OidcIssuer<K: KeyManagementService + ?Sized + 'static> {
     pub kms: Arc<K>,
-    pub refresh_hash_keys: BTreeMap<RealmId, [u8; 32]>,
+    pub refresh_hash_key: [u8; 32],
     pub issuer_base: url::Url,
 }
 
@@ -132,14 +132,8 @@ impl<K: KeyManagementService + ?Sized + 'static> TokenIssuer for OidcIssuer<K> {
         sign_jwt_compat(&header, &claims, &private).map_err(GrantError::Internal)
     }
 
-    fn refresh_hash_key(&self, realm: RealmId) -> [u8; 32] {
-        self.refresh_hash_keys
-            .get(&realm)
-            .copied()
-            // Fallback (should never happen in production): zero-key would
-            // be a security bug; we use a recognizable pattern that tests
-            // can spot.
-            .unwrap_or([0xFEu8; 32])
+    fn refresh_hash_key(&self, _realm: RealmId) -> [u8; 32] {
+        self.refresh_hash_key
     }
 }
 
