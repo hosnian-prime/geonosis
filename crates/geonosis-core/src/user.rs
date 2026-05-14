@@ -10,6 +10,11 @@ use crate::credential::CredentialRef;
 use crate::id::{OrganizationId, RealmId, UserId};
 
 /// A human user (not an Agent — see `agent.rs`).
+///
+/// `Default` constructs a placeholder with fresh ULID identifiers and
+/// `enabled = true`. Production callers fill in `realm_id` and
+/// `username`; tests can use `..Default::default()` to opt-in to the
+/// safe defaults for the rest.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     pub id: UserId,
@@ -30,8 +35,48 @@ pub struct User {
     /// claim emission. Source of truth is `OrgMembership`.
     pub organizations: Vec<OrganizationId>,
     pub enabled: bool,
+    /// Monotonic count of failed credential attempts in the current
+    /// `BruteForcePolicy::failure_reset_window`. Resets to 0 on success
+    /// or on window expiry.
+    #[serde(default)]
+    pub failed_attempts: u32,
+    /// Soft lock — the account is reject-by-policy until this instant.
+    /// `None` means not locked.
+    #[serde(default)]
+    pub locked_until: Option<DateTime<Utc>>,
+    /// Timestamp of the most recent failed attempt; used by the
+    /// brute-force runtime to apply the "quick-login" minimum wait and
+    /// to expire counters once `failure_reset_window` has elapsed.
+    #[serde(default)]
+    pub last_failed_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+impl Default for User {
+    fn default() -> Self {
+        let now = Utc::now();
+        Self {
+            id: UserId::new(),
+            realm_id: RealmId::new(),
+            username: String::new(),
+            email: None,
+            email_verified: false,
+            name: None,
+            credentials: vec![],
+            federation: None,
+            attributes: Default::default(),
+            required_actions: vec![],
+            required_flow: None,
+            organizations: vec![],
+            enabled: true,
+            failed_attempts: 0,
+            locked_until: None,
+            last_failed_at: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

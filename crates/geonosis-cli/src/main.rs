@@ -41,6 +41,14 @@ enum Cmd {
         #[command(subcommand)]
         cmd: SpiCmd,
     },
+    /// Database migration operations.
+    Migrate {
+        /// Postgres connection URL. Inferred from `GEONOSIS_DATABASE_URL`.
+        #[arg(long, env = "GEONOSIS_DATABASE_URL")]
+        database_url: String,
+        #[command(subcommand)]
+        cmd: MigrateCmd,
+    },
     /// Print the version.
     Version,
 }
@@ -67,6 +75,14 @@ enum SpiCmd {
     Install { manifest: String },
 }
 
+#[derive(Debug, Subcommand)]
+enum MigrateCmd {
+    /// Apply all pending migrations (leader-locked).
+    Up,
+    /// Print the embedded migration set + applied versions.
+    Status,
+}
+
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -76,6 +92,7 @@ fn main() -> anyhow::Result<()> {
         .init();
 
     let cli = Cli::parse();
+    let rt = tokio::runtime::Runtime::new()?;
     match cli.cmd {
         Cmd::Version => {
             println!("{}", env!("CARGO_PKG_VERSION"));
@@ -85,28 +102,52 @@ fn main() -> anyhow::Result<()> {
             FlowsCmd::Validate { path } => validate_flow(&path),
         },
         Cmd::Realm { cmd } => match cmd {
-            RealmCmd::Create { slug } => {
-                anyhow::bail!(
-                    "realm create requires admin API connection; pass --server (got slug={slug})"
-                );
-            }
+            RealmCmd::Create { slug } => anyhow::bail!(
+                "realm create requires admin API connection; pass --server (got slug={slug})"
+            ),
             RealmCmd::List => {
-                anyhow::bail!("realm list requires admin API connection; pass --server");
+                anyhow::bail!("realm list requires admin API connection; pass --server")
             }
-            RealmCmd::Export { slug } => {
-                anyhow::bail!(
-                    "realm export requires admin API connection; pass --server (got slug={slug})"
-                );
-            }
+            RealmCmd::Export { slug } => anyhow::bail!(
+                "realm export requires admin API connection; pass --server (got slug={slug})"
+            ),
         },
         Cmd::Spi { cmd } => match cmd {
-            SpiCmd::Install { manifest } => {
-                anyhow::bail!(
-                    "spi install requires admin API connection; pass --server (got manifest={manifest})"
-                );
-            }
+            SpiCmd::Install { manifest } => anyhow::bail!(
+                "spi install requires admin API connection; pass --server (got manifest={manifest})"
+            ),
         },
+        Cmd::Migrate { database_url, cmd } => rt.block_on(run_migrate(&database_url, cmd)),
     }
+}
+
+async fn run_migrate(database_url: &str, cmd: MigrateCmd) -> anyhow::Result<()> {
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(4)
+        .connect(database_url)
+        .await?;
+    match cmd {
+        MigrateCmd::Up => {
+            geonosis_migrate::run_with_leader_lock(&pool).await?;
+            geonosis_migrate::enforce_schema_compat(&pool, geonosis_migrate::V0_1_COMPAT).await?;
+            println!("migrations applied");
+        }
+        MigrateCmd::Status => {
+            let applied: Vec<(i64,)> =
+                sqlx::query_as("SELECT version FROM _sqlx_migrations ORDER BY version")
+                    .fetch_all(&pool)
+                    .await
+                    .unwrap_or_default();
+            let applied: std::collections::BTreeSet<i64> =
+                applied.into_iter().map(|(v,)| v).collect();
+            println!("{:<25} {:<10}", "migration", "status");
+            for m in geonosis_migrate::MIGRATIONS.iter() {
+                let status = if applied.contains(&m.version) { "applied" } else { "pending" };
+                println!("{:<25} {:<10}", m.description, status);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn validate_flow(path: &str) -> anyhow::Result<()> {

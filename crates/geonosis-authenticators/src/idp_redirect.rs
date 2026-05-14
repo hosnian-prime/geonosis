@@ -105,6 +105,7 @@ mod tests {
             amr: vec![],
             locals: Default::default(),
             now: Utc::now(),
+            brute_force: geonosis_core::realm::BruteForcePolicy::default(),
         }
     }
 
