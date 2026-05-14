@@ -118,9 +118,8 @@ pub async fn dry_run_post(
     // is uncompilable (bad data — surfaces as 400 InvalidInput so the
     // operator sees the cause) or (b) future expansion. No storage
     // writes, no audit emit, no authenticator dispatch.
-    let report = dry_run(&flow, &context, &expected).map_err(|e| {
-        AdminError::InvalidInput(format!("flow `{alias}` failed to compile: {e}"))
-    })?;
+    let report = dry_run(&flow, &context, &expected)
+        .map_err(|e| AdminError::InvalidInput(format!("flow `{alias}` failed to compile: {e}")))?;
     Ok(Json(report))
 }
 
@@ -175,9 +174,10 @@ mod tests {
         };
         let realm_id = realm.id;
         storage.create_realm(realm).await.unwrap();
-        seed_default_flows(storage.as_ref(), realm_id).await.unwrap();
-        let admin =
-            AdminState::with_audit(storage, Arc::new(Publisher::new(vec![]))).unwrap();
+        seed_default_flows(storage.as_ref(), realm_id)
+            .await
+            .unwrap();
+        let admin = AdminState::with_audit(storage, Arc::new(Publisher::new(vec![]))).unwrap();
         (Arc::new(admin), realm_id)
     }
 
