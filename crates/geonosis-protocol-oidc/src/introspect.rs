@@ -97,6 +97,8 @@ mod tests {
             realm_access: None,
             resource_access: Default::default(),
             groups: None,
+            org: None,
+            act: None,
             ext: Default::default(),
         };
         let r = build_introspection(&claims, Some("ada".into()));

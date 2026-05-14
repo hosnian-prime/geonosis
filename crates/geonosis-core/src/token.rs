@@ -124,6 +124,12 @@ pub struct AccessTokenClaims {
     /// doc 15 §"Token shape".
     #[serde(skip_serializing_if = "Option::is_none")]
     pub org: Option<OrgClaim>,
+    /// RFC 8693 `act` chain. When present, the token was issued via
+    /// Token Exchange; each level identifies an upstream actor. Shape
+    /// is recursive: `act.sub` is the actor and `act.act` (optional)
+    /// the actor's actor. See doc 18 §"`act` claim chain".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub act: Option<serde_json::Value>,
     /// Mapper-emitted custom claims. Flattened into the top-level token by
     /// the OIDC layer.
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]

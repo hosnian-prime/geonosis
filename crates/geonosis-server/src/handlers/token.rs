@@ -113,9 +113,9 @@ pub async fn token(
         }
         GrantType::Password => handle_password(&form, &state, &issuer, &client, &realm).await,
         GrantType::DeviceCode => handle_device_code(&form, &state, &issuer, &client, &realm).await,
-        GrantType::TokenExchange => Err(OAuthError::unsupported_grant_type(
-            "token exchange initial v0.1 surface lands with the agent-identity PR",
-        )),
+        GrantType::TokenExchange => {
+            handle_token_exchange(&form, &state, &issuer, &client, &realm).await
+        }
     };
 
     match result {
@@ -362,6 +362,146 @@ async fn handle_device_code(
             issue_user_tokens(state, issuer, client, realm, user_id, &scope).await
         }
     }
+}
+
+/// Token Exchange (RFC 8693). v0.1 baseline:
+/// - **Delegation** form: `subject_token` is one of our access tokens.
+///   We verify it against our own KMS, lift the subject, and mint a
+///   new access token whose `act` chain records the requesting client
+///   as the actor. This is the path doc 18 calls "agent acting for
+///   user".
+/// - **Impersonation** (no `act`), audience reduction, scope reduction,
+///   refresh-token subject tokens, and Agent-specific capability
+///   pruning land in v0.1.x. The handler surfaces them as
+///   `invalid_request` until then so callers don't silently get a
+///   delegation token.
+async fn handle_token_exchange(
+    form: &BTreeMap<String, String>,
+    state: &AppState,
+    issuer: &OidcIssuer<geonosis_crypto::SoftwareKms>,
+    client: &geonosis_core::Client,
+    realm: &geonosis_core::Realm,
+) -> Result<IssuedTokens, OAuthError> {
+    let subject_token = form
+        .get("subject_token")
+        .cloned()
+        .ok_or_else(|| OAuthError::invalid_request("missing subject_token"))?;
+    let subject_token_type = form
+        .get("subject_token_type")
+        .cloned()
+        .ok_or_else(|| OAuthError::invalid_request("missing subject_token_type"))?;
+    if subject_token_type != "urn:ietf:params:oauth:token-type:access_token" {
+        return Err(OAuthError::invalid_request(format!(
+            "subject_token_type {subject_token_type} not supported in v0.1; access_token only"
+        )));
+    }
+
+    // Verify the inbound token against our own issuer + signing keys.
+    // External-issued tokens land with the Trust Federation work in
+    // v0.1.x.
+    let inbound_claims = crate::token_verify::verify_access_token(state, realm, &subject_token)
+        .await
+        .map_err(|e| OAuthError::invalid_grant(format!("subject_token: {e}")))?;
+
+    // Lift the user from `sub`. Local subjects use the ULID; broker
+    // subjects are namespaced — v0.1 supports the local case.
+    let user_id: UserId = inbound_claims
+        .sub
+        .parse()
+        .map_err(|_| OAuthError::invalid_request("subject_token sub is not a local user id"))?;
+
+    // Scope: subset of the original. If `scope` form param is present,
+    // intersect; otherwise reuse.
+    let original_scope = geonosis_core::scope::parse_scope_string(&inbound_claims.scope)
+        .map_err(|e| OAuthError::invalid_request(e.0))?;
+    let requested_scope = match form.get("scope") {
+        Some(s) => geonosis_core::scope::parse_scope_string(s)
+            .map_err(|e| OAuthError::invalid_request(e.0))?,
+        None => original_scope.clone(),
+    };
+    if !requested_scope
+        .iter()
+        .all(|s| original_scope.contains(s))
+    {
+        return Err(OAuthError::new(
+            geonosis_protocol_oauth::OAuthErrorCode::InvalidScope,
+            "requested scope must be a subset of subject_token scope",
+        ));
+    }
+
+    // Build the `act` chain. RFC 8693 §2.2 places the immediate actor
+    // at `act.sub`; if the subject_token already carried an `act`, we
+    // nest it. The recursion shows the full delegation lineage.
+    let act = build_actor_chain(client.client_id.clone(), inbound_claims.act.clone());
+
+    // Audience: prefer explicit `audience`/`resource` form values, fall
+    // back to the calling client_id.
+    let audience: Option<Vec<String>> = form
+        .get("audience")
+        .map(|s| s.split(' ').map(String::from).collect())
+        .or_else(|| form.get("resource").map(|s| vec![s.clone()]));
+
+    // Mint a fresh session so /sessions can revoke this exchange leg
+    // independently from the original interactive session.
+    let session_id = SessionId::new_random();
+    let now = Utc::now();
+    let session = Session {
+        id: session_id.clone(),
+        realm_id: realm.id,
+        user_id,
+        authn_level: AuthnLevel::Single,
+        idp_alias: None,
+        started_at: now,
+        last_seen_at: now,
+        expires_at: now
+            + ChronoDuration::from_std(realm.session_policy.sso_session_max).unwrap_or_default(),
+        clients: vec![],
+    };
+    state
+        .storage
+        .create_session(session)
+        .await
+        .map_err(|e| server_err(e.to_string()))?;
+
+    let subject = Subject::Local { user_id };
+    let extras = geonosis_protocol_oidc::AccessTokenExtras {
+        org: inbound_claims.org,
+        act: Some(act),
+        audience,
+    };
+    let (access, exp) = issuer
+        .mint_access_token_with_extras(realm, client, &subject, &session_id, &requested_scope, extras)
+        .await
+        .map_err(into_oauth_err)?;
+
+    Ok(IssuedTokens {
+        access_token: access,
+        access_token_expires_in: exp,
+        id_token: None,
+        refresh_token: None,
+        scope: requested_scope
+            .iter()
+            .map(geonosis_core::ScopeName::as_str)
+            .collect::<Vec<_>>()
+            .join(" "),
+        token_type: geonosis_protocol_oauth::grants::TokenType::Bearer,
+        session_id,
+    })
+}
+
+/// Compose the `act` claim per RFC 8693 §2.2. New actor wraps any
+/// prior chain in its own `act` field, preserving the lineage from
+/// the original user all the way to the latest delegating client.
+fn build_actor_chain(
+    actor_sub: String,
+    inner: Option<serde_json::Value>,
+) -> serde_json::Value {
+    let mut obj = serde_json::Map::new();
+    obj.insert("sub".into(), serde_json::Value::String(actor_sub));
+    if let Some(prior) = inner {
+        obj.insert("act".into(), prior);
+    }
+    serde_json::Value::Object(obj)
 }
 
 async fn issue_user_tokens(
