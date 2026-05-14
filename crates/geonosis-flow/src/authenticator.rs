@@ -18,7 +18,7 @@ use std::collections::BTreeMap;
 use async_trait::async_trait;
 
 use crate::executor::{FlowError, FlowFailure, RenderInstruction, StepInput};
-use crate::state::FlowContext;
+use crate::state::FlowState;
 
 /// Outcome of one authenticator step. Mirrors `AuthnOutput` in the
 /// authenticators crate but uses flow-side types so the flow crate
@@ -47,13 +47,15 @@ pub enum AuthnStepOutcome {
 
 /// Trait the flow executor calls on every `Authenticator` node. The
 /// caller owns `FlowContext` mutation — dispatcher impls return their
-/// contribution and the executor merges it.
+/// contribution and the executor merges it. Receives the full
+/// `FlowState` so concrete impls can read the realm id + flow
+/// snapshot version without threading them separately.
 #[async_trait]
 pub trait AuthnDispatcher: Send + Sync {
     async fn dispatch(
         &self,
         provider_urn: &str,
-        ctx: &FlowContext,
+        state: &FlowState,
         input: &StepInput,
     ) -> Result<AuthnStepOutcome, FlowError>;
 }
@@ -70,7 +72,7 @@ impl AuthnDispatcher for NoopAuthnDispatcher {
     async fn dispatch(
         &self,
         provider_urn: &str,
-        _ctx: &FlowContext,
+        _state: &FlowState,
         _input: &StepInput,
     ) -> Result<AuthnStepOutcome, FlowError> {
         Ok(AuthnStepOutcome::Render(RenderInstruction {
