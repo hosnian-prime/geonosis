@@ -20,6 +20,10 @@ geonosis-i18n = { path = "../geonosis-i18n" }
 
 axum.workspace = true
 maud.workspace = true
+leptos.workspace = true
+leptos_axum.workspace = true
+leptos_meta.workspace = true
+leptos_router.workspace = true
 unic-langid.workspace = true
 serde.workspace = true
 serde_json.workspace = true

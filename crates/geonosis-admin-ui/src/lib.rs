@@ -16,6 +16,7 @@
 pub mod assets;
 pub mod handlers;
 pub mod html;
+pub mod leptos_ui;
 pub mod state;
 
 use std::sync::Arc;
@@ -26,7 +27,8 @@ use axum::Router;
 pub use state::{AdminError, AdminState};
 
 pub fn router(state: AdminState) -> Router {
-    Router::new()
+    let shared = Arc::new(state);
+    let maud_routes = Router::new()
         // Static assets.
         .route("/static/admin.css", get(handlers::admin_css))
         // HTML pages.
@@ -77,5 +79,7 @@ pub fn router(state: AdminState) -> Router {
             get(handlers::api_flow_get)
                 .put(handlers::api_flow_put),
         )
-        .with_state(Arc::new(state))
+        .with_state(shared.clone());
+
+    maud_routes.merge(leptos_ui::leptos_router(shared))
 }
