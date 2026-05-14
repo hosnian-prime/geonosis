@@ -120,6 +120,8 @@ pub async fn authenticate_post(
         state.authenticators.clone(),
         state.storage.clone(),
         state.refresh_hash_key,
+        state.providers.clone(),
+        state.wasm_engine.clone(),
     ));
     let executor = DefaultExecutor::new(dispatcher);
 

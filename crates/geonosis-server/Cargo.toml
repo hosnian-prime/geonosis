@@ -28,7 +28,7 @@ geonosis-protocol-oidc = { path = "../geonosis-protocol-oidc" }
 geonosis-protocol-saml-idp = { path = "../geonosis-protocol-saml-idp" }
 geonosis-federation-ldap = { path = "../geonosis-federation-ldap", features = ["ldap-runtime"] }
 geonosis-broker = { path = "../geonosis-broker", features = ["broker-runtime"] }
-geonosis-spi-host = { path = "../geonosis-spi-host" }
+geonosis-spi-host = { path = "../geonosis-spi-host", features = ["wasm-runtime"] }
 geonosis-authenticators = { path = "../geonosis-authenticators" }
 geonosis-audit = { path = "../geonosis-audit", features = ["postgres", "webhook"] }
 geonosis-migrate = { path = "../geonosis-migrate" }
