@@ -201,6 +201,22 @@ impl Storage for MemoryStorage {
         Ok(())
     }
 
+    async fn list_users(
+        &self,
+        realm: RealmId,
+        limit: usize,
+    ) -> Result<Vec<User>, StorageError> {
+        Ok(self
+            .inner
+            .read()
+            .users
+            .iter()
+            .filter(|((r, _), _)| *r == realm)
+            .take(limit)
+            .map(|(_, u)| u.clone())
+            .collect())
+    }
+
     async fn delete_user(&self, realm: RealmId, id: UserId) -> Result<(), StorageError> {
         let mut t = self.inner.write();
         let u = t.users.remove(&(realm, id)).ok_or(StorageError::NotFound)?;
