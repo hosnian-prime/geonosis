@@ -3,6 +3,8 @@
 use leptos::prelude::*;
 
 use crate::leptos_ui::app::{Page, PageContext};
+use crate::leptos_ui::components::list_table::{state_label, ListTable};
+use crate::leptos_ui::components::page_header::PageHeader;
 
 #[derive(Clone, Debug)]
 pub struct ClientRow {
@@ -21,23 +23,17 @@ pub fn ClientsPage(realm_slug: String, rows: Vec<ClientRow>) -> impl IntoView {
     let back = format!("/admin-next/realms/{realm_slug}");
     view! {
         <Page context=ctx>
-            <nav class="gn-breadcrumb"><a href=back>"← Realm"</a></nav>
-            <h1>"Clients"</h1>
-            <table class="gn-table">
-                <thead>
-                    <tr><th>"Client ID"</th><th>"Name"</th><th>"Kind"</th><th>"State"</th></tr>
-                </thead>
-                <tbody>
-                    {rows.into_iter().map(|r| view! {
-                        <tr>
-                            <td><code>{r.client_id}</code></td>
-                            <td>{r.display_name}</td>
-                            <td>{r.kind}</td>
-                            <td>{if r.enabled { "enabled" } else { "disabled" }}</td>
-                        </tr>
-                    }).collect_view()}
-                </tbody>
-            </table>
+            <PageHeader title="Clients" back_href=back/>
+            <ListTable headers=vec!["Client ID", "Name", "Kind", "State"]>
+                {rows.into_iter().map(|r| view! {
+                    <tr>
+                        <td><code>{r.client_id}</code></td>
+                        <td>{r.display_name}</td>
+                        <td>{r.kind}</td>
+                        <td>{state_label(r.enabled)}</td>
+                    </tr>
+                }).collect_view()}
+            </ListTable>
         </Page>
     }
 }
