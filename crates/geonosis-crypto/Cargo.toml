@@ -38,9 +38,12 @@ p256.workspace = true
 p384.workspace = true
 spki.workspace = true
 pkcs8.workspace = true
+rcgen.workspace = true
+rustls-pki-types.workspace = true
 
 chrono.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true
 pretty_assertions.workspace = true
+x509-parser.workspace = true

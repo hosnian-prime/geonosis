@@ -47,6 +47,16 @@ pub struct Client {
 
     pub pairwise_sub_algorithm: Option<String>,
 
+    /// SAML 2.0 SP config blob — present iff `kind = SamlServiceProvider`
+    /// and the operator has registered the SP. The typed form lives in
+    /// `geonosis_protocol_saml_idp::SamlSpClientConfig`; the SAML
+    /// runtime parses this value at the protocol boundary, keeping
+    /// `geonosis-core` free of SAML-specific schema while still letting
+    /// the persistent shape ride on the `Client` row per
+    /// `docs/20-saml-idp.md` §"SP as a Client".
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub saml_sp_config: Option<serde_json::Value>,
+
     pub enabled: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,

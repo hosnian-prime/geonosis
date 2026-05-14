@@ -13,9 +13,15 @@
 //! - [`sign`] — XML-DSig signing of an assertion against the realm's
 //!   active RSA-SHA256 key via the `KeyManagementService` trait.
 
+pub mod logout;
+pub mod request;
 pub mod sign;
 pub mod xml;
 
+pub use logout::{
+    parse_logout_request, serialize_logout_response, LogoutParseError, ParsedLogoutRequest,
+};
+pub use request::{parse_authn_request, ParsedAuthnRequest, ParseError as AuthnRequestParseError};
 pub use sign::{sign_assertion, KeyInfoMaterial, SignError};
 pub use xml::{
     embed_signature, render_signature_block, render_signed_info, serialize_assertion,
@@ -50,6 +56,23 @@ pub struct SamlSpClientConfig {
     pub signing_key: KeyId,
     pub default_audience: Option<String>,
     pub session_index_strategy: SessionIndexStrategy,
+}
+
+impl SamlSpClientConfig {
+    /// Parse the typed config out of the `Client.saml_sp_config`
+    /// JSONB blob. Returns `Err` with a stable error code when the
+    /// blob fails schema validation — the admin REST CRUD path
+    /// uses this for round-trip validation before persisting.
+    pub fn try_from_value(v: &serde_json::Value) -> Result<Self, SamlIdpError> {
+        serde_json::from_value(v.clone()).map_err(|e| SamlIdpError::InvalidSp(e.to_string()))
+    }
+
+    /// Render the typed config back into JSON for storage on
+    /// `Client.saml_sp_config`. Infallible — every field implements
+    /// `Serialize` with documented JSON form.
+    pub fn to_value(&self) -> serde_json::Value {
+        serde_json::to_value(self).expect("SamlSpClientConfig serializes")
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -100,6 +123,42 @@ pub fn build_assertion(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sample_sp() -> SamlSpClientConfig {
+        SamlSpClientConfig {
+            entity_id: "https://sp.example".into(),
+            acs_urls: vec![Url::parse("https://sp.example/acs").unwrap()],
+            slo_url: None,
+            binding: SamlBinding::HttpPost,
+            name_id_format: NameIdFormat::EmailAddress,
+            want_authnrequest_signed: false,
+            want_assertions_encrypted: false,
+            signing_key: KeyId::new(),
+            default_audience: None,
+            session_index_strategy: SessionIndexStrategy::UseSessionId,
+        }
+    }
+
+    #[test]
+    fn sp_config_round_trips_through_json_value() {
+        let sp = sample_sp();
+        let v = sp.to_value();
+        let parsed = SamlSpClientConfig::try_from_value(&v).unwrap();
+        assert_eq!(parsed.entity_id, sp.entity_id);
+        assert_eq!(parsed.acs_urls.len(), 1);
+        assert!(matches!(parsed.binding, SamlBinding::HttpPost));
+        assert!(matches!(
+            parsed.session_index_strategy,
+            SessionIndexStrategy::UseSessionId
+        ));
+    }
+
+    #[test]
+    fn sp_config_rejects_invalid_json_with_invalid_sp_error() {
+        let bad = serde_json::json!({ "entity_id": "x" }); // missing required fields
+        let err = SamlSpClientConfig::try_from_value(&bad).unwrap_err();
+        assert!(matches!(err, SamlIdpError::InvalidSp(_)));
+    }
 
     #[test]
     fn assertion_carries_audience_and_session_index() {

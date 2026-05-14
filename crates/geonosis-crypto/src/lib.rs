@@ -8,6 +8,7 @@
 //! - `KeyManagementService` trait (software impl included; HSM/Vault in v0.2)
 
 pub mod base64url;
+pub mod cert;
 pub mod hash;
 pub mod jwk;
 pub mod jwt;
