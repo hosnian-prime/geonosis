@@ -26,6 +26,8 @@ base64.workspace = true
 sha2.workspace = true
 quick-xml.workspace = true
 flate2.workspace = true
+rsa.workspace = true
+x509-parser.workspace = true
 
 [dev-dependencies]
 rsa.workspace = true
