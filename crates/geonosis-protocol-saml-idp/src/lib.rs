@@ -13,9 +13,11 @@
 //! - [`sign`] — XML-DSig signing of an assertion against the realm's
 //!   active RSA-SHA256 key via the `KeyManagementService` trait.
 
+pub mod request;
 pub mod sign;
 pub mod xml;
 
+pub use request::{parse_authn_request, ParsedAuthnRequest, ParseError as AuthnRequestParseError};
 pub use sign::{sign_assertion, KeyInfoMaterial, SignError};
 pub use xml::{
     embed_signature, render_signature_block, render_signed_info, serialize_assertion,
