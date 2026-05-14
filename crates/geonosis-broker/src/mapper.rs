@@ -13,6 +13,26 @@
 //! Each mapper consumes the verified `BrokerAssertion` and applies its
 //! effect to a `DraftUser`. WASM mappers (the `geonosis:mapper@0.1.0`
 //! SPI interface) plug into the same pipeline via `host.apply_to_draft`.
+//!
+//! ## Why this is an enum, not a trait + registry
+//!
+//! Unlike `Authenticator` (URN → trait) and `BrokerAdapter` (URN →
+//! multi-hook trait), mappers are **config-driven, not URN-dispatched
+//! providers**. A `MapperBinding` row stores both WHICH built-in
+//! transformation to apply (`MapperKind` variant) AND its parameters
+//! (`claim` name, `attribute` name, regex pattern, etc.). Admins
+//! configure mappers; they don't install separate runtime
+//! implementations for each one.
+//!
+//! WASM mappers (`geonosis:mapper@0.1.0` SPI) take a different path:
+//! the WASM runtime invokes them via `host.apply_to_draft`, not
+//! through this enum. A single mapper PIPELINE composes built-in
+//! enum-variant mappers AND WASM mappers — they don't share a trait
+//! because they don't share a call-site shape.
+//!
+//! This is the third intentional shape in the broker/server registry
+//! family: see `geonosis-server/src/authenticators.rs` §"Pattern note"
+//! for the cross-reference.
 
 use std::collections::BTreeMap;
 

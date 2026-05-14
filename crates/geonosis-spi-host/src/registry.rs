@@ -1,4 +1,24 @@
 //! Provider registry.
+//!
+//! Stores `ProviderBinding` rows indexed by `(RealmId, WitInterfaceName)`,
+//! priority-sorted descending. The registry itself does **not** dispatch
+//! — it only knows about metadata + ordering + the `replaces` soft-disable
+//! relation.
+//!
+//! Dispatch is two layers above:
+//! 1. [`crate::router`] consumes the priority-sorted slice and applies
+//!    the right shape per `DispatchMode` (first_match, named_select,
+//!    chain, named_attach, fire_forget, first_decision).
+//! 2. Interface-specific runtime wrappers (e.g. `WasmMapperRuntime`,
+//!    upcoming `WasmAuthnRuntime`) take one provider at a time and
+//!    actually call into the WASM component or built-in trait.
+//!
+//! Today (pre-B4) only the metadata layer is exercised by production
+//! code. Once the WASM runtimes for the 7 remaining interfaces land,
+//! every dispatcher (built-in + WASM) will consult `ProviderRegistry`
+//! to decide what to invoke + in what order. That's why the registry
+//! is rich (priority, capabilities, replaces) but unused at dispatch
+//! time today: it's the data structure B4 dispatchers will read from.
 
 use std::collections::HashMap;
 
