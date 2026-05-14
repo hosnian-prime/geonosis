@@ -81,6 +81,13 @@ pub async fn create(
         .create_realm(realm.clone())
         .await
         .map_err(AdminError::from)?;
+    // Seed the v0.1 built-in flows (browser, direct-grant, etc.) so
+    // the realm can actually serve `/authorize` immediately. Without
+    // this the next interactive login attempt 500s with "realm has no
+    // browser flow"; see `docs/06-auth-flows.md` §"Built-in flows".
+    geonosis_storage::seed_default_flows(state.storage.as_ref(), realm.id)
+        .await
+        .map_err(AdminError::from)?;
     Ok(Json(realm))
 }
 
