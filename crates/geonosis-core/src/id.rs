@@ -18,7 +18,9 @@ pub struct IdParseError(String);
 macro_rules! ulid_id {
     ($name:ident, $doc:literal) => {
         #[doc = $doc]
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+        #[derive(
+            Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
+        )]
         #[serde(transparent)]
         pub struct $name(pub Ulid);
 
@@ -64,7 +66,10 @@ macro_rules! ulid_id {
 
 ulid_id!(RealmId, "Realm (tenant) identifier.");
 ulid_id!(UserId, "User identifier.");
-ulid_id!(ClientId, "Internal client identifier (distinct from `client_id` string).");
+ulid_id!(
+    ClientId,
+    "Internal client identifier (distinct from `client_id` string)."
+);
 ulid_id!(RoleId, "Role identifier.");
 ulid_id!(GroupId, "Group identifier.");
 ulid_id!(FlowId, "Authentication flow identifier.");
@@ -78,7 +83,10 @@ ulid_id!(EventId, "Audit event identifier.");
 ulid_id!(AgentId, "Agent (AI / M2M) identifier.");
 ulid_id!(ScimTargetId, "SCIM provisioning target identifier.");
 ulid_id!(BrokerLinkId, "Persistent broker-user link identifier.");
-ulid_id!(BrokerAuthnStateId, "Pending broker callback state identifier.");
+ulid_id!(
+    BrokerAuthnStateId,
+    "Pending broker callback state identifier."
+);
 ulid_id!(FlowStateId, "In-progress flow state identifier.");
 ulid_id!(ConsentGrantId, "Persisted consent grant identifier.");
 ulid_id!(OrganizationId, "Organization (B2B sub-tenant) identifier.");

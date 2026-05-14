@@ -97,8 +97,7 @@ impl RedisCache {
 impl Cache for RedisCache {
     async fn get_raw(&self, key: &CacheKey) -> Option<Vec<u8>> {
         let mut conn = self.conn.clone();
-        let result: Result<Option<Vec<u8>>, redis::RedisError> =
-            conn.get(key.to_string()).await;
+        let result: Result<Option<Vec<u8>>, redis::RedisError> = conn.get(key.to_string()).await;
         match result {
             Ok(v) => v,
             Err(e) => {
@@ -111,8 +110,7 @@ impl Cache for RedisCache {
     async fn put_raw(&self, key: CacheKey, bytes: Vec<u8>, ttl: Duration) {
         let mut conn = self.conn.clone();
         let secs = self.ttl_secs(ttl);
-        let result: Result<(), redis::RedisError> =
-            conn.set_ex(key.to_string(), bytes, secs).await;
+        let result: Result<(), redis::RedisError> = conn.set_ex(key.to_string(), bytes, secs).await;
         if let Err(e) = result {
             tracing::warn!(error = %e, key = %key, "redis SETEX failed");
         }

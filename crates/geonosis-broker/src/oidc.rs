@@ -17,9 +17,9 @@ use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use serde::{Deserialize, Serialize};
 
 use geonosis_core::attribute::AttributeValue;
+use geonosis_core::common::JwsAlgorithm;
 use geonosis_crypto::jwk::Jwk;
 use geonosis_crypto::jwt::{verify_jwt, JwsHeader, PublicMaterial};
-use geonosis_core::common::JwsAlgorithm;
 
 use crate::types::{BrokerAssertion, BrokerAuthnState, BrokerError, OidcIdpConfig};
 
@@ -131,7 +131,11 @@ impl DiscoveryCache {
             .insert(alias.to_string(), (discovery, jwks));
     }
 
-    pub async fn discovery(&self, alias: &str, cfg: &OidcIdpConfig) -> Result<OidcDiscovery, BrokerError> {
+    pub async fn discovery(
+        &self,
+        alias: &str,
+        cfg: &OidcIdpConfig,
+    ) -> Result<OidcDiscovery, BrokerError> {
         if let Some((d, _)) = self.fixtures.lock().get(alias).cloned() {
             return Ok(d);
         }
@@ -170,7 +174,10 @@ pub async fn fetch_discovery(
 ) -> Result<OidcDiscovery, BrokerError> {
     let url = match (&cfg.discovery_url, &cfg.authorization_endpoint) {
         (Some(u), _) => u.clone(),
-        (None, _) => format!("{}/.well-known/openid-configuration", cfg.issuer.trim_end_matches('/')),
+        (None, _) => format!(
+            "{}/.well-known/openid-configuration",
+            cfg.issuer.trim_end_matches('/')
+        ),
     };
     let resp = http
         .get(&url)
@@ -250,13 +257,7 @@ pub fn authorization_url(
 
     let qs = q
         .iter()
-        .map(|(k, v)| {
-            format!(
-                "{}={}",
-                k,
-                utf8_percent_encode(v, NON_ALPHANUMERIC)
-            )
-        })
+        .map(|(k, v)| format!("{}={}", k, utf8_percent_encode(v, NON_ALPHANUMERIC)))
         .collect::<Vec<_>>()
         .join("&");
     if url.contains('?') {
@@ -338,11 +339,7 @@ pub fn verify_id_token(
         "RS256" => JwsAlgorithm::RS256,
         "ES256" => JwsAlgorithm::ES256,
         "EdDSA" => JwsAlgorithm::EdDSA,
-        other => {
-            return Err(BrokerError::Signature(format!(
-                "unsupported alg: {other}"
-            )))
-        }
+        other => return Err(BrokerError::Signature(format!("unsupported alg: {other}"))),
     };
     let jwk = jwks
         .iter()
@@ -477,7 +474,10 @@ pub fn assertion_from_claims(
 ) -> BrokerAssertion {
     let mut map: BTreeMap<String, AttributeValue> = BTreeMap::new();
     if let Some(v) = &claims.preferred_username {
-        map.insert("preferred_username".into(), AttributeValue::String(v.clone()));
+        map.insert(
+            "preferred_username".into(),
+            AttributeValue::String(v.clone()),
+        );
     }
     if let Some(v) = &claims.email {
         map.insert("email".into(), AttributeValue::String(v.clone()));

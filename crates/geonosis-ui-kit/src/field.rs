@@ -24,7 +24,13 @@ pub fn text_input(name: &str, value: &str, kind: FieldKind) -> Markup {
 }
 
 /// Label + input pair with `aria-describedby` wiring.
-pub fn field(label: &str, input_name: &str, value: &str, help: Option<&str>, kind: FieldKind) -> Markup {
+pub fn field(
+    label: &str,
+    input_name: &str,
+    value: &str,
+    help: Option<&str>,
+    kind: FieldKind,
+) -> Markup {
     let describedby = help.map(|_| format!("{input_name}-help"));
     let describedby_attr = describedby
         .as_deref()

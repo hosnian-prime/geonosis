@@ -63,7 +63,10 @@ impl Default for BuiltinAuthenticators {
             BuiltinUrn::OTP,
             Arc::new(OtpAuthenticator::new(Default::default())),
         );
-        by_urn.insert(BuiltinUrn::RECOVERY_CODE, Arc::new(RecoveryCodeAuthenticator));
+        by_urn.insert(
+            BuiltinUrn::RECOVERY_CODE,
+            Arc::new(RecoveryCodeAuthenticator),
+        );
         by_urn.insert(BuiltinUrn::CONSENT, Arc::new(ConsentAuthenticator));
         by_urn.insert(BuiltinUrn::COOKIE, Arc::new(CookieAuthenticator));
         by_urn.insert(
@@ -74,7 +77,10 @@ impl Default for BuiltinAuthenticators {
             BuiltinUrn::RISK_SCORE,
             Arc::new(RiskScoreAuthenticator::new()),
         );
-        by_urn.insert(BuiltinUrn::WEBAUTHN, Arc::new(WebauthnAuthenticator::default()));
+        by_urn.insert(
+            BuiltinUrn::WEBAUTHN,
+            Arc::new(WebauthnAuthenticator::default()),
+        );
         // Note: `idp-redirect`, `magic-link`, `phone-otp` need per-binding
         // config (idp alias / SMTP sender / SMS sender) so they aren't
         // registered as singletons here. The executor instantiates them

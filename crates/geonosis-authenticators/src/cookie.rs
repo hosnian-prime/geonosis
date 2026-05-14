@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use geonosis_core::{Amr, CredentialKind};
 
 use crate::context::AuthnContext;
-use crate::traits::{AuthnError, AuthnInput, AuthnOutput, Authenticator};
+use crate::traits::{Authenticator, AuthnError, AuthnInput, AuthnOutput};
 
 pub struct CookieAuthenticator;
 
@@ -125,7 +125,10 @@ mod tests {
     #[tokio::test]
     async fn alive_session_succeeds() {
         let mut ctx = fixture(true).await;
-        let out = CookieAuthenticator.process(&mut ctx, AuthnInput::Init).await.unwrap();
+        let out = CookieAuthenticator
+            .process(&mut ctx, AuthnInput::Init)
+            .await
+            .unwrap();
         assert!(matches!(out, AuthnOutput::Success { .. }));
         assert!(ctx.user_id.is_some());
     }
@@ -134,14 +137,20 @@ mod tests {
     async fn no_cookie_skips() {
         let mut ctx = fixture(true).await;
         ctx.session_id = None;
-        let out = CookieAuthenticator.process(&mut ctx, AuthnInput::Init).await.unwrap();
+        let out = CookieAuthenticator
+            .process(&mut ctx, AuthnInput::Init)
+            .await
+            .unwrap();
         assert!(matches!(out, AuthnOutput::Skip));
     }
 
     #[tokio::test]
     async fn expired_session_skips() {
         let mut ctx = fixture(false).await;
-        let out = CookieAuthenticator.process(&mut ctx, AuthnInput::Init).await.unwrap();
+        let out = CookieAuthenticator
+            .process(&mut ctx, AuthnInput::Init)
+            .await
+            .unwrap();
         assert!(matches!(out, AuthnOutput::Skip));
     }
 }

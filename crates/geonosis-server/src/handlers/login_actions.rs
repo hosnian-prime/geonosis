@@ -13,13 +13,11 @@ use chrono::{Duration as ChronoDuration, Utc};
 
 use geonosis_crypto::KeyManagementService;
 
+use geonosis_core::scope::parse_scope_string;
 use geonosis_core::token::{CodeChallenge, CodeChallengeMethod, CodeGrant};
 use geonosis_core::{AuthnLevel, CodeId, ScopeName, Session, SessionId};
-use geonosis_core::scope::parse_scope_string;
-use geonosis_flow::{
-    compile, AuthnDispatcher, FlowError, FlowExecutor, StepInput, StepOutput,
-};
 use geonosis_flow::executor::DefaultExecutor;
+use geonosis_flow::{compile, AuthnDispatcher, FlowError, FlowExecutor, StepInput, StepOutput};
 
 use crate::flow_runtime::BuiltinAuthnDispatcher;
 use crate::state::AppState;
@@ -103,11 +101,7 @@ pub async fn authenticate_post(
     let client_id = match row.authorize_params.get("client_id") {
         Some(c) => c.clone(),
         None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                "missing client_id in flow state",
-            )
-                .into_response()
+            return (StatusCode::BAD_REQUEST, "missing client_id in flow state").into_response()
         }
     };
     row.state.context.client_id = Some(client_id);
@@ -223,7 +217,9 @@ async fn mint_code_and_redirect(
     let p = &row.authorize_params;
     let client_id = match p.get("client_id") {
         Some(c) => c,
-        None => return (StatusCode::BAD_REQUEST, "missing client_id in flow state").into_response(),
+        None => {
+            return (StatusCode::BAD_REQUEST, "missing client_id in flow state").into_response()
+        }
     };
     let client = match state
         .storage
@@ -260,8 +256,7 @@ async fn mint_code_and_redirect(
                     let raw_config = client.saml_sp_config.as_ref();
                     let backchannel = raw_config
                         .and_then(|v| {
-                            geonosis_protocol_saml_idp::SamlSpClientConfig::try_from_value(v)
-                                .ok()
+                            geonosis_protocol_saml_idp::SamlSpClientConfig::try_from_value(v).ok()
                         })
                         .map(|c| c.slo_url.is_some())
                         .unwrap_or(false);
@@ -296,8 +291,7 @@ async fn mint_code_and_redirect(
         }
     };
     let scope: Vec<ScopeName> =
-        parse_scope_string(p.get("scope").map(String::as_str).unwrap_or(""))
-            .unwrap_or_default();
+        parse_scope_string(p.get("scope").map(String::as_str).unwrap_or("")).unwrap_or_default();
     let code_challenge = p.get("code_challenge").map(|c| CodeChallenge {
         method: CodeChallengeMethod::S256,
         challenge: c.clone(),
@@ -361,8 +355,7 @@ async fn mint_code_and_redirect(
     use axum::http::header::SET_COOKIE;
     let cookie = format!(
         "geonosis_sid={}; Path=/realms/{}; HttpOnly; SameSite=Lax",
-        session_id.0,
-        realm.slug
+        session_id.0, realm.slug
     );
     let mut resp = Redirect::to(url.as_str()).into_response();
     if let Ok(v) = axum::http::HeaderValue::from_str(&cookie) {
@@ -425,7 +418,10 @@ pub(crate) async fn auto_join_org_by_domain(
     let Some(domain) = email.rsplit_once('@').map(|(_, d)| d) else {
         return Ok(None);
     };
-    let Some(org) = storage.find_org_by_verified_domain(realm.id, domain).await? else {
+    let Some(org) = storage
+        .find_org_by_verified_domain(realm.id, domain)
+        .await?
+    else {
         return Ok(None);
     };
     // Idempotent: existing membership short-circuits (preserves
@@ -497,10 +493,9 @@ async fn try_complete_saml(
     // so the same (user, SP) tuple resolves to the same NameID
     // across sessions even after server restarts.
     let name_id = match sp_config.name_id_format {
-        geonosis_saml_types::NameIdFormat::EmailAddress => user
-            .email
-            .clone()
-            .unwrap_or_else(|| user.username.clone()),
+        geonosis_saml_types::NameIdFormat::EmailAddress => {
+            user.email.clone().unwrap_or_else(|| user.username.clone())
+        }
         geonosis_saml_types::NameIdFormat::Unspecified => user.username.clone(),
         geonosis_saml_types::NameIdFormat::Transient => session_id.0.clone(),
         geonosis_saml_types::NameIdFormat::Persistent
@@ -617,11 +612,8 @@ async fn try_complete_saml(
     );
     let response_b64 = B64.encode(response_xml.as_bytes());
 
-    let html = crate::handlers::saml::acs_auto_post_form(
-        &acs_url,
-        &response_b64,
-        relay_state.as_deref(),
-    );
+    let html =
+        crate::handlers::saml::acs_auto_post_form(&acs_url, &response_b64, relay_state.as_deref());
     Some(Html(html).into_response())
 }
 
@@ -650,8 +642,7 @@ pub(crate) async fn build_key_info_for_realm(
     let PrivateMaterial::Rs256(rsa) = material else {
         return Err("active key is not RS256".into());
     };
-    let der = self_signed_x509_for_rs256(rsa.as_ref(), &realm.slug)
-        .map_err(|e| e.to_string())?;
+    let der = self_signed_x509_for_rs256(rsa.as_ref(), &realm.slug).map_err(|e| e.to_string())?;
     Ok(KeyInfoMaterial::X509Certificate {
         cert_b64: der_to_b64(&der),
     })
@@ -752,12 +743,22 @@ mod saml_attribute_tests {
     use geonosis_core::{PersonName, User};
 
     fn mk_user(email: Option<&str>, given: &str, family: &str) -> User {
-        let mut u = User::default();
-        u.username = "ada".into();
-        u.email = email.map(String::from);
+        let mut u = User {
+            username: "ada".into(),
+            email: email.map(String::from),
+            ..User::default()
+        };
         u.name = Some(PersonName {
-            given: if given.is_empty() { None } else { Some(given.into()) },
-            family: if family.is_empty() { None } else { Some(family.into()) },
+            given: if given.is_empty() {
+                None
+            } else {
+                Some(given.into())
+            },
+            family: if family.is_empty() {
+                None
+            } else {
+                Some(family.into())
+            },
             middle: None,
             display: None,
         });
@@ -767,27 +768,41 @@ mod saml_attribute_tests {
     #[test]
     fn always_emits_username_attribute() {
         let attrs = default_user_attributes(&mk_user(None, "", ""));
-        assert!(attrs.iter().any(|a| a.friendly_name.as_deref() == Some("username")));
+        assert!(attrs
+            .iter()
+            .any(|a| a.friendly_name.as_deref() == Some("username")));
     }
 
     #[test]
     fn email_attribute_appears_iff_user_has_email() {
         let with = default_user_attributes(&mk_user(Some("ada@x"), "", ""));
-        assert!(with.iter().any(|a| a.friendly_name.as_deref() == Some("email")));
+        assert!(with
+            .iter()
+            .any(|a| a.friendly_name.as_deref() == Some("email")));
         let without = default_user_attributes(&mk_user(None, "", ""));
-        assert!(!without.iter().any(|a| a.friendly_name.as_deref() == Some("email")));
+        assert!(!without
+            .iter()
+            .any(|a| a.friendly_name.as_deref() == Some("email")));
     }
 
     #[test]
     fn name_attributes_skip_empty_components() {
         // given+family empty → no name attributes.
         let attrs = default_user_attributes(&mk_user(None, "", ""));
-        assert!(!attrs.iter().any(|a| a.friendly_name.as_deref() == Some("given_name")));
-        assert!(!attrs.iter().any(|a| a.friendly_name.as_deref() == Some("family_name")));
+        assert!(!attrs
+            .iter()
+            .any(|a| a.friendly_name.as_deref() == Some("given_name")));
+        assert!(!attrs
+            .iter()
+            .any(|a| a.friendly_name.as_deref() == Some("family_name")));
         // family present → only family attribute lands.
         let f = default_user_attributes(&mk_user(None, "", "Lovelace"));
-        assert!(!f.iter().any(|a| a.friendly_name.as_deref() == Some("given_name")));
-        assert!(f.iter().any(|a| a.friendly_name.as_deref() == Some("family_name")));
+        assert!(!f
+            .iter()
+            .any(|a| a.friendly_name.as_deref() == Some("given_name")));
+        assert!(f
+            .iter()
+            .any(|a| a.friendly_name.as_deref() == Some("family_name")));
     }
 
     #[test]
@@ -807,8 +822,8 @@ mod auto_join_tests {
     use super::auto_join_org_by_domain;
     use chrono::Utc;
     use geonosis_core::{
-        Organization, OrganizationPolicy, OrgDomain, Realm, User,
-        id::{OrganizationId, OrgDomainId, RealmId, UserId},
+        id::{OrgDomainId, OrganizationId, RealmId, UserId},
+        OrgDomain, Organization, OrganizationPolicy, Realm, User,
     };
     use geonosis_storage::{MemoryStorage, Storage};
     use std::sync::Arc;
@@ -855,12 +870,14 @@ mod auto_join_tests {
         domain: Option<(&str, bool)>,
     ) -> (UserId, Option<OrganizationId>) {
         storage.create_realm(realm.clone()).await.unwrap();
-        let mut user = User::default();
-        user.id = UserId::new();
-        user.realm_id = realm.id;
-        user.username = "ada".into();
-        user.email = email.map(String::from);
-        user.email_verified = email_verified;
+        let user = User {
+            id: UserId::new(),
+            realm_id: realm.id,
+            username: "ada".into(),
+            email: email.map(String::from),
+            email_verified,
+            ..User::default()
+        };
         let uid = user.id;
         storage.create_user(user).await.unwrap();
         let org_id = if let Some((d, verified)) = domain {
@@ -903,8 +920,17 @@ mod auto_join_tests {
     async fn skips_when_policy_disabled() {
         let storage = Arc::new(MemoryStorage::new());
         let realm = realm_with_auto_join(false);
-        let (uid, _) = seed(&storage, &realm, Some("ada@acme.com"), true, Some(("acme.com", true))).await;
-        let out = auto_join_org_by_domain(storage.as_ref(), &realm, uid).await.unwrap();
+        let (uid, _) = seed(
+            &storage,
+            &realm,
+            Some("ada@acme.com"),
+            true,
+            Some(("acme.com", true)),
+        )
+        .await;
+        let out = auto_join_org_by_domain(storage.as_ref(), &realm, uid)
+            .await
+            .unwrap();
         assert!(out.is_none(), "policy disabled → no auto-join");
     }
 
@@ -912,8 +938,17 @@ mod auto_join_tests {
     async fn skips_when_email_unverified() {
         let storage = Arc::new(MemoryStorage::new());
         let realm = realm_with_auto_join(true);
-        let (uid, _) = seed(&storage, &realm, Some("ada@acme.com"), false, Some(("acme.com", true))).await;
-        let out = auto_join_org_by_domain(storage.as_ref(), &realm, uid).await.unwrap();
+        let (uid, _) = seed(
+            &storage,
+            &realm,
+            Some("ada@acme.com"),
+            false,
+            Some(("acme.com", true)),
+        )
+        .await;
+        let out = auto_join_org_by_domain(storage.as_ref(), &realm, uid)
+            .await
+            .unwrap();
         assert!(out.is_none(), "unverified email → no auto-join");
     }
 
@@ -921,8 +956,17 @@ mod auto_join_tests {
     async fn skips_when_domain_unverified() {
         let storage = Arc::new(MemoryStorage::new());
         let realm = realm_with_auto_join(true);
-        let (uid, _) = seed(&storage, &realm, Some("ada@acme.com"), true, Some(("acme.com", false))).await;
-        let out = auto_join_org_by_domain(storage.as_ref(), &realm, uid).await.unwrap();
+        let (uid, _) = seed(
+            &storage,
+            &realm,
+            Some("ada@acme.com"),
+            true,
+            Some(("acme.com", false)),
+        )
+        .await;
+        let out = auto_join_org_by_domain(storage.as_ref(), &realm, uid)
+            .await
+            .unwrap();
         assert!(out.is_none(), "unverified org domain → no auto-join");
     }
 
@@ -930,8 +974,14 @@ mod auto_join_tests {
     async fn enrolls_when_verified_email_matches_verified_domain() {
         let storage = Arc::new(MemoryStorage::new());
         let realm = realm_with_auto_join(true);
-        let (uid, org_id) =
-            seed(&storage, &realm, Some("ada@acme.com"), true, Some(("acme.com", true))).await;
+        let (uid, org_id) = seed(
+            &storage,
+            &realm,
+            Some("ada@acme.com"),
+            true,
+            Some(("acme.com", true)),
+        )
+        .await;
         let alias = auto_join_org_by_domain(storage.as_ref(), &realm, uid)
             .await
             .unwrap();
@@ -949,13 +999,23 @@ mod auto_join_tests {
     async fn idempotent_on_repeat_login() {
         let storage = Arc::new(MemoryStorage::new());
         let realm = realm_with_auto_join(true);
-        let (uid, _) =
-            seed(&storage, &realm, Some("ada@acme.com"), true, Some(("acme.com", true))).await;
+        let (uid, _) = seed(
+            &storage,
+            &realm,
+            Some("ada@acme.com"),
+            true,
+            Some(("acme.com", true)),
+        )
+        .await;
         // First login enrolls.
-        let first = auto_join_org_by_domain(storage.as_ref(), &realm, uid).await.unwrap();
+        let first = auto_join_org_by_domain(storage.as_ref(), &realm, uid)
+            .await
+            .unwrap();
         assert!(first.is_some());
         // Second login is a no-op (returns None — already a member).
-        let second = auto_join_org_by_domain(storage.as_ref(), &realm, uid).await.unwrap();
+        let second = auto_join_org_by_domain(storage.as_ref(), &realm, uid)
+            .await
+            .unwrap();
         assert!(second.is_none(), "repeat login must not re-enroll");
     }
 
@@ -963,9 +1023,17 @@ mod auto_join_tests {
     async fn skips_when_no_matching_org_domain() {
         let storage = Arc::new(MemoryStorage::new());
         let realm = realm_with_auto_join(true);
-        let (uid, _) =
-            seed(&storage, &realm, Some("ada@other.com"), true, Some(("acme.com", true))).await;
-        let out = auto_join_org_by_domain(storage.as_ref(), &realm, uid).await.unwrap();
+        let (uid, _) = seed(
+            &storage,
+            &realm,
+            Some("ada@other.com"),
+            true,
+            Some(("acme.com", true)),
+        )
+        .await;
+        let out = auto_join_org_by_domain(storage.as_ref(), &realm, uid)
+            .await
+            .unwrap();
         assert!(out.is_none(), "domain mismatch → no auto-join");
     }
 }

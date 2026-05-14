@@ -1,6 +1,8 @@
 //! Argon2id password hashing.
 
-use argon2::password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
+use argon2::password_hash::{
+    rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString,
+};
 use argon2::{Algorithm, Argon2, Params, Version};
 use thiserror::Error;
 
@@ -19,8 +21,8 @@ pub enum PasswordError {
 /// Parameters per `docs/12-security-crypto.md`: `m=64 MiB, t=3, p=4`.
 pub fn hash_password(password: &str) -> Result<String, PasswordError> {
     let salt = SaltString::generate(&mut OsRng);
-    let params = Params::new(64 * 1024, 3, 4, None)
-        .map_err(|e| PasswordError::Hash(e.to_string()))?;
+    let params =
+        Params::new(64 * 1024, 3, 4, None).map_err(|e| PasswordError::Hash(e.to_string()))?;
     let argon = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
     argon
         .hash_password(password.as_bytes(), &salt)
@@ -30,8 +32,8 @@ pub fn hash_password(password: &str) -> Result<String, PasswordError> {
 
 /// Verify a plaintext password against the stored PHC string. Constant-time.
 pub fn verify_password(password: &str, stored_hash: &str) -> Result<bool, PasswordError> {
-    let parsed = PasswordHash::new(stored_hash)
-        .map_err(|e| PasswordError::Malformed(e.to_string()))?;
+    let parsed =
+        PasswordHash::new(stored_hash).map_err(|e| PasswordError::Malformed(e.to_string()))?;
     let argon = Argon2::default();
     match argon.verify_password(password.as_bytes(), &parsed) {
         Ok(()) => Ok(true),

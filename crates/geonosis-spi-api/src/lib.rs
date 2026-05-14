@@ -23,9 +23,16 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum AuthnDecision {
-    Success { amr: Vec<Amr> },
-    Failure { reason: String },
-    Challenge { template: String, locals: serde_json::Value },
+    Success {
+        amr: Vec<Amr>,
+    },
+    Failure {
+        reason: String,
+    },
+    Challenge {
+        template: String,
+        locals: serde_json::Value,
+    },
     Skip,
 }
 

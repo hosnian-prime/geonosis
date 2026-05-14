@@ -72,14 +72,11 @@ impl BuiltinAuthnDispatcher {
         // Client lookup. FlowContext.client_id is a String form of
         // the Client.client_id (NOT the ULID id). Look up via
         // get_client_by_client_id.
-        let client_id_str = state
-            .context
-            .client_id
-            .as_deref()
-            .ok_or_else(|| FlowError::Internal(
-                "FlowContext.client_id missing — OAuth /authorize must populate it"
-                    .into(),
-            ))?;
+        let client_id_str = state.context.client_id.as_deref().ok_or_else(|| {
+            FlowError::Internal(
+                "FlowContext.client_id missing — OAuth /authorize must populate it".into(),
+            )
+        })?;
         let client = self
             .storage
             .get_client_by_client_id(state.realm_id, client_id_str)
@@ -123,9 +120,9 @@ impl BuiltinAuthnDispatcher {
     fn wasm_binding(&self, realm: geonosis_core::RealmId, urn: &str) -> Option<ProviderBinding> {
         let iface = WitInterfaceName(WitInterfaceName::AUTHN.into());
         let bindings = self.providers.list(realm, &iface);
-        bindings
-            .into_iter()
-            .find(|b| b.provider_urn == urn && b.enabled && matches!(b.origin, ProviderOrigin::Wasm { .. }))
+        bindings.into_iter().find(|b| {
+            b.provider_urn == urn && b.enabled && matches!(b.origin, ProviderOrigin::Wasm { .. })
+        })
     }
 
     async fn dispatch_wasm(
@@ -135,7 +132,9 @@ impl BuiltinAuthnDispatcher {
         input: &StepInput,
     ) -> Result<AuthnStepOutcome, FlowError> {
         let ProviderOrigin::Wasm { alias, .. } = &binding.origin else {
-            return Err(FlowError::Internal("non-wasm binding in wasm dispatch".into()));
+            return Err(FlowError::Internal(
+                "non-wasm binding in wasm dispatch".into(),
+            ));
         };
         let module = self
             .storage
@@ -246,9 +245,7 @@ impl AuthnDispatcher for BuiltinAuthnDispatcher {
                 }))
             }
             Ok(AuthnOutput::Skip) => Ok(AuthnStepOutcome::Skip),
-            Ok(AuthnOutput::Failure(kind)) => {
-                Ok(AuthnStepOutcome::Failure(map_failure(kind)))
-            }
+            Ok(AuthnOutput::Failure(kind)) => Ok(AuthnStepOutcome::Failure(map_failure(kind))),
             Err(e) => Err(FlowError::Internal(format!(
                 "authenticator {provider_urn} failed: {e}"
             ))),

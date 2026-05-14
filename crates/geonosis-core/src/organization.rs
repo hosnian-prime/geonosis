@@ -8,7 +8,7 @@ use url::Url;
 
 use crate::attribute::AttributeValue;
 use crate::id::{
-    ClientId, OrganizationId, OrgDomainId, OrgInvitationId, OrgRoleId, RealmId, UserId,
+    ClientId, OrgDomainId, OrgInvitationId, OrgRoleId, OrganizationId, RealmId, UserId,
 };
 use crate::scope::ScopeName;
 use crate::secret::Secret;

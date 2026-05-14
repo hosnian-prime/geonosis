@@ -86,8 +86,7 @@ impl CompiledFlow {
         edges
             .iter()
             .find(|e| {
-                matches!(e.on, EdgeCondition::Otherwise)
-                    && crate::guard::eval_guard(&e.guard, ctx)
+                matches!(e.on, EdgeCondition::Otherwise) && crate::guard::eval_guard(&e.guard, ctx)
             })
             .map(|e| e.to)
     }
