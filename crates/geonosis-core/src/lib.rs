@@ -54,8 +54,8 @@ pub use secret::Secret;
 pub use session::{ClientSessionRef, Session};
 pub use subject::{ParentSubject, Subject};
 pub use token::{
-    AccessTokenClaims, CodeChallenge, CodeChallengeMethod, CodeGrant, IdTokenClaims, RealmAccess,
-    RefreshToken, ResourceAccess,
+    AccessTokenClaims, CodeChallenge, CodeChallengeMethod, CodeGrant, IdTokenClaims, OrgClaim,
+    RealmAccess, RefreshToken, ResourceAccess,
 };
 pub use user::{FederationLink, PersonName, User};
 pub use user_profile::{

@@ -79,6 +79,12 @@ impl<K: KeyManagementService + ?Sized + 'static> TokenIssuer for OidcIssuer<K> {
             realm_access: None,
             resource_access: Default::default(),
             groups: None,
+            // `org` claim is populated by the token-mint helper in
+            // `geonosis_admin_ui::org_flow::build_org_claim_default`
+            // before this struct is signed. The issuer leaves it None
+            // here because the broker/admin contexts may override it
+            // via the `?org=` selector at authorize-time.
+            org: None,
             ext: Default::default(),
         };
         let header = JwsHeader::new(alg, kid.to_string(), "JWT");
