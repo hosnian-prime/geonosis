@@ -432,7 +432,7 @@ async fn try_complete_saml(
         &sp_config,
         &name_id,
         &session_index_value,
-        vec![], // attribute statements land with mapper SPI wiring (v0.1.x)
+        default_user_attributes(user),
         Some("urn:oasis:names:tc:SAML:2.0:ac:classes:Password".into()),
         5,
     );
@@ -578,4 +578,111 @@ async fn resolve_persistent_name_id(
         .await
         .map_err(|e| e.to_string())?;
     Ok(name_id)
+}
+
+/// Render the default `<saml:Attribute>` set for the user into the
+/// SAML assertion's AttributeStatement. v0.1.x ships the four
+/// claims SAML SPs most commonly key on (email, given/family
+/// names, username) using the urn:oid: + Microsoft Claims-Schema
+/// naming SPs broadly accept. WASM-mapper-driven attribute
+/// transformation per docs/20 §"Attribute mapping (the SPI)"
+/// adds on top of this baseline (v0.1.x+ once SP-config carries
+/// the `attribute_mappers` binding list).
+fn default_user_attributes(user: &geonosis_core::User) -> Vec<geonosis_saml_types::SamlAttribute> {
+    use geonosis_saml_types::SamlAttribute;
+    let mut out: Vec<SamlAttribute> = Vec::new();
+
+    // Username always populated.
+    out.push(SamlAttribute {
+        name: "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name".into(),
+        name_format: "urn:oasis:names:tc:SAML:2.0:attrname-format:uri".into(),
+        friendly_name: Some("username".into()),
+        values: vec![user.username.clone()],
+    });
+
+    if let Some(ref email) = user.email {
+        out.push(SamlAttribute {
+            name: "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress".into(),
+            name_format: "urn:oasis:names:tc:SAML:2.0:attrname-format:uri".into(),
+            friendly_name: Some("email".into()),
+            values: vec![email.clone()],
+        });
+    }
+
+    if let Some(ref person) = user.name {
+        if let Some(g) = person.given.as_ref().filter(|s| !s.is_empty()) {
+            out.push(SamlAttribute {
+                name: "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname".into(),
+                name_format: "urn:oasis:names:tc:SAML:2.0:attrname-format:uri".into(),
+                friendly_name: Some("given_name".into()),
+                values: vec![g.clone()],
+            });
+        }
+        if let Some(f) = person.family.as_ref().filter(|s| !s.is_empty()) {
+            out.push(SamlAttribute {
+                name: "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname".into(),
+                name_format: "urn:oasis:names:tc:SAML:2.0:attrname-format:uri".into(),
+                friendly_name: Some("family_name".into()),
+                values: vec![f.clone()],
+            });
+        }
+    }
+
+    out
+}
+
+#[cfg(test)]
+mod saml_attribute_tests {
+    use super::default_user_attributes;
+    use geonosis_core::{PersonName, User};
+
+    fn mk_user(email: Option<&str>, given: &str, family: &str) -> User {
+        let mut u = User::default();
+        u.username = "ada".into();
+        u.email = email.map(String::from);
+        u.name = Some(PersonName {
+            given: if given.is_empty() { None } else { Some(given.into()) },
+            family: if family.is_empty() { None } else { Some(family.into()) },
+            middle: None,
+            display: None,
+        });
+        u
+    }
+
+    #[test]
+    fn always_emits_username_attribute() {
+        let attrs = default_user_attributes(&mk_user(None, "", ""));
+        assert!(attrs.iter().any(|a| a.friendly_name.as_deref() == Some("username")));
+    }
+
+    #[test]
+    fn email_attribute_appears_iff_user_has_email() {
+        let with = default_user_attributes(&mk_user(Some("ada@x"), "", ""));
+        assert!(with.iter().any(|a| a.friendly_name.as_deref() == Some("email")));
+        let without = default_user_attributes(&mk_user(None, "", ""));
+        assert!(!without.iter().any(|a| a.friendly_name.as_deref() == Some("email")));
+    }
+
+    #[test]
+    fn name_attributes_skip_empty_components() {
+        // given+family empty → no name attributes.
+        let attrs = default_user_attributes(&mk_user(None, "", ""));
+        assert!(!attrs.iter().any(|a| a.friendly_name.as_deref() == Some("given_name")));
+        assert!(!attrs.iter().any(|a| a.friendly_name.as_deref() == Some("family_name")));
+        // family present → only family attribute lands.
+        let f = default_user_attributes(&mk_user(None, "", "Lovelace"));
+        assert!(!f.iter().any(|a| a.friendly_name.as_deref() == Some("given_name")));
+        assert!(f.iter().any(|a| a.friendly_name.as_deref() == Some("family_name")));
+    }
+
+    #[test]
+    fn name_format_is_uri_for_all_attributes() {
+        let attrs = default_user_attributes(&mk_user(Some("a@b"), "Ada", "Lovelace"));
+        for a in &attrs {
+            assert_eq!(
+                a.name_format,
+                "urn:oasis:names:tc:SAML:2.0:attrname-format:uri"
+            );
+        }
+    }
 }
