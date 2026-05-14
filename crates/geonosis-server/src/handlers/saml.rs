@@ -29,6 +29,10 @@ use axum::extract::{Path, State};
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
 
+use geonosis_core::JwsAlgorithm;
+use geonosis_crypto::cert::{der_to_b64, self_signed_x509_for_rs256};
+use geonosis_crypto::jwt::PrivateMaterial;
+use geonosis_crypto::KeyManagementService;
 use geonosis_protocol_saml_idp::{serialize_idp_metadata, IdpMetadataInput};
 use geonosis_saml_types::NameIdFormat;
 
@@ -75,11 +79,30 @@ pub async fn metadata(
         NameIdFormat::Unspecified,
     ];
 
+    // Self-signed X.509 cert wrapping the realm's active RS256 key.
+    // Per docs/20-saml-idp.md SPs strictly validate the
+    // <X509Certificate> body — we mint a cert on-the-fly from the
+    // realm's private key so the metadata is consumable by
+    // python3-saml / ruby-saml / Microsoft.IdentityModel without
+    // operator-provisioned cert tooling. Best-effort: if the realm
+    // has no Active RS256 key yet, we emit metadata with an empty
+    // <md:KeyDescriptor> rather than 500ing the metadata fetch.
+    let signing_certs_b64 = match build_signing_certs(&state, &realm).await {
+        Ok(certs) => certs,
+        Err(e) => {
+            tracing::warn!(
+                realm = %realm.slug,
+                error = %e,
+                "saml metadata: signing cert generation failed; emitting metadata without KeyDescriptor body"
+            );
+            Vec::new()
+        }
+    };
     let xml = serialize_idp_metadata(&IdpMetadataInput {
         entity_id: &entity_id,
         sso_url: &sso_url,
         slo_url: Some(&slo_url),
-        signing_certs_b64: &[],
+        signing_certs_b64: &signing_certs_b64,
         name_id_formats: &name_id_formats,
     });
 
@@ -89,6 +112,38 @@ pub async fn metadata(
         xml,
     )
         .into_response()
+}
+
+/// Build the `<X509Certificate>` body list for the metadata's
+/// `<md:KeyDescriptor use="signing">` from the realm's currently
+/// Active RS256 signing keys. Returns an empty list if the realm
+/// has no Active key — the caller decides whether that's a 500 or
+/// a degraded-metadata response.
+async fn build_signing_certs(
+    state: &AppState,
+    realm: &geonosis_core::Realm,
+) -> Result<Vec<String>, String> {
+    // v0.1 surfaces a single Active RS256 key per realm. Doc 20
+    // permits multiple Active keys for SAML SP-metadata caching
+    // tolerance; the realm-key state machine supports it and this
+    // helper grows to a list-walk when the per-realm key inventory
+    // API does (v0.1.x).
+    let kid = state
+        .kms
+        .active_signing_kid(realm.id, JwsAlgorithm::RS256)
+        .await
+        .map_err(|e| format!("no active RS256 key: {e}"))?;
+    let material = state
+        .kms
+        .load_private(&kid)
+        .await
+        .map_err(|e| format!("load_private: {e}"))?;
+    let PrivateMaterial::Rs256(rsa) = material else {
+        return Err("active signing key is not RS256".into());
+    };
+    let der = self_signed_x509_for_rs256(rsa.as_ref(), &realm.slug)
+        .map_err(|e| format!("cert mint: {e}"))?;
+    Ok(vec![der_to_b64(&der)])
 }
 
 /// `GET /realms/:slug/protocol/saml/sso` and
