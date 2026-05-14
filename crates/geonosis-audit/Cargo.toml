@@ -13,6 +13,7 @@ workspace = true
 [features]
 default = []
 postgres = ["dep:sqlx"]
+webhook = ["dep:reqwest"]
 
 [dependencies]
 geonosis-core = { path = "../geonosis-core" }
@@ -25,3 +26,4 @@ tracing.workspace = true
 chrono.workspace = true
 tokio.workspace = true
 sqlx = { workspace = true, optional = true }
+reqwest = { workspace = true, optional = true }

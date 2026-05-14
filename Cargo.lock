@@ -1701,6 +1701,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "geonosis-core",
+ "reqwest",
  "serde",
  "serde_json",
  "sqlx",

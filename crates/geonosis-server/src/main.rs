@@ -36,6 +36,13 @@ struct Args {
     /// recommended deploy step.
     #[arg(long, env = "GEONOSIS_MIGRATE_ON_BOOT", default_value_t = false)]
     migrate_on_boot: bool,
+
+    /// Comma-separated webhook URLs to forward audit events to. Each
+    /// URL gets its own `WebhookSink` with the v0.1 default retry
+    /// profile (4 attempts, 250ms → 8s exponential backoff,
+    /// 5s per-attempt timeout). Empty disables webhook forwarding.
+    #[arg(long, env = "GEONOSIS_AUDIT_WEBHOOK_URLS", default_value = "")]
+    audit_webhook_urls: String,
 }
 
 #[tokio::main]
@@ -76,12 +83,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // derivation lands in v0.1.x.
     let refresh_hash_key = derive_subkey(&master, b"geonosis-refresh-hash-v1");
     let client_secret_hash_key = derive_subkey(&master, b"geonosis-client-secret-hash-v1");
+
+    // Audit sinks: webhook URLs from env, plus the postgres sink when
+    // a database is configured. Order matters only for log clarity;
+    // the publisher fans out concurrently.
+    let mut audit_sinks: Vec<std::sync::Arc<dyn geonosis_audit::AuditSink>> = Vec::new();
+    for raw in args.audit_webhook_urls.split(',').filter(|s| !s.trim().is_empty()) {
+        let url = raw.trim().to_string();
+        match geonosis_audit::webhook::WebhookSink::new(
+            geonosis_audit::webhook::WebhookSinkConfig::new(url.clone()),
+        ) {
+            Ok(sink) => {
+                tracing::info!(url = %url, "wiring audit webhook sink");
+                audit_sinks.push(std::sync::Arc::new(sink));
+            }
+            Err(e) => {
+                tracing::error!(url = %url, error = %e, "failed to build webhook sink; skipping");
+            }
+        }
+    }
+
     let state = AppState {
         storage,
         cache: Arc::new(LocalCache::default_small()),
         kms: Arc::new(SoftwareKms::new(master)),
         providers: Arc::new(ProviderRegistry::new()),
-        audit: Arc::new(Publisher::new(vec![])),
+        audit: Arc::new(Publisher::new(audit_sinks)),
         public_base_url: url::Url::parse(&args.public_url)?,
         refresh_hash_key,
         client_secret_hash_key,
