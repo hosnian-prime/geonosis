@@ -6,15 +6,17 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Html;
 use axum::routing::get;
 use axum::Router;
 use leptos::prelude::*;
+use serde::Deserialize;
 
 use crate::handlers_v1::extractors::realm_by_slug;
 use crate::leptos_ui::pages::agents::{AgentRow, AgentsPage};
 use crate::leptos_ui::pages::clients::{ClientRow, ClientsPage};
+use crate::leptos_ui::pages::events::{EventFilter, EventRow, EventsPage};
 use crate::leptos_ui::pages::groups::{GroupRow, GroupsPage};
 use crate::leptos_ui::pages::idps::{IdpRow, IdpsPage};
 use crate::leptos_ui::pages::orgs::{OrgRow, OrgsPage};
@@ -37,6 +39,7 @@ pub fn leptos_router(state: Arc<AdminState>) -> Router {
         .route("/admin-next/realms/:slug/idps", get(page_idps))
         .route("/admin-next/realms/:slug/roles", get(page_roles))
         .route("/admin-next/realms/:slug/groups", get(page_groups))
+        .route("/admin-next/realms/:slug/events", get(page_events))
         .with_state(state)
 }
 
@@ -200,6 +203,92 @@ async fn page_groups(
         .collect();
     let s = realm.slug;
     Ok(render(move || view! { <GroupsPage realm_slug=s rows=rows/> }))
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct EventsQuery {
+    #[serde(default)]
+    action: Option<String>,
+    #[serde(default)]
+    actor: Option<String>,
+    #[serde(default)]
+    from: Option<String>,
+    #[serde(default)]
+    until: Option<String>,
+}
+
+fn parse_optional_rfc3339(
+    s: &Option<String>,
+) -> Result<Option<chrono::DateTime<chrono::Utc>>, AdminError> {
+    match s {
+        None => Ok(None),
+        Some(raw) if raw.is_empty() => Ok(None),
+        Some(raw) => {
+            // `<input type="datetime-local">` posts `YYYY-MM-DDTHH:MM`
+            // without an offset. Treat naive values as UTC for the
+            // filter window; explicit `+hh:mm` offsets parse via the
+            // RFC-3339 branch.
+            let parsed = chrono::DateTime::parse_from_rfc3339(raw)
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .or_else(|_| {
+                    chrono::NaiveDateTime::parse_from_str(raw, "%Y-%m-%dT%H:%M")
+                        .map(|n| n.and_utc())
+                        .map_err(|e| {
+                            AdminError::Storage(format!("bad datetime `{raw}`: {e}"))
+                        })
+                })
+                .map_err(|e| match e {
+                    err @ AdminError::Storage(_) => err,
+                    _ => AdminError::Storage(format!("bad datetime `{raw}`")),
+                })?;
+            Ok(Some(parsed))
+        }
+    }
+}
+
+async fn page_events(
+    State(state): State<Arc<AdminState>>,
+    Path(slug): Path<String>,
+    Query(q): Query<EventsQuery>,
+) -> Result<Html<String>, AdminError> {
+    let realm = realm_by_slug(&state, &slug).await?;
+    let from = parse_optional_rfc3339(&q.from)?;
+    let until = parse_optional_rfc3339(&q.until)?;
+    let filter = geonosis_storage::AuditEventFilter {
+        action: q.action.as_deref(),
+        actor: q.actor.as_deref(),
+        from,
+        until,
+    };
+    let raw = state.storage.list_audit_events(realm.id, &filter, 200).await?;
+    let rows: Vec<EventRow> = raw
+        .into_iter()
+        .map(|r| EventRow {
+            occurred_at: r.occurred_at.to_rfc3339(),
+            actor: r
+                .actor
+                .get("kind")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string(),
+            action: r.action,
+            target: r
+                .target
+                .as_ref()
+                .and_then(|t| t.get("kind").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                .unwrap_or_else(|| "—".to_string()),
+        })
+        .collect();
+    let filter_view = EventFilter {
+        action: q.action,
+        actor: q.actor,
+        from: q.from,
+        until: q.until,
+    };
+    let s = realm.slug;
+    Ok(render(move || {
+        view! { <EventsPage realm_slug=s filter=filter_view rows=rows/> }
+    }))
 }
 
 /// Render a Leptos view tree to a complete HTML document string.

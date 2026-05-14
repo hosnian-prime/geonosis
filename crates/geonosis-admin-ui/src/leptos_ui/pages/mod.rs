@@ -1,5 +1,6 @@
 pub mod agents;
 pub mod clients;
+pub mod events;
 pub mod groups;
 pub mod idps;
 pub mod orgs;
