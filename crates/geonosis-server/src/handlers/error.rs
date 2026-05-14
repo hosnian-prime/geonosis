@@ -39,3 +39,52 @@ pub fn oauth_error_response(err: &OAuthError) -> Response {
     let body: ErrorBody = err.into();
     (status, Json(body)).into_response()
 }
+
+/// RFC 7807-shaped problem document for non-OAuth endpoints (broker,
+/// admin). Keeps the contract narrow so failures stay grep-able.
+#[derive(Debug, Serialize)]
+pub struct JsonProblem {
+    #[serde(skip)]
+    pub status: u16,
+    pub error: String,
+    pub message: String,
+}
+
+impl JsonProblem {
+    pub fn bad_request(msg: impl Into<String>) -> Self {
+        Self {
+            status: 400,
+            error: "invalid_request".into(),
+            message: msg.into(),
+        }
+    }
+    pub fn not_found(msg: impl Into<String>) -> Self {
+        Self {
+            status: 404,
+            error: "not_found".into(),
+            message: msg.into(),
+        }
+    }
+    pub fn bad_gateway(msg: impl Into<String>) -> Self {
+        Self {
+            status: 502,
+            error: "upstream_failure".into(),
+            message: msg.into(),
+        }
+    }
+    pub fn internal(msg: impl Into<String>) -> Self {
+        Self {
+            status: 500,
+            error: "internal_error".into(),
+            message: msg.into(),
+        }
+    }
+}
+
+impl IntoResponse for JsonProblem {
+    fn into_response(self) -> Response {
+        let status =
+            StatusCode::from_u16(self.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+        (status, Json(self)).into_response()
+    }
+}

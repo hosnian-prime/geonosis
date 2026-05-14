@@ -20,6 +20,8 @@ postgres = ["dep:sqlx", "dep:geonosis-migrate"]
 geonosis-core = { path = "../geonosis-core" }
 geonosis-crypto = { path = "../geonosis-crypto" }
 geonosis-flow = { path = "../geonosis-flow" }
+geonosis-broker = { path = "../geonosis-broker" }
+geonosis-federation-ldap = { path = "../geonosis-federation-ldap" }
 geonosis-migrate = { path = "../geonosis-migrate", optional = true }
 
 async-trait.workspace = true

@@ -15,6 +15,7 @@
 //! - `/login-actions/authenticate` (form-post auth used by the test login UI)
 
 pub mod authorize;
+pub mod broker;
 pub mod client_auth;
 pub mod device;
 pub mod error;
@@ -29,6 +30,7 @@ pub mod token;
 pub mod userinfo;
 
 pub use authorize::{authorize_get, authorize_post};
+pub use broker::{broker_endpoint_get, broker_endpoint_post, broker_login, broker_metadata};
 pub use device::{device_authorize, device_token};
 pub use health::{healthy, ready, started};
 pub use introspect::introspect;
