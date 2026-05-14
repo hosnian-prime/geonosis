@@ -1,0 +1,22 @@
+{
+  "name": "geonosis-nextjs-example",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Minimal Next.js app exercising the Geonosis OIDC provider via Auth.js v5.",
+  "scripts": {
+    "dev": "next dev -p 8888",
+    "build": "next build",
+    "start": "next start -p 8888"
+  },
+  "dependencies": {
+    "next": "14.2.5",
+    "next-auth": "5.0.0-beta.20",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "20.14.0",
+    "@types/react": "18.3.3",
+    "typescript": "5.5.4"
+  }
+}
