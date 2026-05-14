@@ -65,20 +65,28 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     };
 
-    let storage: Arc<dyn Storage> = if let Some(url) = &args.database_url {
-        tracing::info!(database_url = %redact_url(url), "connecting to Postgres backend");
-        let pool = geonosis_storage::postgres::build_pool(url).await?;
-        if args.migrate_on_boot {
-            tracing::info!("running pending migrations under advisory lock");
-            geonosis_migrate::run_with_leader_lock(&pool).await?;
-        }
-        // Refuse to start if the live schema is outside our window.
-        geonosis_migrate::enforce_schema_compat(&pool, geonosis_migrate::V0_1_COMPAT).await?;
-        Arc::new(PostgresStorage::new(pool))
-    } else {
-        tracing::warn!("GEONOSIS_DATABASE_URL unset — using in-memory storage (DEV ONLY)");
-        Arc::new(MemoryStorage::new())
-    };
+    let (storage, retention_pool): (Arc<dyn Storage>, Option<sqlx::postgres::PgPool>) =
+        if let Some(url) = &args.database_url {
+            tracing::info!(database_url = %redact_url(url), "connecting to Postgres backend");
+            let pool = geonosis_storage::postgres::build_pool(url).await?;
+            if args.migrate_on_boot {
+                tracing::info!("running pending migrations under advisory lock");
+                geonosis_migrate::run_with_leader_lock(&pool).await?;
+            }
+            // Refuse to start if the live schema is outside our window.
+            geonosis_migrate::enforce_schema_compat(&pool, geonosis_migrate::V0_1_COMPAT)
+                .await?;
+            (
+                Arc::new(PostgresStorage::new(pool.clone())) as Arc<dyn Storage>,
+                Some(pool),
+            )
+        } else {
+            tracing::warn!("GEONOSIS_DATABASE_URL unset — using in-memory storage (DEV ONLY)");
+            (
+                Arc::new(MemoryStorage::new()) as Arc<dyn Storage>,
+                None,
+            )
+        };
     // Derive deployment-wide hash keys from the master key. Per-realm
     // derivation lands in v0.1.x.
     let refresh_hash_key = derive_subkey(&master, b"geonosis-refresh-hash-v1");
@@ -118,6 +126,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         ldap: Arc::new(geonosis_server::ldap::LdapRuntime::new()),
         metrics: Arc::new(geonosis_server::metrics::MetricsState::new()),
     };
+
+    // Spawn the audit-retention runner when Postgres is the backend.
+    // The closure captures the storage Arc so the runner doesn't need
+    // to know about the trait shape; v0.2 promotes this to a generic
+    // hook on the audit Publisher.
+    if let Some(pool) = retention_pool {
+        let storage_for_retention = state.storage.clone();
+        let list_retention: geonosis_audit::retention::ListRetentionFn =
+            std::sync::Arc::new(move || {
+                let storage = storage_for_retention.clone();
+                Box::pin(async move {
+                    let realms = storage
+                        .list_realms()
+                        .await
+                        .map_err(|e| format!("list_realms: {e}"))?;
+                    Ok(realms
+                        .into_iter()
+                        .map(|r| (r.id.to_string(), r.events.retention_days))
+                        .collect())
+                })
+            });
+        geonosis_audit::retention::spawn_runner(
+            pool,
+            list_retention,
+            geonosis_audit::retention::DEFAULT_RUN_INTERVAL,
+        );
+        tracing::info!("audit retention runner spawned (hourly)");
+    }
 
     let listener = tokio::net::TcpListener::bind(&args.listen).await?;
     tracing::info!(listen = %args.listen, "geonosis-server starting");

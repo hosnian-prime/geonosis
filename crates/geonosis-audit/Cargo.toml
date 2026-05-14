@@ -25,5 +25,6 @@ thiserror.workspace = true
 tracing.workspace = true
 chrono.workspace = true
 tokio.workspace = true
+futures-util.workspace = true
 sqlx = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
