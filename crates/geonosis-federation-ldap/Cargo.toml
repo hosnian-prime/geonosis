@@ -1,0 +1,21 @@
+[package]
+name = "geonosis-federation-ldap"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "LDAP / AD user federation provider."
+
+[lints]
+workspace = true
+
+[dependencies]
+geonosis-core = { path = "../geonosis-core" }
+geonosis-crypto = { path = "../geonosis-crypto" }
+
+async-trait.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+chrono.workspace = true

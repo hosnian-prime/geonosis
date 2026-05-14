@@ -1,0 +1,46 @@
+[package]
+name = "geonosis-crypto"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "JWT signing, JWKS, password hashing, key wrap, KMS trait."
+
+[lints]
+workspace = true
+
+[dependencies]
+geonosis-core = { path = "../geonosis-core" }
+
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+base64.workspace = true
+hex.workspace = true
+sha2.workspace = true
+hmac.workspace = true
+blake3.workspace = true
+rand.workspace = true
+rand_core.workspace = true
+subtle.workspace = true
+zeroize.workspace = true
+constant_time_eq.workspace = true
+
+argon2.workspace = true
+aes-gcm.workspace = true
+rsa.workspace = true
+ed25519-dalek.workspace = true
+p256.workspace = true
+p384.workspace = true
+spki.workspace = true
+pkcs8.workspace = true
+
+chrono.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+pretty_assertions.workspace = true

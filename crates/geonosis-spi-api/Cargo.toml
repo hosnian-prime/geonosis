@@ -1,0 +1,17 @@
+[package]
+name = "geonosis-spi-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Authoring SDK for Geonosis SPI plugin developers (Rust)."
+
+[lints]
+workspace = true
+
+[dependencies]
+geonosis-core = { path = "../geonosis-core" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
