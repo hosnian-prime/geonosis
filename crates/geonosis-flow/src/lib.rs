@@ -11,6 +11,7 @@
 pub mod authenticator;
 pub mod builtin;
 pub mod compile;
+pub mod dry_run;
 pub mod dsl;
 pub mod executor;
 pub mod guard;
@@ -18,6 +19,10 @@ pub mod state;
 
 pub use authenticator::{AuthnDispatcher, AuthnStepOutcome, NoopAuthnDispatcher};
 pub use compile::{compile, CompileError, CompiledFlow};
+pub use dry_run::{
+    dry_run, dry_run_compiled, Decision, DryRunError, DryRunReport, DryRunStep, ExpectedOutcome,
+    TerminalState,
+};
 pub use dsl::{
     Edge, EdgeCondition, FlowDefinition, FlowNode, NodeKind, Requirement, StartNode, SuccessNode,
 };
