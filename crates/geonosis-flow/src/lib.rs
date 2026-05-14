@@ -24,7 +24,8 @@ pub use dry_run::{
     TerminalState,
 };
 pub use dsl::{
-    Edge, EdgeCondition, FlowDefinition, FlowNode, NodeKind, Requirement, StartNode, SuccessNode,
+    Edge, EdgeCondition, FlowDefinition, FlowNode, NodeKind, NodeLayout, Requirement, StartNode,
+    SuccessNode,
 };
 pub use executor::{FlowError, FlowExecutor, StepInput, StepOutput};
 pub use guard::eval_guard;
