@@ -3,6 +3,8 @@
 use leptos::prelude::*;
 
 use crate::leptos_ui::app::{Page, PageContext};
+use crate::leptos_ui::components::list_table::{state_label, ListTable};
+use crate::leptos_ui::components::page_header::PageHeader;
 
 #[derive(Clone, Debug)]
 pub struct UserRow {
@@ -21,22 +23,16 @@ pub fn UsersPage(realm_slug: String, rows: Vec<UserRow>) -> impl IntoView {
     let back = format!("/admin-next/realms/{realm_slug}");
     view! {
         <Page context=ctx>
-            <nav class="gn-breadcrumb"><a href=back>"← Realm"</a></nav>
-            <h1>"Users"</h1>
-            <table class="gn-table">
-                <thead>
-                    <tr><th>"Username"</th><th>"Email"</th><th>"State"</th></tr>
-                </thead>
-                <tbody>
-                    {rows.into_iter().map(|r| view! {
-                        <tr>
-                            <td>{r.username}</td>
-                            <td>{r.email.unwrap_or_default()}</td>
-                            <td>{if r.enabled { "enabled" } else { "disabled" }}</td>
-                        </tr>
-                    }).collect_view()}
-                </tbody>
-            </table>
+            <PageHeader title="Users" back_href=back/>
+            <ListTable headers=vec!["Username", "Email", "State"]>
+                {rows.into_iter().map(|r| view! {
+                    <tr>
+                        <td>{r.username}</td>
+                        <td>{r.email.unwrap_or_default()}</td>
+                        <td>{state_label(r.enabled)}</td>
+                    </tr>
+                }).collect_view()}
+            </ListTable>
         </Page>
     }
 }

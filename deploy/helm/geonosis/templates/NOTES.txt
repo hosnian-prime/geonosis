@@ -1,0 +1,24 @@
+Geonosis chart {{ .Chart.AppVersion }} installed as release {{ .Release.Name }}.
+
+Probe paths:
+  startup:   {{ .Values.probes.startup.path }}
+  readiness: {{ .Values.probes.readiness.path }}
+  liveness:  {{ .Values.probes.liveness.path }}
+  drain:     POST /-/drain (preStop hook; sleep {{ .Values.lifecycle.drainSleepSeconds }}s)
+
+Required secrets (Secret resources you must create in this namespace):
+  - {{ .Values.secrets.database.name }} with key {{ .Values.secrets.database.key }}
+  - {{ .Values.secrets.masterKey.name }} with key {{ .Values.secrets.masterKey.key }}
+
+{{- if .Values.ingress.enabled }}
+
+External URL(s):
+{{- range .Values.ingress.hosts }}
+  - https://{{ . }}
+{{- end }}
+{{- end }}
+
+Next steps:
+  1) `kubectl logs deploy/{{ include "geonosis.fullname" . }} -f`
+  2) Hit `/-/started` once the startup probe goes green.
+  3) `geoctl realms list --server https://<public-url>` against your bootstrap admin token.

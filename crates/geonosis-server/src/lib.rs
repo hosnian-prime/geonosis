@@ -11,6 +11,7 @@
 
 pub mod app;
 pub mod authenticators;
+pub mod bootstrap;
 pub mod broker;
 pub mod handlers;
 pub mod ldap;

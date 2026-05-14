@@ -1,0 +1,51 @@
+# Geonosis local-dev quickstart stack — `docker compose up -d`.
+#
+# Boots:
+#   - postgres:16 on 5432 (ephemeral; `docker compose down -v` wipes it)
+#   - geonosis-server on 8080 with `GEONOSIS_BOOTSTRAP_QUICKSTART=1`
+#
+# The bootstrap path creates realm `acme` + users `ada@acme.test`
+# (pw `ada-pw`) and `admin@acme.test` (pw `admin-pw`) + client
+# `acme-web` with redirect `http://127.0.0.1:8888/callback`. See
+# `docs/recipes/01-quickstart-docker.md` for the full 5-minute walk-
+# through and the 3 verification curl commands.
+#
+# Production deployments must NEVER set GEONOSIS_BOOTSTRAP_QUICKSTART
+# — the production Helm chart in `deploy/helm/geonosis/` does not.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: geonosis
+      POSTGRES_PASSWORD: geonosis
+      POSTGRES_DB: geonosis
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U geonosis -d geonosis"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+    ports:
+      - "5432:5432"
+
+  geonosis:
+    image: ghcr.io/hosnian-prime/geonosis-server:0.1.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      GEONOSIS_LISTEN: "0.0.0.0:8080"
+      GEONOSIS_PUBLIC_URL: "http://localhost:8080"
+      GEONOSIS_DATABASE_URL: "postgres://geonosis:geonosis@postgres:5432/geonosis"
+      GEONOSIS_MIGRATE_ON_BOOT: "true"
+      GEONOSIS_BOOTSTRAP_QUICKSTART: "1"
+      # Stable dev key. Replace in any non-quickstart environment.
+      GEONOSIS_MASTER_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
+      RUST_LOG: "info"
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/-/ready || exit 1"]
+      interval: 5s
+      timeout: 2s
+      retries: 30

@@ -6,19 +6,25 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::response::Html;
 use axum::routing::get;
-use axum::Router;
+use axum::{Form, Router};
 use leptos::prelude::*;
+use serde::Deserialize;
 
 use crate::handlers_v1::extractors::realm_by_slug;
 use crate::leptos_ui::pages::agents::{AgentRow, AgentsPage};
 use crate::leptos_ui::pages::clients::{ClientRow, ClientsPage};
+use crate::leptos_ui::pages::events::{EventFilter, EventRow, EventsPage};
+use crate::leptos_ui::pages::flows::{FlowEditPage, FlowRow, FlowsPage};
+use crate::leptos_ui::pages::groups::{GroupRow, GroupsPage};
 use crate::leptos_ui::pages::idps::{IdpRow, IdpsPage};
 use crate::leptos_ui::pages::orgs::{OrgRow, OrgsPage};
 use crate::leptos_ui::pages::realm_detail::{RealmDetailData, RealmDetailPage};
 use crate::leptos_ui::pages::realms::{RealmRow, RealmsPage};
+use crate::leptos_ui::pages::roles::{RoleRow, RolesPage};
+use crate::leptos_ui::pages::sessions::{SessionRow, SessionsPage};
 use crate::leptos_ui::pages::users::{UserRow, UsersPage};
 use crate::state::{AdminError, AdminState};
 
@@ -33,6 +39,15 @@ pub fn leptos_router(state: Arc<AdminState>) -> Router {
         .route("/admin-next/realms/:slug/orgs", get(page_orgs))
         .route("/admin-next/realms/:slug/agents", get(page_agents))
         .route("/admin-next/realms/:slug/idps", get(page_idps))
+        .route("/admin-next/realms/:slug/roles", get(page_roles))
+        .route("/admin-next/realms/:slug/groups", get(page_groups))
+        .route("/admin-next/realms/:slug/events", get(page_events))
+        .route("/admin-next/realms/:slug/sessions", get(page_sessions))
+        .route("/admin-next/realms/:slug/flows", get(page_flows))
+        .route(
+            "/admin-next/realms/:slug/flows/:alias",
+            get(page_flow_edit).post(post_flow_save),
+        )
         .with_state(state)
 }
 
@@ -160,6 +175,235 @@ async fn page_idps(
         .collect();
     let s = realm.slug;
     Ok(render(move || view! { <IdpsPage realm_slug=s rows=rows/> }))
+}
+
+async fn page_roles(
+    State(state): State<Arc<AdminState>>,
+    Path(slug): Path<String>,
+) -> Result<Html<String>, AdminError> {
+    let realm = realm_by_slug(&state, &slug).await?;
+    let roles = state.storage.list_roles(realm.id, None).await?;
+    let rows: Vec<RoleRow> = roles
+        .into_iter()
+        .map(|r| RoleRow {
+            name: r.name,
+            description: r.description,
+            client_scope: r.client_id.map(|id| id.to_string()),
+        })
+        .collect();
+    let s = realm.slug;
+    Ok(render(move || view! { <RolesPage realm_slug=s rows=rows/> }))
+}
+
+async fn page_groups(
+    State(state): State<Arc<AdminState>>,
+    Path(slug): Path<String>,
+) -> Result<Html<String>, AdminError> {
+    let realm = realm_by_slug(&state, &slug).await?;
+    let groups = state.storage.list_groups(realm.id).await?;
+    let rows: Vec<GroupRow> = groups
+        .into_iter()
+        .map(|g| GroupRow {
+            path: g.path,
+            name: g.name,
+            realm_role_count: g.realm_role_ids.len(),
+        })
+        .collect();
+    let s = realm.slug;
+    Ok(render(move || view! { <GroupsPage realm_slug=s rows=rows/> }))
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct EventsQuery {
+    #[serde(default)]
+    action: Option<String>,
+    #[serde(default)]
+    actor: Option<String>,
+    #[serde(default)]
+    from: Option<String>,
+    #[serde(default)]
+    until: Option<String>,
+}
+
+fn parse_optional_rfc3339(
+    s: &Option<String>,
+) -> Result<Option<chrono::DateTime<chrono::Utc>>, AdminError> {
+    match s {
+        None => Ok(None),
+        Some(raw) if raw.is_empty() => Ok(None),
+        Some(raw) => {
+            // `<input type="datetime-local">` posts `YYYY-MM-DDTHH:MM`
+            // without an offset. Treat naive values as UTC for the
+            // filter window; explicit `+hh:mm` offsets parse via the
+            // RFC-3339 branch.
+            let parsed = chrono::DateTime::parse_from_rfc3339(raw)
+                .map(|dt| dt.with_timezone(&chrono::Utc))
+                .or_else(|_| {
+                    chrono::NaiveDateTime::parse_from_str(raw, "%Y-%m-%dT%H:%M")
+                        .map(|n| n.and_utc())
+                        .map_err(|e| {
+                            AdminError::Storage(format!("bad datetime `{raw}`: {e}"))
+                        })
+                })
+                .map_err(|e| match e {
+                    err @ AdminError::Storage(_) => err,
+                    _ => AdminError::Storage(format!("bad datetime `{raw}`")),
+                })?;
+            Ok(Some(parsed))
+        }
+    }
+}
+
+async fn page_flows(
+    State(state): State<Arc<AdminState>>,
+    Path(slug): Path<String>,
+) -> Result<Html<String>, AdminError> {
+    let realm = realm_by_slug(&state, &slug).await?;
+    let flows = state.storage.list_auth_flows(realm.id).await?;
+    let rows: Vec<FlowRow> = flows
+        .into_iter()
+        .map(|f| FlowRow {
+            alias: f.alias,
+            display_name: f.display_name,
+            version: f.version,
+            node_count: f.nodes.len(),
+        })
+        .collect();
+    let s = realm.slug;
+    Ok(render(move || view! { <FlowsPage realm_slug=s rows=rows/> }))
+}
+
+async fn page_flow_edit(
+    State(state): State<Arc<AdminState>>,
+    Path((slug, alias)): Path<(String, String)>,
+) -> Result<Html<String>, AdminError> {
+    let realm = realm_by_slug(&state, &slug).await?;
+    let flow = state.storage.get_auth_flow_by_alias(realm.id, &alias).await?;
+    let json = serde_json::to_string_pretty(&flow)
+        .map_err(|e| AdminError::Storage(e.to_string()))?;
+    let s = realm.slug;
+    Ok(render(
+        move || view! { <FlowEditPage realm_slug=s alias=alias json=json/> },
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+struct FlowSaveForm {
+    definition: String,
+}
+
+async fn post_flow_save(
+    State(state): State<Arc<AdminState>>,
+    Path((slug, alias)): Path<(String, String)>,
+    Form(form): Form<FlowSaveForm>,
+) -> Result<axum::response::Response, AdminError> {
+    use axum::response::{IntoResponse, Redirect};
+
+    let realm = realm_by_slug(&state, &slug).await?;
+    // Validate offline + against the alias path before persisting so a
+    // malformed body never lands in storage. Mirrors what `geoctl
+    // flows import` does on the CLI side.
+    let parsed = serde_json::from_str::<geonosis_flow::FlowDefinition>(&form.definition);
+    let validated = parsed
+        .map_err(|e| format!("invalid JSON: {e}"))
+        .and_then(|def| {
+            if def.alias != alias {
+                return Err(format!(
+                    "alias mismatch: body says `{}`, path says `{}`",
+                    def.alias, alias
+                ));
+            }
+            geonosis_flow::compile(def.clone()).map_err(|e| e.to_string())?;
+            Ok(def)
+        });
+    match validated {
+        Ok(def) => {
+            state.storage.save_auth_flow(def).await?;
+            let target = format!("/admin-next/realms/{slug}/flows/{alias}");
+            Ok(Redirect::to(&target).into_response())
+        }
+        Err(error) => {
+            let s = realm.slug;
+            let body = render(move || {
+                view! {
+                    <FlowEditPage
+                        realm_slug=s
+                        alias=alias
+                        json=form.definition
+                        error=error
+                    />
+                }
+            });
+            Ok(body.into_response())
+        }
+    }
+}
+
+async fn page_sessions(
+    State(state): State<Arc<AdminState>>,
+    Path(slug): Path<String>,
+) -> Result<Html<String>, AdminError> {
+    let realm = realm_by_slug(&state, &slug).await?;
+    let sessions = state.storage.list_sessions(realm.id, 200).await?;
+    let rows: Vec<SessionRow> = sessions
+        .into_iter()
+        .map(|s| SessionRow {
+            id: s.id.to_string(),
+            user_id: s.user_id.to_string(),
+            authn_level: format!("{:?}", s.authn_level).to_lowercase(),
+            idp_alias: s.idp_alias,
+            started_at: s.started_at.to_rfc3339(),
+            last_seen_at: s.last_seen_at.to_rfc3339(),
+            client_count: s.clients.len(),
+        })
+        .collect();
+    let slug = realm.slug;
+    Ok(render(move || view! { <SessionsPage realm_slug=slug rows=rows/> }))
+}
+
+async fn page_events(
+    State(state): State<Arc<AdminState>>,
+    Path(slug): Path<String>,
+    Query(q): Query<EventsQuery>,
+) -> Result<Html<String>, AdminError> {
+    let realm = realm_by_slug(&state, &slug).await?;
+    let from = parse_optional_rfc3339(&q.from)?;
+    let until = parse_optional_rfc3339(&q.until)?;
+    let filter = geonosis_storage::AuditEventFilter {
+        action: q.action.as_deref(),
+        actor: q.actor.as_deref(),
+        from,
+        until,
+    };
+    let raw = state.storage.list_audit_events(realm.id, &filter, 200).await?;
+    let rows: Vec<EventRow> = raw
+        .into_iter()
+        .map(|r| EventRow {
+            occurred_at: r.occurred_at.to_rfc3339(),
+            actor: r
+                .actor
+                .get("kind")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unknown")
+                .to_string(),
+            action: r.action,
+            target: r
+                .target
+                .as_ref()
+                .and_then(|t| t.get("kind").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                .unwrap_or_else(|| "—".to_string()),
+        })
+        .collect();
+    let filter_view = EventFilter {
+        action: q.action,
+        actor: q.actor,
+        from: q.from,
+        until: q.until,
+    };
+    let s = realm.slug;
+    Ok(render(move || {
+        view! { <EventsPage realm_slug=s filter=filter_view rows=rows/> }
+    }))
 }
 
 /// Render a Leptos view tree to a complete HTML document string.

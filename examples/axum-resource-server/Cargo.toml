@@ -1,0 +1,22 @@
+[workspace]
+# Standalone — intentionally excluded from the geonosis workspace so
+# that `cargo install` users following the recipe don't pull the
+# entire server tree.
+
+[package]
+name = "axum-resource-server"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Minimal axum resource server validating Geonosis-issued access tokens."
+
+[dependencies]
+axum = { version = "0.7", features = ["json"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+jsonwebtoken = "9"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1"
