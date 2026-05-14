@@ -18,6 +18,7 @@ pub mod metrics;
 pub mod rate_limit;
 pub mod security_headers;
 pub mod state;
+pub mod telemetry;
 pub mod token_verify;
 
 pub use app::router;

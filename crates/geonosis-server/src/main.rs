@@ -1,12 +1,11 @@
 use std::sync::Arc;
 
 use clap::Parser;
-use tracing_subscriber::EnvFilter;
 
 use geonosis_audit::Publisher;
 use geonosis_cache::LocalCache;
 use geonosis_crypto::{MasterKey, SoftwareKms};
-use geonosis_server::{router, AppState};
+use geonosis_server::{router, telemetry, AppState};
 use geonosis_spi_host::ProviderRegistry;
 use geonosis_storage::{MemoryStorage, PostgresStorage, Storage};
 
@@ -49,10 +48,12 @@ struct Args {
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args = Args::parse();
 
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
-        .json()
-        .init();
+    let otlp_active = telemetry::init().map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+        e.into()
+    })?;
+    if otlp_active {
+        tracing::info!("OTLP tracing exporter active");
+    }
 
     let master = match args.master_key_hex {
         Some(h) => {
@@ -160,7 +161,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let listener = tokio::net::TcpListener::bind(&args.listen).await?;
     tracing::info!(listen = %args.listen, "geonosis-server starting");
-    axum::serve(listener, router(state)).await?;
+    let serve_result = axum::serve(listener, router(state)).await;
+    telemetry::shutdown();
+    serve_result?;
     Ok(())
 }
 
