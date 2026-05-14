@@ -60,7 +60,10 @@ pub async fn list(
         from: q.from,
         until: q.until,
     };
-    let rows = state.storage.list_audit_events(realm.id, &filter, limit).await?;
+    let rows = state
+        .storage
+        .list_audit_events(realm.id, &filter, limit)
+        .await?;
     let payload = rows
         .into_iter()
         .map(|r| EventRow {

@@ -9,7 +9,7 @@
 use async_trait::async_trait;
 use sqlx::postgres::PgPool;
 
-use crate::{AuditEvent, AuditError, AuditSink};
+use crate::{AuditError, AuditEvent, AuditSink};
 
 pub struct PostgresAuditSink {
     pool: PgPool,
@@ -50,4 +50,3 @@ impl AuditSink for PostgresAuditSink {
         Ok(())
     }
 }
-

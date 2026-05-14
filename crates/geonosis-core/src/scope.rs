@@ -27,7 +27,7 @@ impl ScopeName {
         }
         if !s
             .chars()
-            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ':' | '.' | '/' ))
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ':' | '.' | '/'))
         {
             return Err(ScopeParseError(s));
         }

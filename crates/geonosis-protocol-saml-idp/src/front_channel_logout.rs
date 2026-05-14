@@ -43,7 +43,11 @@ pub fn render_front_channel_logout_html(
     out.push_str("<!doctype html>");
     out.push_str("<html lang=\"en\"><head>");
     out.push_str("<meta charset=\"utf-8\">");
-    let _ = write!(out, "<title>{} — logging out</title>", html_escape(realm_slug));
+    let _ = write!(
+        out,
+        "<title>{} — logging out</title>",
+        html_escape(realm_slug)
+    );
     out.push_str("<meta http-equiv=\"refresh\" content=\"3;url=");
     out.push_str(&html_escape(final_redirect_url));
     out.push_str("\">");
@@ -106,8 +110,7 @@ mod tests {
             peer("App A", "https://a.example/slo"),
             peer("App B", "https://b.example/slo"),
         ];
-        let html =
-            render_front_channel_logout_html("acme", "https://idp.example/done", &peers);
+        let html = render_front_channel_logout_html("acme", "https://idp.example/done", &peers);
         let iframe_count = html.matches("<iframe").count();
         assert_eq!(iframe_count, 2);
         assert!(html.contains("https://a.example/slo"));
@@ -116,8 +119,7 @@ mod tests {
 
     #[test]
     fn empty_peer_list_still_redirects() {
-        let html =
-            render_front_channel_logout_html("acme", "https://idp.example/done", &[]);
+        let html = render_front_channel_logout_html("acme", "https://idp.example/done", &[]);
         assert!(!html.contains("<iframe"));
         // Meta-refresh navigates the browser to the final URL even
         // when no peers participated.
@@ -131,8 +133,7 @@ mod tests {
             "<script>alert(1)</script>",
             "https://safe.example/slo",
         )];
-        let html =
-            render_front_channel_logout_html("acme", "https://idp.example/done", &peers);
+        let html = render_front_channel_logout_html("acme", "https://idp.example/done", &peers);
         // The label is escaped — original `<script>` literal must
         // not appear in the rendered output.
         assert!(!html.contains("<script>alert(1)</script>"));
@@ -141,11 +142,8 @@ mod tests {
 
     #[test]
     fn html_escapes_redirect_url_query_separator() {
-        let html = render_front_channel_logout_html(
-            "acme",
-            "https://idp.example/done?next=a&b=c",
-            &[],
-        );
+        let html =
+            render_front_channel_logout_html("acme", "https://idp.example/done?next=a&b=c", &[]);
         // `&` must be escaped to `&amp;` to be valid HTML inside
         // attribute values. Otherwise some browsers interpret
         // `&b=c` as a literal `&b=c` substring of a malformed

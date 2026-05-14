@@ -83,7 +83,9 @@ impl axum::response::IntoResponse for AdminError {
     fn into_response(self) -> axum::response::Response {
         use axum::http::StatusCode;
         match self {
-            AdminError::NotFound => (StatusCode::NOT_FOUND, "not found".to_string()).into_response(),
+            AdminError::NotFound => {
+                (StatusCode::NOT_FOUND, "not found".to_string()).into_response()
+            }
             // Policy violations are client-correctable input errors,
             // not server faults — surface them as 400 with the
             // structured violation list so callers can render a

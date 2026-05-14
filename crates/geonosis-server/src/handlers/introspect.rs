@@ -39,7 +39,12 @@ pub async fn introspect(
     match verify_access_token(&state, &realm, token).await {
         Ok(claims) => {
             let username = if let Ok(uid) = claims.sub.parse::<geonosis_core::UserId>() {
-                state.storage.get_user(realm.id, uid).await.ok().map(|u| u.username)
+                state
+                    .storage
+                    .get_user(realm.id, uid)
+                    .await
+                    .ok()
+                    .map(|u| u.username)
             } else {
                 None
             };

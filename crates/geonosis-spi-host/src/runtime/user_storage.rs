@@ -49,7 +49,8 @@ impl WasmUserStorageRuntime {
         realm: &str,
         username: &str,
     ) -> Result<wire::LookupOutcome, RuntimeError> {
-        self.lookup(host_state, "find-by-username", realm, username).await
+        self.lookup(host_state, "find-by-username", realm, username)
+            .await
     }
 
     pub async fn find_by_id(
@@ -168,11 +169,9 @@ impl WasmUserStorageRuntime {
             .map_err(|e| RuntimeError::Engine(e.to_string()))?;
         store.epoch_deadline_trap();
         let tick_ms = self.engine.config().epoch_tick_ms.max(1);
-        let ticks_needed = (self.limits.wall_clock_ms + tick_ms - 1) / tick_ms;
+        let ticks_needed = self.limits.wall_clock_ms.div_ceil(tick_ms);
         store.set_epoch_deadline(ticks_needed.max(1));
-        store.limiter(|s: &mut HostState| -> &mut dyn wasmtime::ResourceLimiter {
-            &mut s.limiter
-        });
+        store.limiter(|s: &mut HostState| -> &mut dyn wasmtime::ResourceLimiter { &mut s.limiter });
         Ok(store)
     }
 }

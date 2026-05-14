@@ -62,11 +62,7 @@ pub async fn apply(req: Request, next: Next) -> Response {
     response
 }
 
-fn set_if_absent(
-    headers: &mut axum::http::HeaderMap,
-    name: &'static str,
-    value: &'static str,
-) {
+fn set_if_absent(headers: &mut axum::http::HeaderMap, name: &'static str, value: &'static str) {
     let name = HeaderName::from_static(name);
     if headers.contains_key(&name) {
         return;

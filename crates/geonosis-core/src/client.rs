@@ -221,7 +221,8 @@ impl RedirectUri {
         if self.wildcard_path {
             if let Some(prefix) = self.uri.strip_suffix("/*") {
                 return candidate.starts_with(prefix)
-                    && (candidate.len() == prefix.len() || candidate.as_bytes()[prefix.len()] == b'/');
+                    && (candidate.len() == prefix.len()
+                        || candidate.as_bytes()[prefix.len()] == b'/');
             }
         }
         false
@@ -240,8 +241,8 @@ impl RedirectUri {
     pub fn validate_scheme(uri: &str) -> Result<(), RedirectUriError> {
         // `*` wildcards are stripped before parse so `https://app/*` validates.
         let parseable = uri.trim_end_matches("/*");
-        let parsed = url::Url::parse(parseable)
-            .map_err(|e| RedirectUriError::Unparseable(e.to_string()))?;
+        let parsed =
+            url::Url::parse(parseable).map_err(|e| RedirectUriError::Unparseable(e.to_string()))?;
         match parsed.scheme() {
             "https" => Ok(()),
             "http" => {
@@ -279,21 +280,16 @@ pub enum RedirectUriError {
 }
 
 /// Per-client PKCE policy. The realm/global default is "required for public".
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum PkceMode {
     /// PKCE MUST be present. `plain` is rejected regardless.
+    #[default]
     Required,
     /// PKCE accepted if presented.
     IfSupported,
     /// PKCE disabled (v0.1: only valid for `BearerOnly` / `ServiceAccount`).
     Off,
-}
-
-impl Default for PkceMode {
-    fn default() -> Self {
-        Self::Required
-    }
 }
 
 #[cfg(test)]

@@ -92,7 +92,8 @@ impl WasmBrokerAdapterRuntime {
         raw: wire::RawCallback,
         config: &[u8],
     ) -> Result<wire::BrokerAssertion, RuntimeError> {
-        self.assertion_phase(host_state, "parse-callback", raw, config).await
+        self.assertion_phase(host_state, "parse-callback", raw, config)
+            .await
     }
 
     pub async fn validate_assertion(
@@ -101,7 +102,8 @@ impl WasmBrokerAdapterRuntime {
         assertion: wire::BrokerAssertion,
         config: &[u8],
     ) -> Result<wire::BrokerAssertion, RuntimeError> {
-        self.assertion_phase(host_state, "validate-assertion", assertion, config).await
+        self.assertion_phase(host_state, "validate-assertion", assertion, config)
+            .await
     }
 
     async fn assertion_phase<In>(
@@ -112,11 +114,7 @@ impl WasmBrokerAdapterRuntime {
         config: &[u8],
     ) -> Result<wire::BrokerAssertion, RuntimeError>
     where
-        In: wasmtime::component::Lower
-            + wasmtime::component::ComponentType
-            + Send
-            + Sync
-            + 'static,
+        In: wasmtime::component::Lower + wasmtime::component::ComponentType + Send + Sync + 'static,
     {
         let mut store = self.fresh_store(host_state)?;
         let linker: Linker<HostState> = Linker::new(self.engine.engine());
@@ -203,11 +201,9 @@ impl WasmBrokerAdapterRuntime {
             .map_err(|e| RuntimeError::Engine(e.to_string()))?;
         store.epoch_deadline_trap();
         let tick_ms = self.engine.config().epoch_tick_ms.max(1);
-        let ticks_needed = (self.limits.wall_clock_ms + tick_ms - 1) / tick_ms;
+        let ticks_needed = self.limits.wall_clock_ms.div_ceil(tick_ms);
         store.set_epoch_deadline(ticks_needed.max(1));
-        store.limiter(|s: &mut HostState| -> &mut dyn wasmtime::ResourceLimiter {
-            &mut s.limiter
-        });
+        store.limiter(|s: &mut HostState| -> &mut dyn wasmtime::ResourceLimiter { &mut s.limiter });
         Ok(store)
     }
 }

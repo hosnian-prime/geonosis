@@ -54,10 +54,7 @@ async fn handle_authorize(
     let realm = match state.storage.get_realm_by_slug(&slug).await {
         Ok(r) => r,
         Err(_) => {
-            state
-                .metrics
-                .oidc_authorize
-                .inc(&[&slug, "unknown_realm"]);
+            state.metrics.oidc_authorize.inc(&[&slug, "unknown_realm"]);
             return (StatusCode::NOT_FOUND, "realm not found").into_response();
         }
     };
@@ -89,7 +86,11 @@ async fn handle_authorize(
                 params = par.params;
             }
             Err(_) => {
-                return error_redirect(&params, "invalid_request_uri", "unknown / expired request_uri");
+                return error_redirect(
+                    &params,
+                    "invalid_request_uri",
+                    "unknown / expired request_uri",
+                );
             }
         }
     }
@@ -105,10 +106,16 @@ async fn handle_authorize(
         .await
     {
         Ok(c) => c,
-        Err(_) => return (StatusCode::BAD_REQUEST, "invalid_request: unknown client").into_response(),
+        Err(_) => {
+            return (StatusCode::BAD_REQUEST, "invalid_request: unknown client").into_response()
+        }
     };
     if !client.enabled {
-        return (StatusCode::BAD_REQUEST, "unauthorized_client: client disabled").into_response();
+        return (
+            StatusCode::BAD_REQUEST,
+            "unauthorized_client: client disabled",
+        )
+            .into_response();
     }
 
     if let Err(e) = req.enforce_client_policy(&client) {
@@ -133,7 +140,8 @@ async fn handle_authorize(
                         "user is not authenticated and prompt=none was requested",
                     );
                 }
-                "login" | "consent" | "select_account" => { /* satisfied by the interactive flow */ }
+                "login" | "consent" | "select_account" => { /* satisfied by the interactive flow */
+                }
                 other => {
                     let msg = format!("unknown prompt value: {other}");
                     return error_redirect(&params, "invalid_request", &msg);
@@ -185,7 +193,12 @@ async fn handle_authorize(
 
     // Render the login form. v0.1 uses a server-rendered minimal HTML
     // page; the Leptos admin theme overlay lands later.
-    Html(render_login_form(&realm.slug, &flow_state.id.to_string(), &client)).into_response()
+    Html(render_login_form(
+        &realm.slug,
+        &flow_state.id.to_string(),
+        &client,
+    ))
+    .into_response()
 }
 
 fn render_login_form(slug: &str, flow_state_id: &str, client: &Client) -> String {
@@ -217,12 +230,21 @@ fn html_escape(s: &str) -> String {
         .replace('\'', "&#39;")
 }
 
-fn authorize_error_to_response(params: &BTreeMap<String, String>, err: &AuthorizeRequestError) -> Response {
+fn authorize_error_to_response(
+    params: &BTreeMap<String, String>,
+    err: &AuthorizeRequestError,
+) -> Response {
     let (code, desc) = match err {
         AuthorizeRequestError::Missing(f) => ("invalid_request", format!("missing parameter: {f}")),
-        AuthorizeRequestError::Invalid(f, m) => ("invalid_request", format!("invalid parameter {f}: {m}")),
-        AuthorizeRequestError::UnsupportedResponseType => ("unsupported_response_type", err.to_string()),
-        AuthorizeRequestError::RedirectMismatch => return (StatusCode::BAD_REQUEST, err.to_string()).into_response(),
+        AuthorizeRequestError::Invalid(f, m) => {
+            ("invalid_request", format!("invalid parameter {f}: {m}"))
+        }
+        AuthorizeRequestError::UnsupportedResponseType => {
+            ("unsupported_response_type", err.to_string())
+        }
+        AuthorizeRequestError::RedirectMismatch => {
+            return (StatusCode::BAD_REQUEST, err.to_string()).into_response()
+        }
         AuthorizeRequestError::PkceRequired => ("invalid_request", err.to_string()),
         AuthorizeRequestError::PkcePlainRejected => ("invalid_request", err.to_string()),
         AuthorizeRequestError::NonceRequired => ("invalid_request", err.to_string()),
@@ -238,7 +260,9 @@ fn error_redirect(params: &BTreeMap<String, String>, code: &str, desc: &str) -> 
     // hasn't passed exact-match yet (handler hasn't reached that step).
     if let Some(redir) = params.get("redirect_uri") {
         if let Ok(mut url) = url::Url::parse(redir) {
-            url.query_pairs_mut().append_pair("error", code).append_pair("error_description", desc);
+            url.query_pairs_mut()
+                .append_pair("error", code)
+                .append_pair("error_description", desc);
             if let Some(state) = params.get("state") {
                 url.query_pairs_mut().append_pair("state", state);
             }

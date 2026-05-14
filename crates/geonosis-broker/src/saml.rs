@@ -159,8 +159,8 @@ pub fn parse_response(b64: &str) -> Result<SamlResponse, BrokerError> {
         .decode(b64)
         .or_else(|_| base64::engine::general_purpose::STANDARD_NO_PAD.decode(b64))
         .map_err(|e| BrokerError::InvalidAssertion(format!("base64: {e}")))?;
-    let xml = String::from_utf8(raw)
-        .map_err(|e| BrokerError::InvalidAssertion(format!("utf8: {e}")))?;
+    let xml =
+        String::from_utf8(raw).map_err(|e| BrokerError::InvalidAssertion(format!("utf8: {e}")))?;
 
     let mut reader = Reader::from_str(&xml);
     reader.config_mut().trim_text(false);
@@ -376,22 +376,16 @@ pub fn parse_response(b64: &str) -> Result<SamlResponse, BrokerError> {
                     }
                 } else if in_path("SignatureValue") {
                     if let Some(ref mut sb) = current_sig {
-                        let cleaned: String = txt
-                            .chars()
-                            .filter(|c| !c.is_ascii_whitespace())
-                            .collect();
+                        let cleaned: String =
+                            txt.chars().filter(|c| !c.is_ascii_whitespace()).collect();
                         sb.signature_value = base64::engine::general_purpose::STANDARD
                             .decode(&cleaned)
-                            .map_err(|e| {
-                                BrokerError::InvalidAssertion(format!("sig b64: {e}"))
-                            })?;
+                            .map_err(|e| BrokerError::InvalidAssertion(format!("sig b64: {e}")))?;
                     }
                 } else if in_path("DigestValue") {
                     if let Some(ref mut sb) = current_sig {
-                        let cleaned: String = txt
-                            .chars()
-                            .filter(|c| !c.is_ascii_whitespace())
-                            .collect();
+                        let cleaned: String =
+                            txt.chars().filter(|c| !c.is_ascii_whitespace()).collect();
                         sb.reference_digest = base64::engine::general_purpose::STANDARD
                             .decode(&cleaned)
                             .map_err(|e| {
@@ -421,8 +415,7 @@ pub fn parse_response(b64: &str) -> Result<SamlResponse, BrokerError> {
                     // above only carries text; the real c14n is the
                     // serialized element. We resolve this in `signed_info_bytes`.
                     if let Some(ref mut sb) = current_sig {
-                        sb.signed_info_c14n =
-                            signed_info_bytes(&out.raw_xml).unwrap_or_default();
+                        sb.signed_info_c14n = signed_info_bytes(&out.raw_xml).unwrap_or_default();
                     }
                     signed_info_acc = None;
                 }
@@ -447,7 +440,10 @@ pub fn verify_response_signature(
     let sig = response
         .signature
         .as_ref()
-        .or(response.assertion.as_ref().and_then(|a| a.signature.as_ref()))
+        .or(response
+            .assertion
+            .as_ref()
+            .and_then(|a| a.signature.as_ref()))
         .ok_or_else(|| BrokerError::Signature("no signature".into()))?;
 
     if !sig.signature_method.contains("rsa-sha256") {
@@ -555,10 +551,7 @@ pub fn assertion_to_broker(
                 claims.insert(k.clone(), AttributeValue::String(single.clone()));
             }
             many => {
-                claims.insert(
-                    k.clone(),
-                    AttributeValue::Strings(many.to_vec()),
-                );
+                claims.insert(k.clone(), AttributeValue::Strings(many.to_vec()));
             }
         }
     }
@@ -588,7 +581,9 @@ fn parse_nameid_format(s: &str) -> NameIdFormat {
         "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress" => NameIdFormat::EmailAddress,
         "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent" => NameIdFormat::Persistent,
         "urn:oasis:names:tc:SAML:2.0:nameid-format:transient" => NameIdFormat::Transient,
-        "urn:oasis:names:tc:SAML:1.1:nameid-format:X509SubjectName" => NameIdFormat::X509SubjectName,
+        "urn:oasis:names:tc:SAML:1.1:nameid-format:X509SubjectName" => {
+            NameIdFormat::X509SubjectName
+        }
         _ => NameIdFormat::Unspecified,
     }
 }
@@ -610,8 +605,7 @@ fn slice_element_with_id(xml: &str, id: &str) -> Option<String> {
     let start = xml[..id_pos].rfind('<')?;
     // Identify the tag's local name to find its matching end-tag.
     let after_lt = &xml[start + 1..];
-    let name_end = after_lt
-        .find(|c: char| c.is_ascii_whitespace() || c == '>' || c == '/')?;
+    let name_end = after_lt.find(|c: char| c.is_ascii_whitespace() || c == '>' || c == '/')?;
     let qname = &after_lt[..name_end];
     // Find the matching close. Naive: first occurrence of `</qname>` after start.
     let close_needle = format!("</{qname}>");
@@ -637,7 +631,12 @@ fn strip_signature(xml: &str) -> String {
 }
 
 fn find_signature_open(xml: &str) -> Option<usize> {
-    let cand = ["<Signature ", "<Signature>", "<ds:Signature ", "<ds:Signature>"];
+    let cand = [
+        "<Signature ",
+        "<Signature>",
+        "<ds:Signature ",
+        "<ds:Signature>",
+    ];
     cand.iter().filter_map(|n| xml.find(n)).min()
 }
 
@@ -654,7 +653,12 @@ fn find_signature_close(xml: &str) -> Option<usize> {
 /// Conservative SignedInfo extraction — finds the `<SignedInfo>` element
 /// in the raw XML and returns its bytes. Real c14n is a future improvement.
 fn signed_info_bytes(xml: &str) -> Option<Vec<u8>> {
-    let open_alts = ["<SignedInfo ", "<SignedInfo>", "<ds:SignedInfo ", "<ds:SignedInfo>"];
+    let open_alts = [
+        "<SignedInfo ",
+        "<SignedInfo>",
+        "<ds:SignedInfo ",
+        "<ds:SignedInfo>",
+    ];
     let close_alts = ["</SignedInfo>", "</ds:SignedInfo>"];
     let start = open_alts.iter().filter_map(|n| xml.find(n)).min()?;
     let mut end = None;
@@ -715,7 +719,10 @@ mod tests {
         let a = resp.assertion.as_ref().expect("assertion");
         assert_eq!(a.subject_name_id, "padme@example");
         assert_eq!(a.audiences, vec!["sp.example".to_string()]);
-        assert_eq!(a.attributes.get("email").unwrap().as_slice(), ["padme@example"]);
+        assert_eq!(
+            a.attributes.get("email").unwrap().as_slice(),
+            ["padme@example"]
+        );
     }
 
     #[test]

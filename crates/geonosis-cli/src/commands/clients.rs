@@ -91,7 +91,10 @@ pub async fn run(client: &AdminClient, cmd: ClientCmd) -> anyhow::Result<()> {
         ClientCmd::List { realm } => {
             let path = format!("/admin/v1/realms/{realm}/clients");
             let rows: Vec<ClientRow> = client.get(&path).await?;
-            println!("{:<32} {:<24} {:<16} {}", "CLIENT_ID", "DISPLAY NAME", "KIND", "ENABLED");
+            println!(
+                "{:<32} {:<24} {:<16} ENABLED",
+                "CLIENT_ID", "DISPLAY NAME", "KIND",
+            );
             for r in rows {
                 println!(
                     "{:<32} {:<24} {:<16} {}",
