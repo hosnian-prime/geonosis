@@ -1,21 +1,15 @@
-//! `geonosis:mapper@0.1.0` invocation glue.
+//! `geonosis:event@0.1.0` invocation glue.
 //!
-//! Per `wit/mapper.wit`, the export signature is:
+//! Per `wit/event.wit`:
 //!
 //! ```wit
-//! map-claims: func(
-//!     ctx-realm: string,
-//!     input: list<u8>,            // claim-set as JSON bytes
-//!     config: list<u8>,
-//! ) -> result<list<u8>, plugin-error>;
+//! on-event: func(event-bytes: list<u8>) -> result<_, plugin-error>;
 //! ```
 //!
-//! We do NOT pull in `wasmtime::component::bindgen!` for v0.1 — the
-//! macro needs the WIT package files at compile time relative to a
-//! fixed root, which complicates the workspace layout. Instead the
-//! runtime looks up the export by name and pins the signature to the
-//! published WIT contract. A version drift surfaces as
-//! `RuntimeError::Plugin("export not found")`.
+//! Dispatch mode: FireForget — every listener runs, failures logged,
+//! never propagated. The router-level fire-forget loop lives in
+//! `crate::router::fire_forget`; this runtime only knows how to call
+//! ONE listener's `on-event` export.
 
 use std::sync::Arc;
 
@@ -26,14 +20,14 @@ use crate::runtime::engine::{RuntimeError, WasmEngine};
 use crate::runtime::host_state::HostState;
 use crate::runtime::limits::ResourceLimits;
 
-pub struct WasmMapperRuntime {
+pub struct WasmEventRuntime {
     engine: Arc<WasmEngine>,
     component: Component,
     component_sha256: String,
     limits: ResourceLimits,
 }
 
-impl WasmMapperRuntime {
+impl WasmEventRuntime {
     pub fn compile(
         engine: Arc<WasmEngine>,
         wasm_bytes: &[u8],
@@ -52,22 +46,17 @@ impl WasmMapperRuntime {
         &self.component_sha256
     }
 
-    /// Apply the mapper to `claim-set` bytes. The plugin owns the wire
-    /// shape; v0.1 standardises on JSON-encoded UTF-8 so the host
-    /// stays struct-agnostic.
-    pub async fn map_claims(
+    /// Invoke `event-listener.on-event` with the bincode-encoded
+    /// `AuditEvent` bytes. Returns `Ok(())` whether the plugin
+    /// returned ok or err; the router fire-forget loop is what logs
+    /// the typed error.
+    pub async fn on_event(
         &self,
         host_state: HostState,
-        realm: &str,
-        input: &[u8],
-        config: &[u8],
-    ) -> Result<Vec<u8>, RuntimeError> {
+        event_bytes: &[u8],
+    ) -> Result<(), RuntimeError> {
         let mut store = self.fresh_store(host_state)?;
         let linker: Linker<HostState> = Linker::new(self.engine.engine());
-        // v0.1 mapper world doesn't import http-client; the canonical
-        // mappers are pure transforms. Logging + secrets imports are
-        // added behind their own feature switch when we wire up the
-        // typed bindgen pipeline.
 
         let instance = linker
             .instantiate_async(&mut store, &self.component)
@@ -76,15 +65,12 @@ impl WasmMapperRuntime {
 
         let func = instance
             .get_typed_func::<
-                (String, Vec<u8>, Vec<u8>),
-                (Result<Vec<u8>, super::wire_error::Wire>,),
-            >(&mut store, "map-claims")
+                (Vec<u8>,),
+                (Result<(), super::wire_error::Wire>,),
+            >(&mut store, "on-event")
             .map_err(|e| RuntimeError::Plugin(format!("export not found: {e}")))?;
 
-        let call = func.call_async(
-            &mut store,
-            (realm.to_string(), input.to_vec(), config.to_vec()),
-        );
+        let call = func.call_async(&mut store, (event_bytes.to_vec(),));
         let res = tokio::time::timeout(self.limits.wall_clock(), call)
             .await
             .map_err(|_| RuntimeError::Timeout {
@@ -97,7 +83,7 @@ impl WasmMapperRuntime {
             .map_err(|e: anyhow::Error| RuntimeError::Call(e.to_string()))?;
 
         match res.0 {
-            Ok(bytes) => Ok(bytes),
+            Ok(()) => Ok(()),
             Err(w) => Err(RuntimeError::Plugin(format!(
                 "{}: {} (retryable={})",
                 w.kind, w.message, w.retryable
@@ -113,9 +99,6 @@ impl WasmMapperRuntime {
             .set_fuel(self.limits.fuel)
             .map_err(|e| RuntimeError::Engine(e.to_string()))?;
         store.epoch_deadline_trap();
-        // Compute the deadline tick count from the configured tick
-        // period so the wall-clock budget bounds the call regardless
-        // of how slow the underlying instruction stream is.
         let tick_ms = self.engine.config().epoch_tick_ms.max(1);
         let ticks_needed = (self.limits.wall_clock_ms + tick_ms - 1) / tick_ms;
         store.set_epoch_deadline(ticks_needed.max(1));
@@ -125,4 +108,3 @@ impl WasmMapperRuntime {
         Ok(store)
     }
 }
-

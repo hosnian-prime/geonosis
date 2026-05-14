@@ -13,6 +13,28 @@
 //!   builds a synthetic doc from `/user` + `/user/emails`)
 //! - `enrich_assertion` — last-mile claim massaging (Apple's private-relay
 //!   `email_relay=true` flag, MS `tid` propagation)
+//!
+//! ## Why this shape differs from `Authenticator`
+//!
+//! Both broker adapters and authenticators are URN-dispatched plug
+//! points, but their lifecycle is different:
+//!
+//! - An **authenticator** runs in a single `.process()` call per flow
+//!   step. The single-method trait fits — `geonosis-flow` calls it
+//!   once via [`geonosis_flow::AuthnDispatcher`].
+//! - A **broker adapter** plugs into FOUR distinct phases of the OIDC
+//!   broker handshake (build authorize URL → callback parse → token
+//!   exchange → claims enrichment). Each phase needs different inputs
+//!   and produces different outputs.
+//!
+//! Forcing both into a single-`process()` trait would either lose
+//! domain meaning (one big `BrokerEvent` enum) or split the adapter
+//! across multiple traits the broker handler then has to coordinate.
+//! The multi-hook trait is the natural fit; the divergence from
+//! `Authenticator` is intentional, not an inconsistency to flatten.
+//!
+//! See `crates/geonosis-server/src/authenticators.rs` §"Pattern note"
+//! for the cross-reference.
 
 use std::collections::BTreeMap;
 

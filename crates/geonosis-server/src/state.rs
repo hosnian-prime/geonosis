@@ -8,6 +8,7 @@ use geonosis_audit::Publisher;
 use geonosis_broker::BuiltinAdapters;
 use geonosis_cache::LocalCache;
 use geonosis_crypto::SoftwareKms;
+use geonosis_spi_host::runtime::WasmEngine;
 use geonosis_spi_host::ProviderRegistry;
 use geonosis_storage::Storage;
 
@@ -23,6 +24,10 @@ pub struct AppState {
     pub cache: Arc<LocalCache>,
     pub kms: Arc<SoftwareKms>,
     pub providers: Arc<ProviderRegistry>,
+    /// Shared wasmtime engine for SPI plugin dispatch. Built once at
+    /// boot and threaded into the per-WIT runtimes (WasmAuthnRuntime,
+    /// WasmEventRuntime, ...) that resolve Wasm-origin bindings.
+    pub wasm_engine: Arc<WasmEngine>,
     pub audit: Arc<Publisher>,
     /// Public base URL for issuer / discovery construction (e.g. `https://geonosis.example`).
     pub public_base_url: Url,
