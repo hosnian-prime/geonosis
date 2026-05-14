@@ -31,16 +31,29 @@ pub const CHANNEL: &str = "geonosis_invalidate";
 /// problem, not an unrecoverable error.
 const RECONNECT_BACKOFF: Duration = Duration::from_secs(5);
 
+/// Callback invoked once per successful NOTIFY round-trip.
+/// Receives the channel name + the elapsed seconds since the
+/// previous notification. The server wires this to the metrics
+/// layer so `geonosis_listener_lag_seconds` reflects the real
+/// staleness; tests can pass a counting closure.
+pub type LagObserver = Arc<dyn Fn(&str, f64) + Send + Sync>;
+
 /// Spawn the long-lived listener task. Returns the JoinHandle so the
 /// caller can abort on shutdown.
-///
-/// The `cache` argument is a `dyn Cache` so the listener works with
-/// any backend (LocalCache, RedisCache, future Komino). The
-/// invalidation method dispatches by payload prefix.
 pub fn spawn_listener(pool: PgPool, cache: Arc<dyn Cache>) -> tokio::task::JoinHandle<()> {
+    spawn_listener_with_observer(pool, cache, None)
+}
+
+/// Same as [`spawn_listener`] but with a lag observer wired in so
+/// the `geonosis_listener_lag_seconds` gauge stays fresh.
+pub fn spawn_listener_with_observer(
+    pool: PgPool,
+    cache: Arc<dyn Cache>,
+    observer: Option<LagObserver>,
+) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         loop {
-            match run_one(&pool, &cache).await {
+            match run_one(&pool, &cache, observer.as_ref()).await {
                 Ok(()) => {
                     tracing::info!(
                         channel = %CHANNEL,
@@ -61,13 +74,29 @@ pub fn spawn_listener(pool: PgPool, cache: Arc<dyn Cache>) -> tokio::task::JoinH
     })
 }
 
-async fn run_one(pool: &PgPool, cache: &Arc<dyn Cache>) -> Result<(), sqlx::Error> {
+async fn run_one(
+    pool: &PgPool,
+    cache: &Arc<dyn Cache>,
+    observer: Option<&LagObserver>,
+) -> Result<(), sqlx::Error> {
     let mut listener = PgListener::connect_with(pool).await?;
     listener.listen(CHANNEL).await?;
     tracing::info!(channel = %CHANNEL, "cache invalidation listener attached");
     let mut stream = listener.into_stream();
+    let mut last = std::time::Instant::now();
     while let Some(item) = stream.next().await {
         let notification = item?;
+        let now = std::time::Instant::now();
+        if let Some(obs) = observer {
+            // Lag = wallclock elapsed since the last successful
+            // notification. After a reconnect this can spike briefly
+            // (the first notification post-reconnect carries the
+            // backoff duration) — that's the signal alert operators
+            // need.
+            let elapsed = now.duration_since(last).as_secs_f64();
+            obs(CHANNEL, elapsed);
+        }
+        last = now;
         apply_payload(cache.as_ref(), notification.payload()).await;
     }
     Ok(())

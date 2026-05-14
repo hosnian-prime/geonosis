@@ -14,12 +14,17 @@
 //!   active RSA-SHA256 key via the `KeyManagementService` trait.
 
 pub mod logout;
+pub mod redirect;
 pub mod request;
 pub mod sign;
 pub mod xml;
 
 pub use logout::{
     parse_logout_request, serialize_logout_response, LogoutParseError, ParsedLogoutRequest,
+};
+pub use redirect::{
+    decode_redirect_payload, verify_redirect_signature, RedirectDecodeError,
+    RedirectSigError, RedirectSignatureCheck, REDIRECT_SIG_ALG_RSA_SHA256,
 };
 pub use request::{parse_authn_request, ParsedAuthnRequest, ParseError as AuthnRequestParseError};
 pub use sign::{sign_assertion, KeyInfoMaterial, SignError};
@@ -56,6 +61,15 @@ pub struct SamlSpClientConfig {
     pub signing_key: KeyId,
     pub default_audience: Option<String>,
     pub session_index_strategy: SessionIndexStrategy,
+    /// PEM-encoded X.509 certs the SP signs AuthnRequest +
+    /// LogoutRequest with. The Redirect-binding signature verifier
+    /// (`verify_redirect_signature`) tries each cert in order;
+    /// rotation is handled by the operator adding the new cert
+    /// before retiring the old. Defaults to empty so the field is
+    /// forward-compatible with stored SP configs that pre-date the
+    /// signature-verification path.
+    #[serde(default)]
+    pub authn_request_signing_certificates: Vec<String>,
 }
 
 impl SamlSpClientConfig {
@@ -136,6 +150,7 @@ mod tests {
             signing_key: KeyId::new(),
             default_audience: None,
             session_index_strategy: SessionIndexStrategy::UseSessionId,
+            authn_request_signing_certificates: vec![],
         }
     }
 
@@ -173,6 +188,7 @@ mod tests {
             signing_key: KeyId::new(),
             default_audience: None,
             session_index_strategy: SessionIndexStrategy::UseSessionId,
+            authn_request_signing_certificates: vec![],
         };
         let a = build_assertion(
             "https://idp.example",

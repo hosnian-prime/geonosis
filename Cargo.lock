@@ -2025,6 +2025,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chrono",
+ "flate2",
  "geonosis-core",
  "geonosis-crypto",
  "geonosis-saml-types",
@@ -2039,6 +2040,7 @@ dependencies = [
  "tokio",
  "tracing",
  "url",
+ "x509-parser 0.16.0",
  "zeroize",
 ]
 
@@ -2063,6 +2065,7 @@ dependencies = [
  "chrono",
  "clap",
  "ed25519-dalek",
+ "flate2",
  "futures",
  "geonosis-admin-ui",
  "geonosis-audit",
@@ -2090,6 +2093,7 @@ dependencies = [
  "percent-encoding",
  "pkcs8",
  "rand 0.8.6",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2",
