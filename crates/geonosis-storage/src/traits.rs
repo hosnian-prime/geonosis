@@ -117,6 +117,34 @@ pub trait Storage: Send + Sync {
     async fn save_flow_state(&self, state: FlowStateRow) -> Result<(), StorageError>;
     async fn get_flow_state(&self, id: &geonosis_core::FlowStateId) -> Result<FlowStateRow, StorageError>;
     async fn delete_flow_state(&self, id: &geonosis_core::FlowStateId) -> Result<(), StorageError>;
+
+    // ---- Consent grants (OIDC consent screen) ----
+    async fn save_consent_grant(&self, grant: ConsentGrant) -> Result<(), StorageError>;
+    async fn get_consent_grant(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+        client_id: ClientId,
+    ) -> Result<ConsentGrant, StorageError>;
+    async fn delete_consent_grant(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+        client_id: ClientId,
+    ) -> Result<(), StorageError>;
+}
+
+/// Persisted user-level consent grant for a `(user, client)` pair.
+/// Holds the union of scopes the user has approved over previous logins.
+#[derive(Debug, Clone)]
+pub struct ConsentGrant {
+    pub id: geonosis_core::ConsentGrantId,
+    pub realm_id: RealmId,
+    pub user_id: UserId,
+    pub client_id: ClientId,
+    pub scopes: Vec<geonosis_core::ScopeName>,
+    pub granted_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 
 /// Pushed authorization request row (RFC 9126).

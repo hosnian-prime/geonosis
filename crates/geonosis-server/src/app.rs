@@ -148,6 +148,7 @@ mod tests {
             public_base_url: url::Url::parse("https://g.example").unwrap(),
             refresh_hash_key: [42u8; 32],
             client_secret_hash_key: [99u8; 32],
+            authenticators: Arc::new(crate::authenticators::BuiltinAuthenticators::default()),
         }
     }
 

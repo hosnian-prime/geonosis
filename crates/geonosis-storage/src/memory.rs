@@ -12,7 +12,7 @@ use geonosis_core::{
 };
 
 use crate::error::StorageError;
-use crate::traits::{DeviceGrant, FlowStateRow, ParRequest, Storage};
+use crate::traits::{ConsentGrant, DeviceGrant, FlowStateRow, ParRequest, Storage};
 
 #[derive(Default)]
 struct Tables {
@@ -34,6 +34,7 @@ struct Tables {
     device_by_device_code: HashMap<String, DeviceGrant>,
     device_by_user_code: HashMap<String, String>,
     flow_states: HashMap<FlowStateId, FlowStateRow>,
+    consent_grants: HashMap<(RealmId, UserId, ClientId), ConsentGrant>,
 }
 
 pub struct MemoryStorage {
@@ -457,6 +458,40 @@ impl Storage for MemoryStorage {
     async fn delete_flow_state(&self, id: &FlowStateId) -> Result<(), StorageError> {
         let mut t = self.inner.write();
         t.flow_states.remove(id).ok_or(StorageError::NotFound).map(|_| ())
+    }
+
+    // ---- Consent grants ----
+    async fn save_consent_grant(&self, grant: ConsentGrant) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        t.consent_grants
+            .insert((grant.realm_id, grant.user_id, grant.client_id), grant);
+        Ok(())
+    }
+
+    async fn get_consent_grant(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+        client_id: ClientId,
+    ) -> Result<ConsentGrant, StorageError> {
+        let t = self.inner.read();
+        t.consent_grants
+            .get(&(realm, user_id, client_id))
+            .cloned()
+            .ok_or(StorageError::NotFound)
+    }
+
+    async fn delete_consent_grant(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+        client_id: ClientId,
+    ) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        t.consent_grants
+            .remove(&(realm, user_id, client_id))
+            .ok_or(StorageError::NotFound)
+            .map(|_| ())
     }
 }
 

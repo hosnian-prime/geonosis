@@ -885,6 +885,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "geonosis-authenticators"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64",
+ "chrono",
+ "geonosis-core",
+ "geonosis-crypto",
+ "geonosis-spi-host",
+ "geonosis-storage",
+ "hex",
+ "hmac",
+ "pretty_assertions",
+ "rand 0.8.6",
+ "serde",
+ "serde_json",
+ "sha1",
+ "sha2",
+ "subtle",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "url",
+]
+
+[[package]]
 name = "geonosis-broker"
 version = "0.1.0"
 dependencies = [
@@ -1081,6 +1107,7 @@ dependencies = [
  "ed25519-dalek",
  "futures",
  "geonosis-audit",
+ "geonosis-authenticators",
  "geonosis-broker",
  "geonosis-cache",
  "geonosis-core",
@@ -2148,6 +2175,17 @@ checksum = "a84f14a19e9a014bb9f4512488d9829a68e04ecabffb0f9904cd1ace94598177"
 dependencies = [
  "base16ct",
  "serde",
+]
+
+[[package]]
+name = "sha1"
+version = "0.10.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e3bf829a2d51ab4a5ddf1352d8470c140cadc8301b2ae1789db023f01cedd6ba"
+dependencies = [
+ "cfg-if",
+ "cpufeatures 0.2.17",
+ "digest",
 ]
 
 [[package]]
