@@ -1,0 +1,51 @@
+[package]
+name = "spi-twilio"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "First-party Twilio SMS event listener for Geonosis (WASM component)."
+
+# A WASM component is built as a cdylib + `cargo component build --release`.
+# The host loads the resulting `.wasm` via `geoctl spi install`.
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# The authoring SDK ships the WIT bindings + ergonomic helpers. Plugin
+# authors point `wit-bindgen` at the workspace `wit/` root so the
+# generated types match the host's `geonosis:event@0.1.0` contract.
+wit-bindgen = "0.36"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Tiny URL-encoder for the application/x-www-form-urlencoded payload
+# Twilio's /Messages.json endpoint expects.
+form_urlencoded = "1"
+
+# Required by the wasi:http target. The plugin uses the `http-client`
+# host import to POST to api.twilio.com.
+[package.metadata.component]
+package = "geonosis:spi-twilio"
+target = "../../wit/event-listener-provider.world"
+
+# Build instructions:
+#
+#   rustup target add wasm32-wasip1
+#   cargo install cargo-component
+#   cargo component build --release
+#
+# Output: target/wasm32-wasip1/release/spi_twilio.wasm
+#
+# Then install at runtime:
+#
+#   geoctl spi install \
+#     --realm acme \
+#     --interface geonosis:event@0.1.0 \
+#     --alias spi-twilio \
+#     --module target/wasm32-wasip1/release/spi_twilio.wasm \
+#     --config '{"twilio_from": "+15551234567", "filter_action": "sms.send"}'
+#
+# And the per-realm operator secrets (via the v0.1.x `geoctl spi set-secret`):
+#
+#   spi-twilio.account-sid = <Twilio Account SID>
+#   spi-twilio.auth-token  = <Twilio Auth Token>
