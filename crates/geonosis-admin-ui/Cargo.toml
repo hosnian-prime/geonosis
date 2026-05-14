@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 geonosis-core = { path = "../geonosis-core" }
+geonosis-crypto = { path = "../geonosis-crypto" }
 geonosis-storage = { path = "../geonosis-storage" }
 geonosis-flow = { path = "../geonosis-flow" }
 geonosis-broker = { path = "../geonosis-broker" }

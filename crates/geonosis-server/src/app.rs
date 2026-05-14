@@ -246,7 +246,10 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
         let body = axum::body::to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        let arr = json["realms"].as_array().expect("realms array");
+        // handlers_v1 returns a plain JSON array for consistency
+        // with /orgs, /agents, etc. The legacy `{ "realms": [...] }`
+        // envelope shape retired with the handlers_v1 migration.
+        let arr = json.as_array().expect("realms array");
         assert!(arr.iter().any(|r| r["slug"] == "acme"));
     }
 
