@@ -1,0 +1,154 @@
+# Default values for the geonosis Helm chart.
+# Mirrors the excerpt in docs/11-deployment-k8s.md §"Helm chart".
+#
+# Every secret-bearing field (database URL, KMS creds, master key) is
+# pulled from a Secret reference by name; the chart never accepts the
+# raw secret value via values.yaml.
+
+image:
+  repository: ghcr.io/hosnian-prime/geonosis-server
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+replicaCount: 3
+
+# Pull secret for the registry. Leave empty for public images.
+imagePullSecrets: []
+
+# ---- networking ---------------------------------------------------
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations: {}
+  hosts:
+    - geonosis.example.com
+  tls:
+    - secretName: geonosis-tls
+      hosts: [geonosis.example.com]
+
+# Server config — env vars set on the Deployment.
+config:
+  listen: "0.0.0.0:8080"
+  publicUrl: "https://geonosis.example.com"
+  # Optional OTLP exporter endpoint. Empty disables tracing export.
+  otlpEndpoint: ""
+  tracesSampler: "parentbased_traceidratio"
+  tracesSamplerArg: "0.01"
+  # Log level passed through RUST_LOG.
+  logLevel: "info"
+
+# ---- secret references (NOT values; chart wires references only) --
+secrets:
+  # Existing Secret with key `url` holding the Postgres connection
+  # string. Recommended pattern: managed by an external secret
+  # operator (External Secrets, Sealed Secrets, K8s native).
+  database:
+    name: "geonosis-database"
+    key: "url"
+  # Existing Secret with key `master-key` holding the 32-byte master
+  # key (base64). The chart never accepts this as a value.
+  masterKey:
+    name: "geonosis-master-key"
+    key: "master-key"
+  # Optional OTLP authorization header (e.g. `Bearer ey...`).
+  otlp:
+    name: ""
+    key: "authorization"
+
+# ---- resource sizing ----------------------------------------------
+resources:
+  requests:
+    cpu: "500m"
+    memory: "512Mi"
+  limits:
+    cpu: "2"
+    memory: "2Gi"
+
+# ---- probes (paths come from docs/11) ------------------------------
+probes:
+  startup:
+    path: /-/started
+    initialDelaySeconds: 5
+    periodSeconds: 2
+    failureThreshold: 30
+  readiness:
+    path: /-/ready
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 3
+  liveness:
+    path: /-/healthy
+    periodSeconds: 30
+    timeoutSeconds: 2
+    failureThreshold: 3
+
+# preStop drain window. The lifecycle hook calls /-/drain then sleeps
+# `drainSleepSeconds` so the ingress controller pulls the pod out of
+# rotation before SIGTERM. Tune up if the ingress sync interval is
+# longer than 12s.
+lifecycle:
+  drainSleepSeconds: 12
+
+# ---- HPA + PDB -----------------------------------------------------
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 12
+  targetCPUUtilizationPercentage: 70
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Restricted PodSecurityContext defaults.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+# ---- network policy ------------------------------------------------
+networkPolicy:
+  enabled: true
+  # Sources allowed to reach the pod. Set to `[]` to keep the pod
+  # reachable only via the controller's ingress fronting it.
+  ingressFromNamespaces:
+    - name: ingress-nginx
+  # Egress destinations the pod actually needs. The defaults cover
+  # Postgres (5432), Redis (6379), and the OTLP collector. SMTP /
+  # webhook destinations land per-realm and require additional rules.
+  egress:
+    postgres:
+      enabled: true
+      port: 5432
+    redis:
+      enabled: false
+      port: 6379
+    otlp:
+      enabled: false
+      port: 4317
+
+# ---- observability integrations -----------------------------------
+serviceMonitor:
+  # Requires the Prometheus Operator (kube-prometheus-stack). Disabled
+  # by default; turn on once `prometheus-operator` CRDs are present.
+  enabled: false
+  interval: 30s
+  scrapeTimeout: 10s
+  labels: {}
+
+prometheusRule:
+  enabled: false
+  labels: {}

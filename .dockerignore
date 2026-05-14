@@ -1,0 +1,14 @@
+target/
+**/target/
+.git/
+.github/
+.idea/
+.vscode/
+*.swp
+.DS_Store
+node_modules/
+docs/
+examples/
+deploy/
+README.md
+*.md
