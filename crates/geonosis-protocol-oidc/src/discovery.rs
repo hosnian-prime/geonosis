@@ -136,7 +136,9 @@ mod tests {
     fn discovery_paths_relative_to_issuer() {
         let d = discovery_document(Url::parse("https://g.example/realms/r").unwrap());
         assert!(
-            d.token_endpoint.as_str().ends_with("/protocol/openid-connect/token"),
+            d.token_endpoint
+                .as_str()
+                .ends_with("/protocol/openid-connect/token"),
             "got {}",
             d.token_endpoint
         );
@@ -149,7 +151,10 @@ mod tests {
     #[test]
     fn discovery_advertises_device_and_token_exchange() {
         let d = discovery_document(Url::parse("https://g.example/realms/r").unwrap());
-        assert!(d.grant_types_supported.iter().any(|g| g.contains("device_code")));
+        assert!(d
+            .grant_types_supported
+            .iter()
+            .any(|g| g.contains("device_code")));
         assert!(d
             .grant_types_supported
             .iter()

@@ -42,12 +42,10 @@ use crate::SamlSpClientConfig;
 /// XML-DSig algorithm URIs. Hardcoded to the RSA-SHA256 + SHA-256
 /// pair v0.1 supports. v0.1.x widens to ES256 when we wire the
 /// realm-key-algorithm passthrough.
-pub const ALG_SIGNATURE_RSA_SHA256: &str =
-    "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256";
+pub const ALG_SIGNATURE_RSA_SHA256: &str = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256";
 pub const ALG_DIGEST_SHA256: &str = "http://www.w3.org/2001/04/xmlenc#sha256";
 pub const ALG_C14N_EXC: &str = "http://www.w3.org/2001/10/xml-exc-c14n#";
-pub const ALG_TRANSFORM_ENVELOPED: &str =
-    "http://www.w3.org/2000/09/xmldsig#enveloped-signature";
+pub const ALG_TRANSFORM_ENVELOPED: &str = "http://www.w3.org/2000/09/xmldsig#enveloped-signature";
 
 pub const XMLNS_SAML: &str = "urn:oasis:names:tc:SAML:2.0:assertion";
 pub const XMLNS_SAMLP: &str = "urn:oasis:names:tc:SAML:2.0:protocol";
@@ -103,12 +101,7 @@ pub fn serialize_assertion(a: &SamlAssertion) -> String {
     if let Some(dest) = a.destination.as_ref() {
         write!(out, " Recipient=\"{}\"", escape(dest.as_str())).unwrap();
     }
-    write!(
-        out,
-        " NotOnOrAfter=\"{}\"/>",
-        rfc3339_z(a.not_on_or_after)
-    )
-    .unwrap();
+    write!(out, " NotOnOrAfter=\"{}\"/>", rfc3339_z(a.not_on_or_after)).unwrap();
     out.push_str("</saml:SubjectConfirmation>");
     out.push_str("</saml:Subject>");
 
@@ -327,12 +320,7 @@ pub fn serialize_idp_metadata(input: &IdpMetadataInput<'_>) -> String {
         out.push_str("</md:KeyDescriptor>");
     }
     for fmt in input.name_id_formats {
-        write!(
-            out,
-            "<md:NameIDFormat>{}</md:NameIDFormat>",
-            fmt.as_uri()
-        )
-        .unwrap();
+        write!(out, "<md:NameIDFormat>{}</md:NameIDFormat>", fmt.as_uri()).unwrap();
     }
     write!(
         out,
@@ -404,9 +392,7 @@ mod tests {
                 friendly_name: None,
                 values: vec!["ada@acme.test".into()],
             }],
-            authn_context_class_ref: Some(
-                "urn:oasis:names:tc:SAML:2.0:ac:classes:Password".into(),
-            ),
+            authn_context_class_ref: Some("urn:oasis:names:tc:SAML:2.0:ac:classes:Password".into()),
             authn_instant: t,
             session_index: Some("sess-1".into()),
         }
@@ -437,7 +423,8 @@ mod tests {
 
     #[test]
     fn embed_signature_lands_after_issuer() {
-        let assertion = "<saml:Assertion><saml:Issuer>iss</saml:Issuer><saml:Subject/></saml:Assertion>";
+        let assertion =
+            "<saml:Assertion><saml:Issuer>iss</saml:Issuer><saml:Subject/></saml:Assertion>";
         let sig = "<ds:Signature/>";
         let out = embed_signature(assertion, sig);
         assert_eq!(
@@ -482,7 +469,9 @@ mod tests {
         assert!(xml.contains("ID=\"_resp1\""));
         assert!(xml.contains("Destination=\"https://sp.example/acs\""));
         assert!(xml.contains("InResponseTo=\"_req1\""));
-        assert!(xml.contains("samlp:StatusCode Value=\"urn:oasis:names:tc:SAML:2.0:status:Success\""));
+        assert!(
+            xml.contains("samlp:StatusCode Value=\"urn:oasis:names:tc:SAML:2.0:status:Success\"")
+        );
         assert!(xml.contains("<saml:Assertion>signed!</saml:Assertion>"));
     }
 

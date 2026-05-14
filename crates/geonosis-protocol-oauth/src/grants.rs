@@ -128,7 +128,11 @@ impl AuthorizationCodeGrant {
                 .code_verifier
                 .as_deref()
                 .ok_or_else(|| OAuthError::invalid_grant("code_verifier required"))?;
-            verify_code_verifier_against_challenge(challenge.method.as_str(), v, &challenge.challenge)?;
+            verify_code_verifier_against_challenge(
+                challenge.method.as_str(),
+                v,
+                &challenge.challenge,
+            )?;
         } else if client.kind == ClientKind::Public {
             return Err(OAuthError::invalid_grant("PKCE required for public clients").into());
         }
@@ -143,7 +147,14 @@ impl AuthorizationCodeGrant {
         let id_token = if code.scope.iter().any(|s| s.as_str() == "openid") {
             Some(
                 issuer
-                    .mint_id_token(realm, client, &subject, &code.session_id, &code.scope, code.nonce.as_deref())
+                    .mint_id_token(
+                        realm,
+                        client,
+                        &subject,
+                        &code.session_id,
+                        &code.scope,
+                        code.nonce.as_deref(),
+                    )
                     .await?,
             )
         } else {
@@ -165,7 +176,9 @@ impl AuthorizationCodeGrant {
                 session_id: code.session_id.clone(),
                 scope: code.scope.clone(),
                 issued_at: Utc::now(),
-                expires_at: Utc::now() + Duration::from_std(realm.token_policy.refresh_token_lifespan).unwrap_or_default(),
+                expires_at: Utc::now()
+                    + Duration::from_std(realm.token_policy.refresh_token_lifespan)
+                        .unwrap_or_default(),
                 used: false,
             };
             storage
@@ -459,7 +472,10 @@ mod tests {
             redirect_uri: Url::parse("https://example.com/cb").unwrap(),
             client_id: "spa".into(),
         };
-        let err = g.exchange(&storage, &issuer, &client, &realm).await.unwrap_err();
+        let err = g
+            .exchange(&storage, &issuer, &client, &realm)
+            .await
+            .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("PKCE required"), "got: {msg}");
     }
@@ -501,7 +517,10 @@ mod tests {
             redirect_uri: Url::parse("https://example.com/cb").unwrap(),
             client_id: "spa".into(),
         };
-        let issued = g.exchange(&storage, &issuer, &client, &realm).await.unwrap();
+        let issued = g
+            .exchange(&storage, &issuer, &client, &realm)
+            .await
+            .unwrap();
         assert_eq!(issued.access_token, "access-token-jwt");
         assert!(issued.id_token.is_some());
 
@@ -512,15 +531,15 @@ mod tests {
             redirect_uri: Url::parse("https://example.com/cb").unwrap(),
             client_id: "spa".into(),
         };
-        assert!(g2.exchange(&storage, &issuer, &client, &realm).await.is_err());
+        assert!(g2
+            .exchange(&storage, &issuer, &client, &realm)
+            .await
+            .is_err());
     }
 
     #[tokio::test]
     async fn token_exchange_uri_roundtrip() {
         let t = TokenExchangeSubjectTokenType::AccessToken;
-        assert_eq!(
-            TokenExchangeSubjectTokenType::from_uri(t.as_uri()),
-            Some(t)
-        );
+        assert_eq!(TokenExchangeSubjectTokenType::from_uri(t.as_uri()), Some(t));
     }
 }

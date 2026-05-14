@@ -93,6 +93,9 @@ mod tests {
     fn default_budgets_match_doc() {
         assert_eq!(ResourceLimits::authn().fuel, 50_000_000);
         assert_eq!(ResourceLimits::event().wall_clock_ms, 100);
-        assert_eq!(ResourceLimits::broker_adapter().memory_bytes, 100 * 1024 * 1024);
+        assert_eq!(
+            ResourceLimits::broker_adapter().memory_bytes,
+            100 * 1024 * 1024
+        );
     }
 }

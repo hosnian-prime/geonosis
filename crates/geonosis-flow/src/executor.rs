@@ -102,9 +102,7 @@ impl DefaultExecutor {
     /// server bootstrap calls this with the
     /// `BuiltinAuthenticators`-backed dispatcher; tests call
     /// `with_noop_authenticator()`.
-    pub fn new(
-        authn: std::sync::Arc<dyn crate::authenticator::AuthnDispatcher>,
-    ) -> Self {
+    pub fn new(authn: std::sync::Arc<dyn crate::authenticator::AuthnDispatcher>) -> Self {
         Self { authn }
     }
 
@@ -163,16 +161,15 @@ impl FlowExecutor for DefaultExecutor {
                     });
                     let next = flow
                         .next_with_guard(node.id, &EdgeCondition::Success, &state.context)
-                        .or_else(|| flow.next_with_guard(node.id, &EdgeCondition::Otherwise, &state.context))
+                        .or_else(|| {
+                            flow.next_with_guard(node.id, &EdgeCondition::Otherwise, &state.context)
+                        })
                         .ok_or_else(|| FlowError::DeadEnd(node.id.to_string()))?;
                     state.current_node = next;
                     continue;
                 }
                 (NodeKind::Authenticator { provider_urn }, _) => {
-                    let outcome = self
-                        .authn
-                        .dispatch(provider_urn, state, &input)
-                        .await?;
+                    let outcome = self.authn.dispatch(provider_urn, state, &input).await?;
                     use crate::authenticator::AuthnStepOutcome::*;
                     match outcome {
                         Render(r) => {
@@ -200,11 +197,7 @@ impl FlowExecutor for DefaultExecutor {
                                 outcome: "success".into(),
                             });
                             let next = flow
-                                .next_with_guard(
-                                    node.id,
-                                    &EdgeCondition::Success,
-                                    &state.context,
-                                )
+                                .next_with_guard(node.id, &EdgeCondition::Success, &state.context)
                                 .or_else(|| {
                                     flow.next_with_guard(
                                         node.id,
@@ -212,9 +205,7 @@ impl FlowExecutor for DefaultExecutor {
                                         &state.context,
                                     )
                                 })
-                                .ok_or_else(|| {
-                                    FlowError::DeadEnd(node.id.to_string())
-                                })?;
+                                .ok_or_else(|| FlowError::DeadEnd(node.id.to_string()))?;
                             state.current_node = next;
                             continue;
                         }
@@ -225,14 +216,8 @@ impl FlowExecutor for DefaultExecutor {
                                 outcome: "skip".into(),
                             });
                             let next = flow
-                                .next_with_guard(
-                                    node.id,
-                                    &EdgeCondition::Otherwise,
-                                    &state.context,
-                                )
-                                .ok_or_else(|| {
-                                    FlowError::DeadEnd(node.id.to_string())
-                                })?;
+                                .next_with_guard(node.id, &EdgeCondition::Otherwise, &state.context)
+                                .ok_or_else(|| FlowError::DeadEnd(node.id.to_string()))?;
                             state.current_node = next;
                             continue;
                         }
@@ -270,7 +255,9 @@ impl FlowExecutor for DefaultExecutor {
                             &EdgeCondition::Status(condition.clone()),
                             &state.context,
                         )
-                        .or_else(|| flow.next_with_guard(node.id, &EdgeCondition::Otherwise, &state.context))
+                        .or_else(|| {
+                            flow.next_with_guard(node.id, &EdgeCondition::Otherwise, &state.context)
+                        })
                         .ok_or_else(|| FlowError::DeadEnd(node.id.to_string()))?;
                     state.current_node = next;
                     continue;
@@ -322,7 +309,10 @@ fn _touch_requirement(_r: Requirement) {}
 mod tests {
     use super::*;
     use crate::compile::compile;
-    use crate::dsl::{Edge, EdgeCondition, FlowDefinition, FlowNode, NodeKind, Requirement, StartNode, SuccessNode};
+    use crate::dsl::{
+        Edge, EdgeCondition, FlowDefinition, FlowNode, NodeKind, Requirement, StartNode,
+        SuccessNode,
+    };
     use crate::state::FlowState;
     use geonosis_core::id::{FlowId, NodeId, RealmId};
     use std::time::Duration;
@@ -365,7 +355,10 @@ mod tests {
             start.id,
             Duration::from_secs(300),
         );
-        let out = DefaultExecutor::default().step(&compiled, &mut state, StepInput::Start).await.unwrap();
+        let out = DefaultExecutor::default()
+            .step(&compiled, &mut state, StepInput::Start)
+            .await
+            .unwrap();
         assert!(matches!(out, StepOutput::Done(_)));
     }
 
@@ -407,7 +400,10 @@ mod tests {
             start.id,
             Duration::from_secs(300),
         );
-        let out = DefaultExecutor::default().step(&compiled, &mut state, StepInput::Start).await.unwrap();
+        let out = DefaultExecutor::default()
+            .step(&compiled, &mut state, StepInput::Start)
+            .await
+            .unwrap();
         match out {
             StepOutput::Render(r) => assert_eq!(r.template, "login"),
             other => panic!("expected render, got {other:?}"),

@@ -24,7 +24,10 @@ impl PkcePair {
         rand::thread_rng().fill(&mut buf[..]);
         let verifier = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(buf);
         let challenge = Self::challenge_for(&verifier);
-        Self { verifier, challenge }
+        Self {
+            verifier,
+            challenge,
+        }
     }
 
     pub fn challenge_for(verifier: &str) -> String {

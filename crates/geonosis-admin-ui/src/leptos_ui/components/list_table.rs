@@ -35,5 +35,9 @@ pub fn ListTable(headers: Vec<&'static str>, children: Children) -> impl IntoVie
 
 /// Conventional cell content for a boolean enabled/state column.
 pub fn state_label(enabled: bool) -> &'static str {
-    if enabled { "enabled" } else { "disabled" }
+    if enabled {
+        "enabled"
+    } else {
+        "disabled"
+    }
 }

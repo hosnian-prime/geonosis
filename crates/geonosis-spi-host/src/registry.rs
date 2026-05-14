@@ -87,21 +87,12 @@ pub const BUILTIN_MAPPER_URNS: &[&str] = &[
 ];
 
 /// First-party event-sink URNs (audit pipeline + outbound webhook).
-pub const BUILTIN_EVENT_URNS: &[&str] = &[
-    "builtin:event:postgres-audit",
-    "builtin:event:webhook",
-];
+pub const BUILTIN_EVENT_URNS: &[&str] = &["builtin:event:postgres-audit", "builtin:event:webhook"];
 
 /// First-party policy-provider URNs.
-pub const BUILTIN_POLICY_URNS: &[&str] = &[
-    "builtin:policy:default-scope-policy",
-];
+pub const BUILTIN_POLICY_URNS: &[&str] = &["builtin:policy:default-scope-policy"];
 
-fn builtin_binding(
-    realm: RealmId,
-    interface: &'static str,
-    urn: &str,
-) -> ProviderBinding {
+fn builtin_binding(realm: RealmId, interface: &'static str, urn: &str) -> ProviderBinding {
     ProviderBinding {
         id: SpiBindingId::new(),
         realm_id: realm,
@@ -159,11 +150,7 @@ impl ProviderRegistry {
     /// exists for `(realm, interface)` is left alone.
     pub fn seed_v0_1_builtins(&self, realm: RealmId) {
         for urn in BUILTIN_MAPPER_URNS {
-            self.register_if_absent(builtin_binding(
-                realm,
-                WitInterfaceName::MAPPER,
-                urn,
-            ));
+            self.register_if_absent(builtin_binding(realm, WitInterfaceName::MAPPER, urn));
         }
         for urn in BUILTIN_EVENT_URNS {
             self.register_if_absent(builtin_binding(realm, WitInterfaceName::EVENT, urn));
@@ -205,10 +192,8 @@ impl ProviderRegistry {
         interface: &WitInterfaceName,
     ) -> Option<ProviderBinding> {
         let bindings = self.list(realm, interface);
-        let replaced: std::collections::HashSet<String> = bindings
-            .iter()
-            .filter_map(|b| b.replaces.clone())
-            .collect();
+        let replaced: std::collections::HashSet<String> =
+            bindings.iter().filter_map(|b| b.replaces.clone()).collect();
         bindings
             .into_iter()
             .find(|b| b.enabled && !replaced.contains(&b.provider_urn))
@@ -250,7 +235,10 @@ mod tests {
         r.register(b1);
         r.register(b2);
         let chosen = r
-            .first_enabled(realm, &WitInterfaceName(WitInterfaceName::USER_STORAGE.into()))
+            .first_enabled(
+                realm,
+                &WitInterfaceName(WitInterfaceName::USER_STORAGE.into()),
+            )
             .unwrap();
         assert_eq!(chosen.provider_urn, "wasm:user-storage:rest");
     }
@@ -271,15 +259,24 @@ mod tests {
         r.register(local);
         r.register(wasm_override);
         let chosen = r
-            .first_enabled(realm, &WitInterfaceName(WitInterfaceName::USER_STORAGE.into()))
+            .first_enabled(
+                realm,
+                &WitInterfaceName(WitInterfaceName::USER_STORAGE.into()),
+            )
             .unwrap();
         assert_eq!(chosen.provider_urn, "wasm:user-storage:rest");
         // Local must be filtered out as "replaced".
-        let all = r.list(realm, &WitInterfaceName(WitInterfaceName::USER_STORAGE.into()));
+        let all = r.list(
+            realm,
+            &WitInterfaceName(WitInterfaceName::USER_STORAGE.into()),
+        );
         let local_still_listed = all
             .iter()
             .any(|b| b.provider_urn == "builtin:user-storage:local");
-        assert!(local_still_listed, "list reports both; first_enabled hides replaced");
+        assert!(
+            local_still_listed,
+            "list reports both; first_enabled hides replaced"
+        );
     }
 
     #[test]
@@ -289,7 +286,10 @@ mod tests {
         let mut b1 = binding("builtin:user-storage:local", 100, None, false);
         b1.realm_id = realm;
         r.register(b1);
-        let chosen = r.first_enabled(realm, &WitInterfaceName(WitInterfaceName::USER_STORAGE.into()));
+        let chosen = r.first_enabled(
+            realm,
+            &WitInterfaceName(WitInterfaceName::USER_STORAGE.into()),
+        );
         assert!(chosen.is_none());
     }
 
@@ -339,9 +339,16 @@ mod tests {
         r.seed_v0_1_builtins(realm);
         let all = r.list(realm, &WitInterfaceName(WitInterfaceName::MAPPER.into()));
         for b in &all {
-            assert!(b.enabled, "built-in {} must be enabled by default", b.provider_urn);
+            assert!(
+                b.enabled,
+                "built-in {} must be enabled by default",
+                b.provider_urn
+            );
             assert!(matches!(b.origin, ProviderOrigin::Builtin), "wrong origin");
-            assert_eq!(b.priority, 0, "built-ins sit at priority 0 so plugins shadow them");
+            assert_eq!(
+                b.priority, 0,
+                "built-ins sit at priority 0 so plugins shadow them"
+            );
         }
     }
 
