@@ -191,6 +191,13 @@ async fn mint_code_and_redirect(
         }
     };
 
+    // Per `docs/15-organizations.md` §"Self-service join via domain
+    // match": when the realm has opted in, enroll the user into any
+    // organization whose verified domain matches the user's verified
+    // email. Best-effort — failures are logged, not propagated; we
+    // don't want a Postgres blip during org lookup to break a login.
+    maybe_auto_join_org_by_domain(state, realm, user_id).await;
+
     let now = Utc::now();
     let session_id = SessionId::new_random();
     let session = Session {
@@ -362,6 +369,85 @@ async fn mint_code_and_redirect(
         resp.headers_mut().append(SET_COOKIE, v);
     }
     resp
+}
+
+/// Per `docs/15-organizations.md` §"Self-service join via domain
+/// match" (lines 115-118): when `realm.organization_policy
+/// .auto_join_on_domain_match` is true, a user whose verified email
+/// matches a verified `OrgDomain` is automatically enrolled into
+/// that organization at login. Idempotent (repeat logins are no-ops).
+/// Errors are logged but never propagated — auto-join is a best-
+/// effort enhancement; failure must not block authentication.
+async fn maybe_auto_join_org_by_domain(
+    state: &AppState,
+    realm: &geonosis_core::Realm,
+    user_id: geonosis_core::UserId,
+) {
+    match auto_join_org_by_domain(state.storage.as_ref(), realm, user_id).await {
+        Ok(Some(alias)) => {
+            tracing::info!(
+                realm = %realm.slug,
+                org = %alias,
+                "auto-joined user by verified domain match",
+            );
+        }
+        Ok(None) => {}
+        Err(e) => {
+            tracing::warn!(
+                realm = %realm.slug,
+                error = %e,
+                "auto-join failed; swallowing to keep login path live",
+            );
+        }
+    }
+}
+
+/// Pure-storage helper extracted from [`maybe_auto_join_org_by_domain`]
+/// so unit tests can drive it against `MemoryStorage` without an
+/// `AppState`. Returns `Ok(Some(org_alias))` when a new membership
+/// was created, `Ok(None)` when the user was ineligible or already
+/// a member, and `Err` only on storage faults.
+pub(crate) async fn auto_join_org_by_domain(
+    storage: &dyn geonosis_storage::Storage,
+    realm: &geonosis_core::Realm,
+    user_id: geonosis_core::UserId,
+) -> Result<Option<String>, geonosis_storage::StorageError> {
+    if !realm.organization_policy.auto_join_on_domain_match {
+        return Ok(None);
+    }
+    let user = storage.get_user(realm.id, user_id).await?;
+    if !user.email_verified {
+        return Ok(None);
+    }
+    let Some(email) = user.email.as_deref() else {
+        return Ok(None);
+    };
+    let Some(domain) = email.rsplit_once('@').map(|(_, d)| d) else {
+        return Ok(None);
+    };
+    let Some(org) = storage.find_org_by_verified_domain(realm.id, domain).await? else {
+        return Ok(None);
+    };
+    // Idempotent: existing membership short-circuits (preserves
+    // `joined_at` + `invited_by` audit fields on repeat logins).
+    if storage
+        .get_org_membership(realm.id, org.id, user_id)
+        .await
+        .is_ok()
+    {
+        return Ok(None);
+    }
+    let membership = geonosis_core::OrgMembership {
+        organization_id: org.id,
+        realm_id: realm.id,
+        user_id,
+        roles: vec![],
+        joined_at: Utc::now(),
+        invited_by: None,
+        state: geonosis_core::MembershipState::Active,
+    };
+    storage.upsert_org_membership(membership).await?;
+    Ok(Some(org.alias))
 }
 
 /// Detect a SAML continuation set on the flow state by
@@ -703,5 +789,173 @@ mod saml_attribute_tests {
                 "urn:oasis:names:tc:SAML:2.0:attrname-format:uri"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod auto_join_tests {
+    use super::auto_join_org_by_domain;
+    use chrono::Utc;
+    use geonosis_core::{
+        Organization, OrganizationPolicy, OrgDomain, Realm, User,
+        id::{OrganizationId, OrgDomainId, RealmId, UserId},
+    };
+    use geonosis_storage::{MemoryStorage, Storage};
+    use std::sync::Arc;
+
+    fn realm_with_auto_join(enabled: bool) -> Realm {
+        Realm {
+            id: RealmId::new(),
+            slug: "acme".into(),
+            display_name: "Acme".into(),
+            frontend_url: None,
+            admin_frontend_url: None,
+            enabled: true,
+            ssl_required: geonosis_core::SslRequirement::ExternalRequests,
+            login: Default::default(),
+            registration: Default::default(),
+            session_policy: Default::default(),
+            token_policy: Default::default(),
+            brute_force: Default::default(),
+            password_policy: Default::default(),
+            otp_policy: Default::default(),
+            webauthn_policy: Default::default(),
+            acr_policy: Default::default(),
+            sender_constraint_default: geonosis_core::SenderConstraint::None,
+            theme_binding: Default::default(),
+            localization: Default::default(),
+            events: Default::default(),
+            default_groups: vec![],
+            default_roles: Default::default(),
+            organizations_enabled: true,
+            organization_policy: OrganizationPolicy {
+                auto_join_on_domain_match: enabled,
+                ..Default::default()
+            },
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    async fn seed(
+        storage: &MemoryStorage,
+        realm: &Realm,
+        email: Option<&str>,
+        email_verified: bool,
+        domain: Option<(&str, bool)>,
+    ) -> (UserId, Option<OrganizationId>) {
+        storage.create_realm(realm.clone()).await.unwrap();
+        let mut user = User::default();
+        user.id = UserId::new();
+        user.realm_id = realm.id;
+        user.username = "ada".into();
+        user.email = email.map(String::from);
+        user.email_verified = email_verified;
+        let uid = user.id;
+        storage.create_user(user).await.unwrap();
+        let org_id = if let Some((d, verified)) = domain {
+            let org = Organization {
+                id: OrganizationId::new(),
+                realm_id: realm.id,
+                alias: "acme-inc".into(),
+                display_name: "Acme Inc.".into(),
+                description: None,
+                attributes: Default::default(),
+                branding: Default::default(),
+                default_idp_alias: None,
+                redirect_url: None,
+                enabled: true,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            };
+            let oid = org.id;
+            storage.create_organization(org).await.unwrap();
+            storage
+                .upsert_org_domain(OrgDomain {
+                    id: OrgDomainId::new(),
+                    organization_id: oid,
+                    realm_id: realm.id,
+                    domain: d.into(),
+                    verified,
+                    verification_token: None,
+                    verified_at: if verified { Some(Utc::now()) } else { None },
+                })
+                .await
+                .unwrap();
+            Some(oid)
+        } else {
+            None
+        };
+        (uid, org_id)
+    }
+
+    #[tokio::test]
+    async fn skips_when_policy_disabled() {
+        let storage = Arc::new(MemoryStorage::new());
+        let realm = realm_with_auto_join(false);
+        let (uid, _) = seed(&storage, &realm, Some("ada@acme.com"), true, Some(("acme.com", true))).await;
+        let out = auto_join_org_by_domain(storage.as_ref(), &realm, uid).await.unwrap();
+        assert!(out.is_none(), "policy disabled → no auto-join");
+    }
+
+    #[tokio::test]
+    async fn skips_when_email_unverified() {
+        let storage = Arc::new(MemoryStorage::new());
+        let realm = realm_with_auto_join(true);
+        let (uid, _) = seed(&storage, &realm, Some("ada@acme.com"), false, Some(("acme.com", true))).await;
+        let out = auto_join_org_by_domain(storage.as_ref(), &realm, uid).await.unwrap();
+        assert!(out.is_none(), "unverified email → no auto-join");
+    }
+
+    #[tokio::test]
+    async fn skips_when_domain_unverified() {
+        let storage = Arc::new(MemoryStorage::new());
+        let realm = realm_with_auto_join(true);
+        let (uid, _) = seed(&storage, &realm, Some("ada@acme.com"), true, Some(("acme.com", false))).await;
+        let out = auto_join_org_by_domain(storage.as_ref(), &realm, uid).await.unwrap();
+        assert!(out.is_none(), "unverified org domain → no auto-join");
+    }
+
+    #[tokio::test]
+    async fn enrolls_when_verified_email_matches_verified_domain() {
+        let storage = Arc::new(MemoryStorage::new());
+        let realm = realm_with_auto_join(true);
+        let (uid, org_id) =
+            seed(&storage, &realm, Some("ada@acme.com"), true, Some(("acme.com", true))).await;
+        let alias = auto_join_org_by_domain(storage.as_ref(), &realm, uid)
+            .await
+            .unwrap();
+        assert_eq!(alias.as_deref(), Some("acme-inc"));
+        // Membership row should exist.
+        let m = storage
+            .get_org_membership(realm.id, org_id.unwrap(), uid)
+            .await
+            .unwrap();
+        assert_eq!(m.user_id, uid);
+        assert!(matches!(m.state, geonosis_core::MembershipState::Active));
+    }
+
+    #[tokio::test]
+    async fn idempotent_on_repeat_login() {
+        let storage = Arc::new(MemoryStorage::new());
+        let realm = realm_with_auto_join(true);
+        let (uid, _) =
+            seed(&storage, &realm, Some("ada@acme.com"), true, Some(("acme.com", true))).await;
+        // First login enrolls.
+        let first = auto_join_org_by_domain(storage.as_ref(), &realm, uid).await.unwrap();
+        assert!(first.is_some());
+        // Second login is a no-op (returns None — already a member).
+        let second = auto_join_org_by_domain(storage.as_ref(), &realm, uid).await.unwrap();
+        assert!(second.is_none(), "repeat login must not re-enroll");
+    }
+
+    #[tokio::test]
+    async fn skips_when_no_matching_org_domain() {
+        let storage = Arc::new(MemoryStorage::new());
+        let realm = realm_with_auto_join(true);
+        let (uid, _) =
+            seed(&storage, &realm, Some("ada@other.com"), true, Some(("acme.com", true))).await;
+        let out = auto_join_org_by_domain(storage.as_ref(), &realm, uid).await.unwrap();
+        assert!(out.is_none(), "domain mismatch → no auto-join");
     }
 }

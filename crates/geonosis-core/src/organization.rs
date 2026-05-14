@@ -140,4 +140,11 @@ pub struct OrganizationPolicy {
     pub default_invitation_ttl_days: u32,
     pub default_role_for_self_signup: Option<String>,
     pub require_domain_verification: bool,
+    /// When `true`, a user whose verified email matches a verified
+    /// `OrgDomain` is automatically enrolled into that organization at
+    /// first login. Per `docs/15-organizations.md` §"Self-service join
+    /// via domain match" (lines 115-118). Default `false` — admins
+    /// must opt in.
+    #[serde(default)]
+    pub auto_join_on_domain_match: bool,
 }

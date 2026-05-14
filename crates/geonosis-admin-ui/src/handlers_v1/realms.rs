@@ -71,6 +71,7 @@ pub async fn create(
         default_groups: vec![],
         default_roles: Default::default(),
         organizations_enabled: true,
+        organization_policy: Default::default(),
         created_at: now,
         updated_at: now,
     };
