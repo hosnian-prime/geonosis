@@ -266,6 +266,7 @@ fn node_start() -> FlowNode {
         kind: NodeKind::Start(StartNode::default()),
         requirement: Requirement::Required,
         config: serde_json::Value::Null,
+        layout: None,
     }
 }
 
@@ -276,6 +277,7 @@ fn node_success() -> FlowNode {
         kind: NodeKind::Success(SuccessNode::default()),
         requirement: Requirement::Required,
         config: serde_json::Value::Null,
+        layout: None,
     }
 }
 
@@ -288,6 +290,7 @@ fn node_failure(reason: &str) -> FlowNode {
         },
         requirement: Requirement::Required,
         config: serde_json::Value::Null,
+        layout: None,
     }
 }
 
@@ -300,6 +303,7 @@ fn node_render(display: &str, template: &str) -> FlowNode {
         },
         requirement: Requirement::Required,
         config: serde_json::Value::Null,
+        layout: None,
     }
 }
 
@@ -312,6 +316,7 @@ fn node_authn(display: &str, urn: &str, req: Requirement) -> FlowNode {
         },
         requirement: req,
         config: serde_json::Value::Null,
+        layout: None,
     }
 }
 

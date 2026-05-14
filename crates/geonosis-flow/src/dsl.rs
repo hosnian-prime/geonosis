@@ -28,6 +28,22 @@ pub struct FlowNode {
     /// Per-node config (validator selection, render template name, sub-flow alias, …).
     #[serde(default)]
     pub config: serde_json::Value,
+    /// Optional canvas layout hint persisted by the visual flow editor.
+    ///
+    /// The runtime executor ignores this field entirely — it is admin-UI
+    /// metadata. Absent on flows authored before the editor existed; the
+    /// canvas falls back to a deterministic grid layout when `None`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout: Option<NodeLayout>,
+}
+
+/// Editor-only canvas coordinates for a node. Coordinates are in the
+/// canvas viewBox (logical pixels); the canvas component is responsible
+/// for clamping into the visible area.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct NodeLayout {
+    pub x: f32,
+    pub y: f32,
 }
 
 /// What a node does.

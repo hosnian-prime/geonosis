@@ -34,6 +34,10 @@ pub fn router(state: AdminState) -> Router {
     let maud_routes = Router::new()
         // Static assets.
         .route("/static/admin.css", get(handlers::admin_css))
+        .route(
+            "/static/flow-editor.js",
+            get(handlers::admin_flow_editor_js),
+        )
         // HTML pages.
         .route("/admin", get(handlers::page_realms_html))
         .route("/admin/realms", get(handlers::page_realms_html))

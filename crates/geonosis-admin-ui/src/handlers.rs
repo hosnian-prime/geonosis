@@ -44,6 +44,24 @@ pub async fn admin_css() -> Response {
         .into_response()
 }
 
+/// `/static/flow-editor.js` — hand-rolled hydrator that attaches
+/// drag-to-reposition + save behaviour to the Leptos-rendered SVG
+/// flow canvas. Embedded with `rust-embed` so it ships in the same
+/// binary as the rest of the admin surface and never relies on an
+/// external CDN. The asset is the ONE JS payload `docs/08-admin-ui.md`
+/// budgets the admin surface for: ~10 KB of carefully scoped code
+/// for the only page that needs client-side interactivity.
+pub async fn admin_flow_editor_js() -> Response {
+    let body = crate::assets::AdminAssets::get("flow-editor.js")
+        .map(|f| f.data.into_owned())
+        .unwrap_or_default();
+    (
+        [(header::CONTENT_TYPE, "application/javascript; charset=utf-8")],
+        body,
+    )
+        .into_response()
+}
+
 // ---- HTML pages ----
 
 pub async fn page_realms_html(

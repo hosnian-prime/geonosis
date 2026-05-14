@@ -124,4 +124,68 @@ table.gn-table { inline-size: 100%; border-collapse: collapse; }
     border-block-end: 1px solid var(--gn-color-border);
 }
 .gn-table th { color: var(--gn-color-text-muted); font-weight: 500; font-size: var(--gn-font-size-sm); }
+
+/* ---- Flow editor canvas (admin A6 — v0.1 MVP) ----
+ *
+ * Hand-rolled SVG canvas hydrated by /static/flow-editor.js. Kept in
+ * the design-token sheet so the canvas inherits theme overrides without
+ * needing a second stylesheet round-trip.
+ */
+
+.gn-flow-canvas {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gn-space-3);
+    background: var(--gn-color-bg-alt);
+    border: 1px solid var(--gn-color-border);
+    border-radius: var(--gn-radius-md);
+    padding: var(--gn-space-3);
+    margin-block-end: var(--gn-space-4);
+}
+.gn-flow-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--gn-space-2);
+    flex-wrap: wrap;
+}
+.gn-flow-toolbar__sep {
+    flex: 1 1 auto;
+}
+.gn-flow-toolbar__btn[aria-pressed="true"] {
+    background: var(--gn-color-accent);
+    border-color: var(--gn-color-accent);
+    color: white;
+}
+.gn-flow-toolbar__status {
+    color: var(--gn-color-text-muted);
+    font-size: var(--gn-font-size-sm);
+    min-block-size: 1.2em;
+}
+.gn-flow-toolbar__status--error { color: var(--gn-color-danger); }
+.gn-flow-canvas__svg {
+    inline-size: 100%;
+    block-size: auto;
+    aspect-ratio: 12 / 7;
+    background: var(--gn-color-bg);
+    border-radius: var(--gn-radius-sm);
+    touch-action: none;
+    user-select: none;
+}
+.gn-flow-node { cursor: grab; }
+.gn-flow-node--dragging { cursor: grabbing; }
+.gn-flow-node:focus-visible .gn-flow-node__bg {
+    stroke: var(--gn-color-accent);
+    stroke-width: 2;
+}
+.gn-flow-canvas__note {
+    color: var(--gn-color-text-muted);
+    font-size: var(--gn-font-size-sm);
+    margin: 0;
+}
+.gn-flow-canvas__noscript p {
+    color: var(--gn-color-danger);
+    font-size: var(--gn-font-size-sm);
+}
+.gn-flow-json { margin-block-start: var(--gn-space-4); }
+.gn-flow-json--active { outline: 2px solid var(--gn-color-accent); border-radius: var(--gn-radius-sm); }
 "#;
