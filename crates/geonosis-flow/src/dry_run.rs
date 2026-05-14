@@ -205,14 +205,12 @@ pub fn dry_run_compiled(
             // Start / Action / SubFlow advance unconditionally via the
             // default outbound edge.
             (NodeKind::Start(_), _) => (EdgeCondition::Otherwise, "start node".into()),
-            (NodeKind::Action { action }, _) => (
-                EdgeCondition::Otherwise,
-                format!("action `{action}`"),
-            ),
-            (NodeKind::SubFlow { flow_alias }, _) => (
-                EdgeCondition::Otherwise,
-                format!("sub-flow `{flow_alias}`"),
-            ),
+            (NodeKind::Action { action }, _) => {
+                (EdgeCondition::Otherwise, format!("action `{action}`"))
+            }
+            (NodeKind::SubFlow { flow_alias }, _) => {
+                (EdgeCondition::Otherwise, format!("sub-flow `{flow_alias}`"))
+            }
             // Terminal nodes were handled above; this arm is unreachable
             // but the borrow checker doesn't know that.
             (NodeKind::Success(_) | NodeKind::Failure { .. }, _) => {
@@ -352,10 +350,7 @@ mod tests {
         });
 
         let mut guard_alice = BTreeMap::new();
-        guard_alice.insert(
-            "context.username".into(),
-            Value::String("alice".into()),
-        );
+        guard_alice.insert("context.username".into(), Value::String("alice".into()));
 
         let def = FlowDefinition {
             realm_id: RealmId::new(),
@@ -410,10 +405,7 @@ mod tests {
 
         // Guard that the empty context cannot satisfy.
         let mut guard = BTreeMap::new();
-        guard.insert(
-            "context.username".into(),
-            Value::String("padme".into()),
-        );
+        guard.insert("context.username".into(), Value::String("padme".into()));
 
         let def = FlowDefinition {
             realm_id: RealmId::new(),
