@@ -34,16 +34,6 @@ use crate::traits::{
     SpiBindingRow, Storage, WasmModule, WasmModuleHeader,
 };
 
-/// Placeholder for postgres methods whose v0.1.x SQL still needs to be
-/// authored. v0.1 ships with `MemoryStorage` as the default; the postgres
-/// rows below are stubs that surface a clear error if hit and never silently
-/// succeed. Each is annotated with the doc/migration that owns the shape.
-fn pg_pending(what: &'static str) -> StorageError {
-    StorageError::Backend(format!(
-        "postgres impl pending for {what} (v0.1.x); switch to memory backend or wait for follow-up"
-    ))
-}
-
 pub struct PostgresStorage {
     pool: PgPool,
 }
@@ -159,6 +149,19 @@ fn user_from_row(row: &sqlx::postgres::PgRow) -> Result<User, StorageError> {
 
 #[async_trait]
 impl Storage for PostgresStorage {
+    async fn ping(&self) -> Result<(), StorageError> {
+        // Cheapest possible round-trip — the planner caches `SELECT 1`
+        // and the pool keeps the connection warm. We rely on
+        // sqlx::Pool's `test_before_acquire` (set in build_pool) to
+        // also exercise the socket, so a transient network failure
+        // surfaces here before any real query runs.
+        sqlx::query("SELECT 1")
+            .execute(&self.pool)
+            .await
+            .map_err(sqlx_err)?;
+        Ok(())
+    }
+
     // ---- Realm (no RLS — realm IS the tenant) ----
     async fn create_realm(&self, realm: Realm) -> Result<(), StorageError> {
         let config = serde_json::to_value(&realm).map_err(json_err)?;
@@ -1505,382 +1508,1384 @@ impl Storage for PostgresStorage {
     }
 
     // ---- Phase-0 additions (Role / Group / UserProfile / Agent / Org-ext) ----
-    // SQL implementations follow in v0.1.x. Memory backend is the v0.1
-    // default per doc 01 §Runtime; these stubs keep the trait surface
-    // intact so the workspace builds against both backends.
+    // Table shapes live in migration 20260101_011_init_role_group_profile_agent.up.sql.
+    // Every method opens a realm-scoped transaction so the
+    // `tenant_isolation` RLS policy enforces realm boundaries even if a
+    // future bug omitted the explicit WHERE realm_id predicate.
 
     async fn list_users(
         &self,
-        _realm: RealmId,
-        _limit: usize,
+        realm: RealmId,
+        limit: usize,
     ) -> Result<Vec<User>, StorageError> {
-        Err(pg_pending("list_users"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let rows = sqlx::query(
+            "SELECT * FROM app_user WHERE realm_id = $1
+             ORDER BY created_at LIMIT $2",
+        )
+        .bind(realm.to_string())
+        .bind(limit.min(i64::MAX as usize) as i64)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        rows.iter().map(user_from_row).collect()
     }
 
-    async fn create_role(&self, _role: Role) -> Result<(), StorageError> {
-        Err(pg_pending("create_role"))
+    // ---- Role ----
+    async fn create_role(&self, role: Role) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, role.realm_id).await?;
+        sqlx::query(
+            "INSERT INTO realm_role
+               (id, realm_id, client_id, name, description, composites, attributes, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+        )
+        .bind(role.id.to_string())
+        .bind(role.realm_id.to_string())
+        .bind(role.client_id.map(|c| c.to_string()))
+        .bind(&role.name)
+        .bind(role.description.as_deref())
+        .bind(serde_json::to_value(&role.composites).map_err(json_err)?)
+        .bind(serde_json::to_value(&role.attributes).map_err(json_err)?)
+        .bind(role.created_at)
+        .bind(role.updated_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
     }
-    async fn get_role(&self, _realm: RealmId, _id: RoleId) -> Result<Role, StorageError> {
-        Err(pg_pending("get_role"))
+
+    async fn get_role(&self, realm: RealmId, id: RoleId) -> Result<Role, StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let row = sqlx::query("SELECT * FROM realm_role WHERE id = $1 AND realm_id = $2")
+            .bind(id.to_string())
+            .bind(realm.to_string())
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(sqlx_err)?
+            .ok_or(StorageError::NotFound)?;
+        let r = role_from_row(&row)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(r)
     }
+
     async fn get_role_by_name(
         &self,
-        _realm: RealmId,
-        _client_id: Option<ClientId>,
-        _name: &str,
+        realm: RealmId,
+        client_id: Option<ClientId>,
+        name: &str,
     ) -> Result<Role, StorageError> {
-        Err(pg_pending("get_role_by_name"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        // `client_id IS NULL` and `client_id = $x` must be handled as a
+        // single SQL predicate; binding NULL alone does not match because
+        // `NULL = NULL` is unknown in SQL.
+        let row = sqlx::query(
+            "SELECT * FROM realm_role
+             WHERE realm_id = $1
+               AND name = $2
+               AND ((client_id IS NULL AND $3::text IS NULL) OR client_id = $3)",
+        )
+        .bind(realm.to_string())
+        .bind(name)
+        .bind(client_id.map(|c| c.to_string()))
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(sqlx_err)?
+        .ok_or(StorageError::NotFound)?;
+        let r = role_from_row(&row)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(r)
     }
+
     async fn list_roles(
         &self,
-        _realm: RealmId,
-        _client_id: Option<ClientId>,
+        realm: RealmId,
+        client_id: Option<ClientId>,
     ) -> Result<Vec<Role>, StorageError> {
-        Err(pg_pending("list_roles"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let rows = sqlx::query(
+            "SELECT * FROM realm_role
+             WHERE realm_id = $1
+               AND ((client_id IS NULL AND $2::text IS NULL) OR client_id = $2)
+             ORDER BY name",
+        )
+        .bind(realm.to_string())
+        .bind(client_id.map(|c| c.to_string()))
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        rows.iter().map(role_from_row).collect()
     }
-    async fn update_role(&self, _role: Role) -> Result<(), StorageError> {
-        Err(pg_pending("update_role"))
+
+    async fn update_role(&self, role: Role) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, role.realm_id).await?;
+        let n = sqlx::query(
+            "UPDATE realm_role
+               SET name = $3, description = $4, composites = $5, attributes = $6, updated_at = $7
+             WHERE id = $1 AND realm_id = $2",
+        )
+        .bind(role.id.to_string())
+        .bind(role.realm_id.to_string())
+        .bind(&role.name)
+        .bind(role.description.as_deref())
+        .bind(serde_json::to_value(&role.composites).map_err(json_err)?)
+        .bind(serde_json::to_value(&role.attributes).map_err(json_err)?)
+        .bind(role.updated_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?
+        .rows_affected();
+        if n == 0 {
+            return Err(StorageError::NotFound);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
     }
-    async fn delete_role(&self, _realm: RealmId, _id: RoleId) -> Result<(), StorageError> {
-        Err(pg_pending("delete_role"))
+
+    async fn delete_role(&self, realm: RealmId, id: RoleId) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let n = sqlx::query("DELETE FROM realm_role WHERE id = $1 AND realm_id = $2")
+            .bind(id.to_string())
+            .bind(realm.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(sqlx_err)?
+            .rows_affected();
+        if n == 0 {
+            return Err(StorageError::NotFound);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
     }
+
     async fn assign_user_role(
         &self,
-        _realm: RealmId,
-        _user_id: UserId,
-        _role_id: RoleId,
+        realm: RealmId,
+        user_id: UserId,
+        role_id: RoleId,
     ) -> Result<(), StorageError> {
-        Err(pg_pending("assign_user_role"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        sqlx::query(
+            "INSERT INTO user_role (realm_id, user_id, role_id)
+             VALUES ($1,$2,$3) ON CONFLICT DO NOTHING",
+        )
+        .bind(realm.to_string())
+        .bind(user_id.to_string())
+        .bind(role_id.to_string())
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
     }
+
     async fn unassign_user_role(
         &self,
-        _realm: RealmId,
-        _user_id: UserId,
-        _role_id: RoleId,
+        realm: RealmId,
+        user_id: UserId,
+        role_id: RoleId,
     ) -> Result<(), StorageError> {
-        Err(pg_pending("unassign_user_role"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        sqlx::query(
+            "DELETE FROM user_role
+             WHERE realm_id = $1 AND user_id = $2 AND role_id = $3",
+        )
+        .bind(realm.to_string())
+        .bind(user_id.to_string())
+        .bind(role_id.to_string())
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
     }
+
     async fn list_user_roles(
         &self,
-        _realm: RealmId,
-        _user_id: UserId,
+        realm: RealmId,
+        user_id: UserId,
     ) -> Result<Vec<Role>, StorageError> {
-        Err(pg_pending("list_user_roles"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let rows = sqlx::query(
+            "SELECT r.* FROM realm_role r
+             JOIN user_role ur ON ur.role_id = r.id
+             WHERE ur.realm_id = $1 AND ur.user_id = $2
+             ORDER BY r.name",
+        )
+        .bind(realm.to_string())
+        .bind(user_id.to_string())
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        rows.iter().map(role_from_row).collect()
     }
 
-    async fn create_group(&self, _group: Group) -> Result<(), StorageError> {
-        Err(pg_pending("create_group"))
+    // ---- Group ----
+    async fn create_group(&self, group: Group) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, group.realm_id).await?;
+        sqlx::query(
+            "INSERT INTO app_group
+               (id, realm_id, parent_id, name, path, attributes, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+        )
+        .bind(group.id.to_string())
+        .bind(group.realm_id.to_string())
+        .bind(group.parent_id.map(|p| p.to_string()))
+        .bind(&group.name)
+        .bind(&group.path)
+        .bind(serde_json::to_value(&group.attributes).map_err(json_err)?)
+        .bind(group.created_at)
+        .bind(group.updated_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
     }
-    async fn get_group(&self, _realm: RealmId, _id: GroupId) -> Result<Group, StorageError> {
-        Err(pg_pending("get_group"))
+
+    async fn get_group(&self, realm: RealmId, id: GroupId) -> Result<Group, StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let row = sqlx::query("SELECT * FROM app_group WHERE id = $1 AND realm_id = $2")
+            .bind(id.to_string())
+            .bind(realm.to_string())
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(sqlx_err)?
+            .ok_or(StorageError::NotFound)?;
+        let g = group_from_row(&row)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(g)
     }
+
     async fn get_group_by_path(
         &self,
-        _realm: RealmId,
-        _path: &str,
+        realm: RealmId,
+        path: &str,
     ) -> Result<Group, StorageError> {
-        Err(pg_pending("get_group_by_path"))
-    }
-    async fn list_groups(&self, _realm: RealmId) -> Result<Vec<Group>, StorageError> {
-        Err(pg_pending("list_groups"))
-    }
-    async fn update_group(&self, _group: Group) -> Result<(), StorageError> {
-        Err(pg_pending("update_group"))
-    }
-    async fn delete_group(&self, _realm: RealmId, _id: GroupId) -> Result<(), StorageError> {
-        Err(pg_pending("delete_group"))
-    }
-    async fn assign_user_group(
-        &self,
-        _realm: RealmId,
-        _user_id: UserId,
-        _group_id: GroupId,
-    ) -> Result<(), StorageError> {
-        Err(pg_pending("assign_user_group"))
-    }
-    async fn unassign_user_group(
-        &self,
-        _realm: RealmId,
-        _user_id: UserId,
-        _group_id: GroupId,
-    ) -> Result<(), StorageError> {
-        Err(pg_pending("unassign_user_group"))
-    }
-    async fn list_user_groups(
-        &self,
-        _realm: RealmId,
-        _user_id: UserId,
-    ) -> Result<Vec<Group>, StorageError> {
-        Err(pg_pending("list_user_groups"))
-    }
-    async fn assign_group_role(
-        &self,
-        _realm: RealmId,
-        _group_id: GroupId,
-        _role_id: RoleId,
-    ) -> Result<(), StorageError> {
-        Err(pg_pending("assign_group_role"))
-    }
-    async fn unassign_group_role(
-        &self,
-        _realm: RealmId,
-        _group_id: GroupId,
-        _role_id: RoleId,
-    ) -> Result<(), StorageError> {
-        Err(pg_pending("unassign_group_role"))
-    }
-    async fn list_group_roles(
-        &self,
-        _realm: RealmId,
-        _group_id: GroupId,
-    ) -> Result<Vec<Role>, StorageError> {
-        Err(pg_pending("list_group_roles"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let row = sqlx::query("SELECT * FROM app_group WHERE realm_id = $1 AND path = $2")
+            .bind(realm.to_string())
+            .bind(path)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(sqlx_err)?
+            .ok_or(StorageError::NotFound)?;
+        let g = group_from_row(&row)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(g)
     }
 
+    async fn list_groups(&self, realm: RealmId) -> Result<Vec<Group>, StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let rows = sqlx::query(
+            "SELECT * FROM app_group WHERE realm_id = $1 ORDER BY path",
+        )
+        .bind(realm.to_string())
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        rows.iter().map(group_from_row).collect()
+    }
+
+    async fn update_group(&self, group: Group) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, group.realm_id).await?;
+        let n = sqlx::query(
+            "UPDATE app_group
+               SET parent_id = $3, name = $4, path = $5, attributes = $6, updated_at = $7
+             WHERE id = $1 AND realm_id = $2",
+        )
+        .bind(group.id.to_string())
+        .bind(group.realm_id.to_string())
+        .bind(group.parent_id.map(|p| p.to_string()))
+        .bind(&group.name)
+        .bind(&group.path)
+        .bind(serde_json::to_value(&group.attributes).map_err(json_err)?)
+        .bind(group.updated_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?
+        .rows_affected();
+        if n == 0 {
+            return Err(StorageError::NotFound);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
+    }
+
+    async fn delete_group(&self, realm: RealmId, id: GroupId) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let n = sqlx::query("DELETE FROM app_group WHERE id = $1 AND realm_id = $2")
+            .bind(id.to_string())
+            .bind(realm.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(sqlx_err)?
+            .rows_affected();
+        if n == 0 {
+            return Err(StorageError::NotFound);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
+    }
+
+    async fn assign_user_group(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+        group_id: GroupId,
+    ) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        sqlx::query(
+            "INSERT INTO user_group (realm_id, user_id, group_id)
+             VALUES ($1,$2,$3) ON CONFLICT DO NOTHING",
+        )
+        .bind(realm.to_string())
+        .bind(user_id.to_string())
+        .bind(group_id.to_string())
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
+    }
+
+    async fn unassign_user_group(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+        group_id: GroupId,
+    ) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        sqlx::query(
+            "DELETE FROM user_group
+             WHERE realm_id = $1 AND user_id = $2 AND group_id = $3",
+        )
+        .bind(realm.to_string())
+        .bind(user_id.to_string())
+        .bind(group_id.to_string())
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
+    }
+
+    async fn list_user_groups(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+    ) -> Result<Vec<Group>, StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let rows = sqlx::query(
+            "SELECT g.* FROM app_group g
+             JOIN user_group ug ON ug.group_id = g.id
+             WHERE ug.realm_id = $1 AND ug.user_id = $2
+             ORDER BY g.path",
+        )
+        .bind(realm.to_string())
+        .bind(user_id.to_string())
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        rows.iter().map(group_from_row).collect()
+    }
+
+    async fn assign_group_role(
+        &self,
+        realm: RealmId,
+        group_id: GroupId,
+        role_id: RoleId,
+    ) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        sqlx::query(
+            "INSERT INTO group_role (realm_id, group_id, role_id)
+             VALUES ($1,$2,$3) ON CONFLICT DO NOTHING",
+        )
+        .bind(realm.to_string())
+        .bind(group_id.to_string())
+        .bind(role_id.to_string())
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
+    }
+
+    async fn unassign_group_role(
+        &self,
+        realm: RealmId,
+        group_id: GroupId,
+        role_id: RoleId,
+    ) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        sqlx::query(
+            "DELETE FROM group_role
+             WHERE realm_id = $1 AND group_id = $2 AND role_id = $3",
+        )
+        .bind(realm.to_string())
+        .bind(group_id.to_string())
+        .bind(role_id.to_string())
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
+    }
+
+    async fn list_group_roles(
+        &self,
+        realm: RealmId,
+        group_id: GroupId,
+    ) -> Result<Vec<Role>, StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let rows = sqlx::query(
+            "SELECT r.* FROM realm_role r
+             JOIN group_role gr ON gr.role_id = r.id
+             WHERE gr.realm_id = $1 AND gr.group_id = $2
+             ORDER BY r.name",
+        )
+        .bind(realm.to_string())
+        .bind(group_id.to_string())
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        rows.iter().map(role_from_row).collect()
+    }
+
+    // ---- User profile schema ----
     async fn get_user_profile_schema(
         &self,
         realm: RealmId,
     ) -> Result<UserProfile, StorageError> {
-        // Read-side fallback: return the default schema instead of erroring
-        // so admin UIs / userinfo emission can render against a brand-new
-        // realm before the operator has saved a custom schema.
-        Ok(UserProfile::default_for(realm))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let row = sqlx::query(
+            "SELECT attributes, groups, unmanaged_policy, updated_at
+             FROM user_profile_schema WHERE realm_id = $1",
+        )
+        .bind(realm.to_string())
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        // Fall back to the default schema when the realm has never saved
+        // a custom one (admin UI render / userinfo emission both need a
+        // working schema before the first PUT).
+        let Some(row) = row else {
+            return Ok(UserProfile::default_for(realm));
+        };
+        let attributes: serde_json::Value = row.try_get("attributes").map_err(sqlx_err)?;
+        let groups: serde_json::Value = row.try_get("groups").map_err(sqlx_err)?;
+        let unmanaged_policy: String = row.try_get("unmanaged_policy").map_err(sqlx_err)?;
+        let updated_at: DateTime<Utc> = row.try_get("updated_at").map_err(sqlx_err)?;
+        Ok(UserProfile {
+            realm_id: realm,
+            attributes: serde_json::from_value(attributes).map_err(json_err)?,
+            groups: serde_json::from_value(groups).map_err(json_err)?,
+            unmanaged_policy: serde_json::from_value(
+                serde_json::Value::String(unmanaged_policy),
+            )
+            .map_err(json_err)?,
+            updated_at,
+        })
     }
+
     async fn save_user_profile_schema(
         &self,
-        _profile: UserProfile,
+        profile: UserProfile,
     ) -> Result<(), StorageError> {
-        Err(pg_pending("save_user_profile_schema"))
+        let mut tx = begin_realm(&self.pool, profile.realm_id).await?;
+        let policy = serde_json::to_value(profile.unmanaged_policy)
+            .map_err(json_err)?
+            .as_str()
+            .unwrap_or("reject")
+            .to_string();
+        sqlx::query(
+            "INSERT INTO user_profile_schema
+               (realm_id, attributes, groups, unmanaged_policy, updated_at)
+             VALUES ($1,$2,$3,$4,$5)
+             ON CONFLICT (realm_id) DO UPDATE
+               SET attributes = EXCLUDED.attributes,
+                   groups = EXCLUDED.groups,
+                   unmanaged_policy = EXCLUDED.unmanaged_policy,
+                   updated_at = EXCLUDED.updated_at",
+        )
+        .bind(profile.realm_id.to_string())
+        .bind(serde_json::to_value(&profile.attributes).map_err(json_err)?)
+        .bind(serde_json::to_value(&profile.groups).map_err(json_err)?)
+        .bind(policy)
+        .bind(profile.updated_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
     }
 
-    async fn create_agent(&self, _agent: Agent) -> Result<(), StorageError> {
-        Err(pg_pending("create_agent"))
+    // ---- Agent ----
+    async fn create_agent(&self, agent: Agent) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, agent.realm_id).await?;
+        sqlx::query(
+            "INSERT INTO agent
+               (id, realm_id, alias, display_name, kind, model_hint, vendor, version,
+                parent_subject, capabilities, allowed_scopes, allowed_audiences,
+                rate_limit, auth_method, public_jwk,
+                created_at, expires_at, revoked_at, enabled)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)",
+        )
+        .bind(agent.id.to_string())
+        .bind(agent.realm_id.to_string())
+        .bind(&agent.alias)
+        .bind(&agent.display_name)
+        .bind(agent_kind_to_str(&agent.kind))
+        .bind(agent.model_hint.as_deref())
+        .bind(agent.vendor.as_deref())
+        .bind(agent.version.as_deref())
+        .bind(serde_json::to_value(&agent.parent_subject).map_err(json_err)?)
+        .bind(serde_json::to_value(&agent.capabilities).map_err(json_err)?)
+        .bind(serde_json::to_value(&agent.allowed_scopes).map_err(json_err)?)
+        .bind(serde_json::to_value(&agent.allowed_audiences).map_err(json_err)?)
+        .bind(serde_json::to_value(&agent.rate_limit).map_err(json_err)?)
+        .bind(agent_auth_method_to_str(agent.auth_method))
+        .bind(agent.public_jwk.as_ref())
+        .bind(agent.created_at)
+        .bind(agent.expires_at)
+        .bind(agent.revoked_at)
+        .bind(agent.enabled)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
     }
-    async fn get_agent(
-        &self,
-        _realm: RealmId,
-        _id: AgentId,
-    ) -> Result<Agent, StorageError> {
-        Err(pg_pending("get_agent"))
+
+    async fn get_agent(&self, realm: RealmId, id: AgentId) -> Result<Agent, StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let row = sqlx::query("SELECT * FROM agent WHERE id = $1 AND realm_id = $2")
+            .bind(id.to_string())
+            .bind(realm.to_string())
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(sqlx_err)?
+            .ok_or(StorageError::NotFound)?;
+        let a = agent_from_row(&row)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(a)
     }
+
     async fn get_agent_by_alias(
         &self,
-        _realm: RealmId,
-        _alias: &str,
+        realm: RealmId,
+        alias: &str,
     ) -> Result<Agent, StorageError> {
-        Err(pg_pending("get_agent_by_alias"))
-    }
-    async fn list_agents(&self, _realm: RealmId) -> Result<Vec<Agent>, StorageError> {
-        Err(pg_pending("list_agents"))
-    }
-    async fn update_agent(&self, _agent: Agent) -> Result<(), StorageError> {
-        Err(pg_pending("update_agent"))
-    }
-    async fn revoke_agent(&self, _realm: RealmId, _id: AgentId) -> Result<(), StorageError> {
-        Err(pg_pending("revoke_agent"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let row = sqlx::query("SELECT * FROM agent WHERE realm_id = $1 AND alias = $2")
+            .bind(realm.to_string())
+            .bind(alias)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(sqlx_err)?
+            .ok_or(StorageError::NotFound)?;
+        let a = agent_from_row(&row)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(a)
     }
 
-    async fn create_organization(&self, _org: Organization) -> Result<(), StorageError> {
-        Err(pg_pending("create_organization"))
+    async fn list_agents(&self, realm: RealmId) -> Result<Vec<Agent>, StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let rows = sqlx::query("SELECT * FROM agent WHERE realm_id = $1 ORDER BY alias")
+            .bind(realm.to_string())
+            .fetch_all(&mut *tx)
+            .await
+            .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        rows.iter().map(agent_from_row).collect()
     }
+
+    async fn update_agent(&self, agent: Agent) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, agent.realm_id).await?;
+        // `parent_subject` and `created_at` are immutable per doc §18 —
+        // the handler enforces this; we omit them from UPDATE to keep
+        // the contract enforced at the storage layer too.
+        let n = sqlx::query(
+            "UPDATE agent
+               SET alias = $3, display_name = $4, kind = $5, model_hint = $6,
+                   vendor = $7, version = $8, capabilities = $9,
+                   allowed_scopes = $10, allowed_audiences = $11, rate_limit = $12,
+                   auth_method = $13, public_jwk = $14,
+                   expires_at = $15, revoked_at = $16, enabled = $17
+             WHERE id = $1 AND realm_id = $2",
+        )
+        .bind(agent.id.to_string())
+        .bind(agent.realm_id.to_string())
+        .bind(&agent.alias)
+        .bind(&agent.display_name)
+        .bind(agent_kind_to_str(&agent.kind))
+        .bind(agent.model_hint.as_deref())
+        .bind(agent.vendor.as_deref())
+        .bind(agent.version.as_deref())
+        .bind(serde_json::to_value(&agent.capabilities).map_err(json_err)?)
+        .bind(serde_json::to_value(&agent.allowed_scopes).map_err(json_err)?)
+        .bind(serde_json::to_value(&agent.allowed_audiences).map_err(json_err)?)
+        .bind(serde_json::to_value(&agent.rate_limit).map_err(json_err)?)
+        .bind(agent_auth_method_to_str(agent.auth_method))
+        .bind(agent.public_jwk.as_ref())
+        .bind(agent.expires_at)
+        .bind(agent.revoked_at)
+        .bind(agent.enabled)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?
+        .rows_affected();
+        if n == 0 {
+            return Err(StorageError::NotFound);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
+    }
+
+    async fn revoke_agent(&self, realm: RealmId, id: AgentId) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let n = sqlx::query(
+            "UPDATE agent SET revoked_at = $3, enabled = false
+             WHERE id = $1 AND realm_id = $2",
+        )
+        .bind(id.to_string())
+        .bind(realm.to_string())
+        .bind(Utc::now())
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?
+        .rows_affected();
+        if n == 0 {
+            return Err(StorageError::NotFound);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
+    }
+
+    // ---- Organization ----
+    async fn create_organization(&self, org: Organization) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, org.realm_id).await?;
+        sqlx::query(
+            "INSERT INTO organization
+               (id, realm_id, alias, display_name, description, branding, attributes,
+                default_idp_alias, redirect_url, enabled, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)",
+        )
+        .bind(org.id.to_string())
+        .bind(org.realm_id.to_string())
+        .bind(&org.alias)
+        .bind(&org.display_name)
+        .bind(org.description.as_deref())
+        .bind(serde_json::to_value(&org.branding).map_err(json_err)?)
+        .bind(serde_json::to_value(&org.attributes).map_err(json_err)?)
+        .bind(org.default_idp_alias.as_deref())
+        .bind(org.redirect_url.as_ref().map(|u| u.to_string()))
+        .bind(org.enabled)
+        .bind(org.created_at)
+        .bind(org.updated_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
+    }
+
     async fn get_organization(
         &self,
-        _realm: RealmId,
-        _id: OrganizationId,
+        realm: RealmId,
+        id: OrganizationId,
     ) -> Result<Organization, StorageError> {
-        Err(pg_pending("get_organization"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let row = sqlx::query("SELECT * FROM organization WHERE id = $1 AND realm_id = $2")
+            .bind(id.to_string())
+            .bind(realm.to_string())
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(sqlx_err)?
+            .ok_or(StorageError::NotFound)?;
+        let o = organization_from_row(&row)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(o)
     }
+
     async fn get_organization_by_alias(
         &self,
-        _realm: RealmId,
-        _alias: &str,
+        realm: RealmId,
+        alias: &str,
     ) -> Result<Organization, StorageError> {
-        Err(pg_pending("get_organization_by_alias"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let row = sqlx::query(
+            "SELECT * FROM organization WHERE realm_id = $1 AND alias = $2",
+        )
+        .bind(realm.to_string())
+        .bind(alias)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(sqlx_err)?
+        .ok_or(StorageError::NotFound)?;
+        let o = organization_from_row(&row)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(o)
     }
+
     async fn list_organizations(
         &self,
-        _realm: RealmId,
+        realm: RealmId,
     ) -> Result<Vec<Organization>, StorageError> {
-        Err(pg_pending("list_organizations"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let rows = sqlx::query(
+            "SELECT * FROM organization WHERE realm_id = $1 ORDER BY alias",
+        )
+        .bind(realm.to_string())
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        rows.iter().map(organization_from_row).collect()
     }
-    async fn update_organization(&self, _org: Organization) -> Result<(), StorageError> {
-        Err(pg_pending("update_organization"))
+
+    async fn update_organization(&self, org: Organization) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, org.realm_id).await?;
+        let n = sqlx::query(
+            "UPDATE organization
+               SET alias = $3, display_name = $4, description = $5, branding = $6,
+                   attributes = $7, default_idp_alias = $8, redirect_url = $9,
+                   enabled = $10, updated_at = $11
+             WHERE id = $1 AND realm_id = $2",
+        )
+        .bind(org.id.to_string())
+        .bind(org.realm_id.to_string())
+        .bind(&org.alias)
+        .bind(&org.display_name)
+        .bind(org.description.as_deref())
+        .bind(serde_json::to_value(&org.branding).map_err(json_err)?)
+        .bind(serde_json::to_value(&org.attributes).map_err(json_err)?)
+        .bind(org.default_idp_alias.as_deref())
+        .bind(org.redirect_url.as_ref().map(|u| u.to_string()))
+        .bind(org.enabled)
+        .bind(org.updated_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?
+        .rows_affected();
+        if n == 0 {
+            return Err(StorageError::NotFound);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
     }
+
     async fn delete_organization(
         &self,
-        _realm: RealmId,
-        _id: OrganizationId,
+        realm: RealmId,
+        id: OrganizationId,
     ) -> Result<(), StorageError> {
-        Err(pg_pending("delete_organization"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let n = sqlx::query(
+            "DELETE FROM organization WHERE id = $1 AND realm_id = $2",
+        )
+        .bind(id.to_string())
+        .bind(realm.to_string())
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?
+        .rows_affected();
+        if n == 0 {
+            return Err(StorageError::NotFound);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
     }
-    async fn upsert_org_domain(&self, _domain: OrgDomain) -> Result<(), StorageError> {
-        Err(pg_pending("upsert_org_domain"))
+
+    async fn upsert_org_domain(&self, domain: OrgDomain) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, domain.realm_id).await?;
+        sqlx::query(
+            "INSERT INTO org_domain
+               (id, organization_id, realm_id, domain, verified, verification_token, verified_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7)
+             ON CONFLICT (realm_id, domain) DO UPDATE
+               SET verified = EXCLUDED.verified,
+                   verification_token = EXCLUDED.verification_token,
+                   verified_at = EXCLUDED.verified_at",
+        )
+        .bind(domain.id.to_string())
+        .bind(domain.organization_id.to_string())
+        .bind(domain.realm_id.to_string())
+        .bind(&domain.domain)
+        .bind(domain.verified)
+        .bind(domain.verification_token.as_deref())
+        .bind(domain.verified_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
     }
+
     async fn list_org_domains(
         &self,
-        _realm: RealmId,
-        _organization_id: OrganizationId,
+        realm: RealmId,
+        organization_id: OrganizationId,
     ) -> Result<Vec<OrgDomain>, StorageError> {
-        Err(pg_pending("list_org_domains"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let rows = sqlx::query(
+            "SELECT * FROM org_domain
+             WHERE realm_id = $1 AND organization_id = $2
+             ORDER BY domain",
+        )
+        .bind(realm.to_string())
+        .bind(organization_id.to_string())
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        rows.iter().map(org_domain_from_row).collect()
     }
+
     async fn delete_org_domain(
         &self,
-        _realm: RealmId,
-        _organization_id: OrganizationId,
-        _domain: &str,
+        realm: RealmId,
+        organization_id: OrganizationId,
+        domain: &str,
     ) -> Result<(), StorageError> {
-        Err(pg_pending("delete_org_domain"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let n = sqlx::query(
+            "DELETE FROM org_domain
+             WHERE realm_id = $1 AND organization_id = $2 AND domain = $3",
+        )
+        .bind(realm.to_string())
+        .bind(organization_id.to_string())
+        .bind(domain)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?
+        .rows_affected();
+        if n == 0 {
+            return Err(StorageError::NotFound);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
     }
+
     async fn find_org_by_verified_domain(
         &self,
-        _realm: RealmId,
-        _domain: &str,
+        realm: RealmId,
+        domain: &str,
     ) -> Result<Option<Organization>, StorageError> {
-        Err(pg_pending("find_org_by_verified_domain"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let row = sqlx::query(
+            "SELECT o.* FROM organization o
+             JOIN org_domain d ON d.organization_id = o.id
+             WHERE d.realm_id = $1 AND d.domain = $2 AND d.verified = true
+             LIMIT 1",
+        )
+        .bind(realm.to_string())
+        .bind(domain)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        match row {
+            Some(r) => Ok(Some(organization_from_row(&r)?)),
+            None => Ok(None),
+        }
     }
+
     async fn upsert_org_membership(
         &self,
-        _membership: OrgMembership,
+        membership: OrgMembership,
     ) -> Result<(), StorageError> {
-        Err(pg_pending("upsert_org_membership"))
+        let mut tx = begin_realm(&self.pool, membership.realm_id).await?;
+        sqlx::query(
+            "INSERT INTO org_membership
+               (organization_id, realm_id, user_id, roles, invited_by, state, joined_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7)
+             ON CONFLICT (organization_id, user_id) DO UPDATE
+               SET roles = EXCLUDED.roles,
+                   invited_by = EXCLUDED.invited_by,
+                   state = EXCLUDED.state",
+        )
+        .bind(membership.organization_id.to_string())
+        .bind(membership.realm_id.to_string())
+        .bind(membership.user_id.to_string())
+        .bind(serde_json::to_value(&membership.roles).map_err(json_err)?)
+        .bind(membership.invited_by.map(|u| u.to_string()))
+        .bind(membership_state_to_str(membership.state))
+        .bind(membership.joined_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
     }
+
     async fn get_org_membership(
         &self,
-        _realm: RealmId,
-        _organization_id: OrganizationId,
-        _user_id: UserId,
+        realm: RealmId,
+        organization_id: OrganizationId,
+        user_id: UserId,
     ) -> Result<OrgMembership, StorageError> {
-        Err(pg_pending("get_org_membership"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let row = sqlx::query(
+            "SELECT * FROM org_membership
+             WHERE realm_id = $1 AND organization_id = $2 AND user_id = $3",
+        )
+        .bind(realm.to_string())
+        .bind(organization_id.to_string())
+        .bind(user_id.to_string())
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(sqlx_err)?
+        .ok_or(StorageError::NotFound)?;
+        let m = org_membership_from_row(&row)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(m)
     }
+
     async fn list_org_memberships(
         &self,
-        _realm: RealmId,
-        _organization_id: OrganizationId,
+        realm: RealmId,
+        organization_id: OrganizationId,
     ) -> Result<Vec<OrgMembership>, StorageError> {
-        Err(pg_pending("list_org_memberships"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let rows = sqlx::query(
+            "SELECT * FROM org_membership
+             WHERE realm_id = $1 AND organization_id = $2
+             ORDER BY joined_at",
+        )
+        .bind(realm.to_string())
+        .bind(organization_id.to_string())
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        rows.iter().map(org_membership_from_row).collect()
     }
+
     async fn list_user_orgs(
         &self,
-        _realm: RealmId,
-        _user_id: UserId,
+        realm: RealmId,
+        user_id: UserId,
     ) -> Result<Vec<OrgMembership>, StorageError> {
-        Err(pg_pending("list_user_orgs"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let rows = sqlx::query(
+            "SELECT * FROM org_membership
+             WHERE realm_id = $1 AND user_id = $2
+             ORDER BY joined_at",
+        )
+        .bind(realm.to_string())
+        .bind(user_id.to_string())
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        rows.iter().map(org_membership_from_row).collect()
     }
+
     async fn delete_org_membership(
         &self,
-        _realm: RealmId,
-        _organization_id: OrganizationId,
-        _user_id: UserId,
+        realm: RealmId,
+        organization_id: OrganizationId,
+        user_id: UserId,
     ) -> Result<(), StorageError> {
-        Err(pg_pending("delete_org_membership"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let n = sqlx::query(
+            "DELETE FROM org_membership
+             WHERE realm_id = $1 AND organization_id = $2 AND user_id = $3",
+        )
+        .bind(realm.to_string())
+        .bind(organization_id.to_string())
+        .bind(user_id.to_string())
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?
+        .rows_affected();
+        if n == 0 {
+            return Err(StorageError::NotFound);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
     }
-    async fn create_org_role(&self, _role: OrgRole) -> Result<(), StorageError> {
-        Err(pg_pending("create_org_role"))
+
+    async fn create_org_role(&self, role: OrgRole) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, role.realm_id).await?;
+        sqlx::query(
+            "INSERT INTO org_role
+               (id, organization_id, realm_id, name, description, permissions, built_in)
+             VALUES ($1,$2,$3,$4,$5,$6,$7)",
+        )
+        .bind(role.id.to_string())
+        .bind(role.organization_id.to_string())
+        .bind(role.realm_id.to_string())
+        .bind(&role.name)
+        .bind(role.description.as_deref())
+        .bind(serde_json::to_value(&role.permissions).map_err(json_err)?)
+        .bind(role.built_in)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
     }
+
     async fn get_org_role(
         &self,
-        _realm: RealmId,
-        _id: OrgRoleId,
+        realm: RealmId,
+        id: OrgRoleId,
     ) -> Result<OrgRole, StorageError> {
-        Err(pg_pending("get_org_role"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let row = sqlx::query("SELECT * FROM org_role WHERE id = $1 AND realm_id = $2")
+            .bind(id.to_string())
+            .bind(realm.to_string())
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(sqlx_err)?
+            .ok_or(StorageError::NotFound)?;
+        let r = org_role_from_row(&row)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(r)
     }
+
     async fn list_org_roles(
         &self,
-        _realm: RealmId,
-        _organization_id: OrganizationId,
+        realm: RealmId,
+        organization_id: OrganizationId,
     ) -> Result<Vec<OrgRole>, StorageError> {
-        Err(pg_pending("list_org_roles"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let rows = sqlx::query(
+            "SELECT * FROM org_role
+             WHERE realm_id = $1 AND organization_id = $2
+             ORDER BY name",
+        )
+        .bind(realm.to_string())
+        .bind(organization_id.to_string())
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        rows.iter().map(org_role_from_row).collect()
     }
-    async fn update_org_role(&self, _role: OrgRole) -> Result<(), StorageError> {
-        Err(pg_pending("update_org_role"))
+
+    async fn update_org_role(&self, role: OrgRole) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, role.realm_id).await?;
+        let n = sqlx::query(
+            "UPDATE org_role
+               SET name = $3, description = $4, permissions = $5
+             WHERE id = $1 AND realm_id = $2",
+        )
+        .bind(role.id.to_string())
+        .bind(role.realm_id.to_string())
+        .bind(&role.name)
+        .bind(role.description.as_deref())
+        .bind(serde_json::to_value(&role.permissions).map_err(json_err)?)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?
+        .rows_affected();
+        if n == 0 {
+            return Err(StorageError::NotFound);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
     }
+
     async fn delete_org_role(
         &self,
-        _realm: RealmId,
-        _id: OrgRoleId,
+        realm: RealmId,
+        id: OrgRoleId,
     ) -> Result<(), StorageError> {
-        Err(pg_pending("delete_org_role"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let n = sqlx::query("DELETE FROM org_role WHERE id = $1 AND realm_id = $2")
+            .bind(id.to_string())
+            .bind(realm.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(sqlx_err)?
+            .rows_affected();
+        if n == 0 {
+            return Err(StorageError::NotFound);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
     }
+
     async fn create_org_invitation(
         &self,
-        _invitation: OrgInvitation,
+        invitation: OrgInvitation,
     ) -> Result<(), StorageError> {
-        Err(pg_pending("create_org_invitation"))
+        let mut tx = begin_realm(&self.pool, invitation.realm_id).await?;
+        sqlx::query(
+            "INSERT INTO org_invitation
+               (id, organization_id, realm_id, email, roles, invited_by, token, expires_at, accepted_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+        )
+        .bind(invitation.id.to_string())
+        .bind(invitation.organization_id.to_string())
+        .bind(invitation.realm_id.to_string())
+        .bind(&invitation.email)
+        .bind(serde_json::to_value(&invitation.roles).map_err(json_err)?)
+        .bind(invitation.invited_by.to_string())
+        .bind(invitation.token.expose())
+        .bind(invitation.expires_at)
+        .bind(invitation.accepted_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
     }
+
     async fn get_org_invitation_by_token(
         &self,
-        _token: &str,
+        token: &str,
     ) -> Result<OrgInvitation, StorageError> {
-        Err(pg_pending("get_org_invitation_by_token"))
+        // Invitations are realm-scoped but the public accept-URL only
+        // carries the token, so we route the lookup through the bypass
+        // role (admin/migration role) — RLS is still enforced for every
+        // realm-scoped read after this method returns.
+        let row = sqlx::query("SELECT * FROM org_invitation WHERE token = $1")
+            .bind(token)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(sqlx_err)?
+            .ok_or(StorageError::NotFound)?;
+        org_invitation_from_row(&row)
     }
+
     async fn list_org_invitations(
         &self,
-        _realm: RealmId,
-        _organization_id: OrganizationId,
+        realm: RealmId,
+        organization_id: OrganizationId,
     ) -> Result<Vec<OrgInvitation>, StorageError> {
-        Err(pg_pending("list_org_invitations"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let rows = sqlx::query(
+            "SELECT * FROM org_invitation
+             WHERE realm_id = $1 AND organization_id = $2
+             ORDER BY expires_at",
+        )
+        .bind(realm.to_string())
+        .bind(organization_id.to_string())
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        rows.iter().map(org_invitation_from_row).collect()
     }
+
     async fn mark_org_invitation_accepted(
         &self,
-        _id: OrgInvitationId,
+        id: OrgInvitationId,
     ) -> Result<(), StorageError> {
-        Err(pg_pending("mark_org_invitation_accepted"))
+        let n = sqlx::query(
+            "UPDATE org_invitation SET accepted_at = $2 WHERE id = $1",
+        )
+        .bind(id.to_string())
+        .bind(Utc::now())
+        .execute(&self.pool)
+        .await
+        .map_err(sqlx_err)?
+        .rows_affected();
+        if n == 0 {
+            return Err(StorageError::NotFound);
+        }
+        Ok(())
     }
+
     async fn delete_org_invitation(
         &self,
-        _id: OrgInvitationId,
+        id: OrgInvitationId,
     ) -> Result<(), StorageError> {
-        Err(pg_pending("delete_org_invitation"))
+        let n = sqlx::query("DELETE FROM org_invitation WHERE id = $1")
+            .bind(id.to_string())
+            .execute(&self.pool)
+            .await
+            .map_err(sqlx_err)?
+            .rows_affected();
+        if n == 0 {
+            return Err(StorageError::NotFound);
+        }
+        Ok(())
     }
+
     async fn upsert_org_consent_policy(
         &self,
-        _policy: OrgConsentPolicy,
+        policy: OrgConsentPolicy,
     ) -> Result<(), StorageError> {
-        Err(pg_pending("upsert_org_consent_policy"))
+        let mut tx = begin_realm(&self.pool, policy.realm_id).await?;
+        sqlx::query(
+            "INSERT INTO org_consent_policy
+               (id, organization_id, realm_id, client_id, mode,
+                pre_approved_scopes, blocked_scopes, require_admin_approval,
+                created_by, created_at, updated_at)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+             ON CONFLICT (organization_id, client_id) DO UPDATE
+               SET mode = EXCLUDED.mode,
+                   pre_approved_scopes = EXCLUDED.pre_approved_scopes,
+                   blocked_scopes = EXCLUDED.blocked_scopes,
+                   require_admin_approval = EXCLUDED.require_admin_approval,
+                   updated_at = EXCLUDED.updated_at",
+        )
+        .bind(policy.id.to_string())
+        .bind(policy.organization_id.to_string())
+        .bind(policy.realm_id.to_string())
+        .bind(policy.client_id.to_string())
+        .bind(org_consent_mode_to_str(policy.mode))
+        .bind(serde_json::to_value(&policy.pre_approved_scopes).map_err(json_err)?)
+        .bind(serde_json::to_value(&policy.blocked_scopes).map_err(json_err)?)
+        .bind(policy.require_admin_approval)
+        .bind(policy.created_by.to_string())
+        .bind(policy.created_at)
+        .bind(policy.updated_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
     }
+
     async fn get_org_consent_policy(
         &self,
-        _realm: RealmId,
-        _organization_id: OrganizationId,
-        _client_id: ClientId,
+        realm: RealmId,
+        organization_id: OrganizationId,
+        client_id: ClientId,
     ) -> Result<Option<OrgConsentPolicy>, StorageError> {
-        Err(pg_pending("get_org_consent_policy"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let row = sqlx::query(
+            "SELECT * FROM org_consent_policy
+             WHERE realm_id = $1 AND organization_id = $2 AND client_id = $3",
+        )
+        .bind(realm.to_string())
+        .bind(organization_id.to_string())
+        .bind(client_id.to_string())
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        match row {
+            Some(r) => Ok(Some(org_consent_policy_from_row(&r)?)),
+            None => Ok(None),
+        }
     }
+
     async fn list_org_consent_policies(
         &self,
-        _realm: RealmId,
-        _organization_id: OrganizationId,
+        realm: RealmId,
+        organization_id: OrganizationId,
     ) -> Result<Vec<OrgConsentPolicy>, StorageError> {
-        Err(pg_pending("list_org_consent_policies"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let rows = sqlx::query(
+            "SELECT * FROM org_consent_policy
+             WHERE realm_id = $1 AND organization_id = $2",
+        )
+        .bind(realm.to_string())
+        .bind(organization_id.to_string())
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        rows.iter().map(org_consent_policy_from_row).collect()
     }
+
     async fn delete_org_consent_policy(
         &self,
-        _realm: RealmId,
-        _organization_id: OrganizationId,
-        _client_id: ClientId,
+        realm: RealmId,
+        organization_id: OrganizationId,
+        client_id: ClientId,
     ) -> Result<(), StorageError> {
-        Err(pg_pending("delete_org_consent_policy"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let n = sqlx::query(
+            "DELETE FROM org_consent_policy
+             WHERE realm_id = $1 AND organization_id = $2 AND client_id = $3",
+        )
+        .bind(realm.to_string())
+        .bind(organization_id.to_string())
+        .bind(client_id.to_string())
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?
+        .rows_affected();
+        if n == 0 {
+            return Err(StorageError::NotFound);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
     }
+
     async fn upsert_org_idp_binding(
         &self,
-        _binding: OrgIdpBinding,
+        binding: OrgIdpBinding,
     ) -> Result<(), StorageError> {
-        Err(pg_pending("upsert_org_idp_binding"))
+        let mut tx = begin_realm(&self.pool, binding.realm_id).await?;
+        sqlx::query(
+            "INSERT INTO org_idp_binding
+               (organization_id, realm_id, idp_alias, priority, enabled)
+             VALUES ($1,$2,$3,$4,$5)
+             ON CONFLICT (organization_id, idp_alias) DO UPDATE
+               SET priority = EXCLUDED.priority,
+                   enabled = EXCLUDED.enabled",
+        )
+        .bind(binding.organization_id.to_string())
+        .bind(binding.realm_id.to_string())
+        .bind(&binding.idp_alias)
+        .bind(binding.priority)
+        .bind(binding.enabled)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
     }
+
     async fn list_org_idp_bindings(
         &self,
-        _realm: RealmId,
-        _organization_id: OrganizationId,
+        realm: RealmId,
+        organization_id: OrganizationId,
     ) -> Result<Vec<OrgIdpBinding>, StorageError> {
-        Err(pg_pending("list_org_idp_bindings"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let rows = sqlx::query(
+            "SELECT * FROM org_idp_binding
+             WHERE realm_id = $1 AND organization_id = $2
+             ORDER BY priority DESC, idp_alias",
+        )
+        .bind(realm.to_string())
+        .bind(organization_id.to_string())
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        rows.iter().map(org_idp_binding_from_row).collect()
     }
+
     async fn delete_org_idp_binding(
         &self,
-        _realm: RealmId,
-        _organization_id: OrganizationId,
-        _idp_alias: &str,
+        realm: RealmId,
+        organization_id: OrganizationId,
+        idp_alias: &str,
     ) -> Result<(), StorageError> {
-        Err(pg_pending("delete_org_idp_binding"))
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let n = sqlx::query(
+            "DELETE FROM org_idp_binding
+             WHERE realm_id = $1 AND organization_id = $2 AND idp_alias = $3",
+        )
+        .bind(realm.to_string())
+        .bind(organization_id.to_string())
+        .bind(idp_alias)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?
+        .rows_affected();
+        if n == 0 {
+            return Err(StorageError::NotFound);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
     }
 }
 
@@ -2266,6 +3271,352 @@ pub async fn build_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
         .await
 }
 
+// ---- Phase-0 row parsers + enum-to-str helpers ----
+
+fn role_from_row(row: &sqlx::postgres::PgRow) -> Result<Role, StorageError> {
+    let id_s: String = row.try_get("id").map_err(sqlx_err)?;
+    let realm_id_s: String = row.try_get("realm_id").map_err(sqlx_err)?;
+    let client_id_s: Option<String> = row.try_get("client_id").map_err(sqlx_err)?;
+    let name: String = row.try_get("name").map_err(sqlx_err)?;
+    let description: Option<String> = row.try_get("description").map_err(sqlx_err)?;
+    let composites: serde_json::Value = row.try_get("composites").map_err(sqlx_err)?;
+    let attributes: serde_json::Value = row.try_get("attributes").map_err(sqlx_err)?;
+    let created_at: DateTime<Utc> = row.try_get("created_at").map_err(sqlx_err)?;
+    let updated_at: DateTime<Utc> = row.try_get("updated_at").map_err(sqlx_err)?;
+    Ok(Role {
+        id: id_s.parse().map_err(invalid_id)?,
+        realm_id: realm_id_s.parse().map_err(invalid_id)?,
+        client_id: client_id_s
+            .map(|s| s.parse())
+            .transpose()
+            .map_err(invalid_id)?,
+        name,
+        description,
+        composites: serde_json::from_value(composites).map_err(json_err)?,
+        attributes: serde_json::from_value(attributes).map_err(json_err)?,
+        created_at,
+        updated_at,
+    })
+}
+
+fn group_from_row(row: &sqlx::postgres::PgRow) -> Result<Group, StorageError> {
+    let id_s: String = row.try_get("id").map_err(sqlx_err)?;
+    let realm_id_s: String = row.try_get("realm_id").map_err(sqlx_err)?;
+    let parent_id_s: Option<String> = row.try_get("parent_id").map_err(sqlx_err)?;
+    let name: String = row.try_get("name").map_err(sqlx_err)?;
+    let path: String = row.try_get("path").map_err(sqlx_err)?;
+    let attributes: serde_json::Value = row.try_get("attributes").map_err(sqlx_err)?;
+    let created_at: DateTime<Utc> = row.try_get("created_at").map_err(sqlx_err)?;
+    let updated_at: DateTime<Utc> = row.try_get("updated_at").map_err(sqlx_err)?;
+    Ok(Group {
+        id: id_s.parse().map_err(invalid_id)?,
+        realm_id: realm_id_s.parse().map_err(invalid_id)?,
+        parent_id: parent_id_s
+            .map(|s| s.parse())
+            .transpose()
+            .map_err(invalid_id)?,
+        name,
+        path,
+        attributes: serde_json::from_value(attributes).map_err(json_err)?,
+        // Role assignments live in the join tables (`user_role`,
+        // `group_role`), not the group row itself. The legacy
+        // realm_role_ids / client_role_ids fields on `Group` are kept
+        // for in-memory composition; the postgres row returns them
+        // empty and the storage caller composes via list_group_roles
+        // when needed.
+        realm_role_ids: vec![],
+        client_role_ids: std::collections::BTreeMap::new(),
+        created_at,
+        updated_at,
+    })
+}
+
+fn agent_from_row(row: &sqlx::postgres::PgRow) -> Result<Agent, StorageError> {
+    let id_s: String = row.try_get("id").map_err(sqlx_err)?;
+    let realm_id_s: String = row.try_get("realm_id").map_err(sqlx_err)?;
+    let alias: String = row.try_get("alias").map_err(sqlx_err)?;
+    let display_name: String = row.try_get("display_name").map_err(sqlx_err)?;
+    let kind: String = row.try_get("kind").map_err(sqlx_err)?;
+    let model_hint: Option<String> = row.try_get("model_hint").map_err(sqlx_err)?;
+    let vendor: Option<String> = row.try_get("vendor").map_err(sqlx_err)?;
+    let version: Option<String> = row.try_get("version").map_err(sqlx_err)?;
+    let parent_subject: serde_json::Value =
+        row.try_get("parent_subject").map_err(sqlx_err)?;
+    let capabilities: serde_json::Value = row.try_get("capabilities").map_err(sqlx_err)?;
+    let allowed_scopes: serde_json::Value =
+        row.try_get("allowed_scopes").map_err(sqlx_err)?;
+    let allowed_audiences: serde_json::Value =
+        row.try_get("allowed_audiences").map_err(sqlx_err)?;
+    let rate_limit: serde_json::Value = row.try_get("rate_limit").map_err(sqlx_err)?;
+    let auth_method: String = row.try_get("auth_method").map_err(sqlx_err)?;
+    let public_jwk: Option<serde_json::Value> = row.try_get("public_jwk").map_err(sqlx_err)?;
+    let created_at: DateTime<Utc> = row.try_get("created_at").map_err(sqlx_err)?;
+    let expires_at: Option<DateTime<Utc>> = row.try_get("expires_at").map_err(sqlx_err)?;
+    let revoked_at: Option<DateTime<Utc>> = row.try_get("revoked_at").map_err(sqlx_err)?;
+    let enabled: bool = row.try_get("enabled").map_err(sqlx_err)?;
+    Ok(Agent {
+        id: id_s.parse().map_err(invalid_id)?,
+        realm_id: realm_id_s.parse().map_err(invalid_id)?,
+        alias,
+        display_name,
+        kind: agent_kind_from_str(&kind),
+        model_hint,
+        vendor,
+        version,
+        parent_subject: serde_json::from_value(parent_subject).map_err(json_err)?,
+        capabilities: serde_json::from_value(capabilities).map_err(json_err)?,
+        allowed_scopes: serde_json::from_value(allowed_scopes).map_err(json_err)?,
+        allowed_audiences: serde_json::from_value(allowed_audiences).map_err(json_err)?,
+        rate_limit: serde_json::from_value(rate_limit).map_err(json_err)?,
+        auth_method: agent_auth_method_from_str(&auth_method)?,
+        public_jwk,
+        created_at,
+        expires_at,
+        revoked_at,
+        enabled,
+    })
+}
+
+fn agent_kind_to_str(k: &geonosis_core::AgentKind) -> String {
+    serde_json::to_value(k)
+        .ok()
+        .and_then(|v| v.as_str().map(str::to_string))
+        .unwrap_or_else(|| "custom".into())
+}
+
+fn agent_kind_from_str(s: &str) -> geonosis_core::AgentKind {
+    serde_json::from_value(serde_json::Value::String(s.to_string()))
+        .unwrap_or_else(|_| geonosis_core::AgentKind::Custom(s.to_string()))
+}
+
+fn agent_auth_method_to_str(m: geonosis_core::AgentAuthMethod) -> &'static str {
+    use geonosis_core::AgentAuthMethod::*;
+    match m {
+        PrivateKeyJwt => "private-key-jwt",
+        DpopBoundKey => "dpop-bound-key",
+        TokenExchangeOnly => "token-exchange-only",
+    }
+}
+
+fn agent_auth_method_from_str(s: &str) -> Result<geonosis_core::AgentAuthMethod, StorageError> {
+    use geonosis_core::AgentAuthMethod::*;
+    match s {
+        "private-key-jwt" => Ok(PrivateKeyJwt),
+        "dpop-bound-key" => Ok(DpopBoundKey),
+        "token-exchange-only" => Ok(TokenExchangeOnly),
+        other => Err(StorageError::Invalid(format!("agent auth_method: {other}"))),
+    }
+}
+
+fn organization_from_row(row: &sqlx::postgres::PgRow) -> Result<Organization, StorageError> {
+    let id_s: String = row.try_get("id").map_err(sqlx_err)?;
+    let realm_id_s: String = row.try_get("realm_id").map_err(sqlx_err)?;
+    let alias: String = row.try_get("alias").map_err(sqlx_err)?;
+    let display_name: String = row.try_get("display_name").map_err(sqlx_err)?;
+    let description: Option<String> = row.try_get("description").map_err(sqlx_err)?;
+    let branding: serde_json::Value = row.try_get("branding").map_err(sqlx_err)?;
+    let attributes: serde_json::Value = row.try_get("attributes").map_err(sqlx_err)?;
+    let default_idp_alias: Option<String> = row.try_get("default_idp_alias").map_err(sqlx_err)?;
+    let redirect_url_s: Option<String> = row.try_get("redirect_url").map_err(sqlx_err)?;
+    let enabled: bool = row.try_get("enabled").map_err(sqlx_err)?;
+    let created_at: DateTime<Utc> = row.try_get("created_at").map_err(sqlx_err)?;
+    let updated_at: DateTime<Utc> = row.try_get("updated_at").map_err(sqlx_err)?;
+    Ok(Organization {
+        id: id_s.parse().map_err(invalid_id)?,
+        realm_id: realm_id_s.parse().map_err(invalid_id)?,
+        alias,
+        display_name,
+        description,
+        attributes: serde_json::from_value(attributes).map_err(json_err)?,
+        branding: serde_json::from_value(branding).map_err(json_err)?,
+        default_idp_alias,
+        redirect_url: redirect_url_s
+            .map(|s| s.parse::<url::Url>())
+            .transpose()
+            .map_err(|e| StorageError::Backend(e.to_string()))?,
+        enabled,
+        created_at,
+        updated_at,
+    })
+}
+
+fn org_domain_from_row(row: &sqlx::postgres::PgRow) -> Result<OrgDomain, StorageError> {
+    let id_s: String = row.try_get("id").map_err(sqlx_err)?;
+    let organization_id_s: String = row.try_get("organization_id").map_err(sqlx_err)?;
+    let realm_id_s: String = row.try_get("realm_id").map_err(sqlx_err)?;
+    let domain: String = row.try_get("domain").map_err(sqlx_err)?;
+    let verified: bool = row.try_get("verified").map_err(sqlx_err)?;
+    let verification_token: Option<String> =
+        row.try_get("verification_token").map_err(sqlx_err)?;
+    let verified_at: Option<DateTime<Utc>> = row.try_get("verified_at").map_err(sqlx_err)?;
+    Ok(OrgDomain {
+        id: id_s.parse().map_err(invalid_id)?,
+        organization_id: organization_id_s.parse().map_err(invalid_id)?,
+        realm_id: realm_id_s.parse().map_err(invalid_id)?,
+        domain,
+        verified,
+        verification_token,
+        verified_at,
+    })
+}
+
+fn org_membership_from_row(row: &sqlx::postgres::PgRow) -> Result<OrgMembership, StorageError> {
+    let organization_id_s: String = row.try_get("organization_id").map_err(sqlx_err)?;
+    let realm_id_s: String = row.try_get("realm_id").map_err(sqlx_err)?;
+    let user_id_s: String = row.try_get("user_id").map_err(sqlx_err)?;
+    let roles: serde_json::Value = row.try_get("roles").map_err(sqlx_err)?;
+    let invited_by_s: Option<String> = row.try_get("invited_by").map_err(sqlx_err)?;
+    let state_s: String = row.try_get("state").map_err(sqlx_err)?;
+    let joined_at: DateTime<Utc> = row.try_get("joined_at").map_err(sqlx_err)?;
+    Ok(OrgMembership {
+        organization_id: organization_id_s.parse().map_err(invalid_id)?,
+        realm_id: realm_id_s.parse().map_err(invalid_id)?,
+        user_id: user_id_s.parse().map_err(invalid_id)?,
+        roles: serde_json::from_value(roles).map_err(json_err)?,
+        invited_by: invited_by_s
+            .map(|s| s.parse())
+            .transpose()
+            .map_err(invalid_id)?,
+        state: membership_state_from_str(&state_s)?,
+        joined_at,
+    })
+}
+
+fn membership_state_to_str(s: geonosis_core::MembershipState) -> &'static str {
+    use geonosis_core::MembershipState::*;
+    match s {
+        Active => "active",
+        Invited => "invited",
+        Suspended => "suspended",
+    }
+}
+
+fn membership_state_from_str(s: &str) -> Result<geonosis_core::MembershipState, StorageError> {
+    use geonosis_core::MembershipState::*;
+    match s {
+        "active" => Ok(Active),
+        "invited" => Ok(Invited),
+        "suspended" => Ok(Suspended),
+        other => Err(StorageError::Invalid(format!(
+            "membership state: {other}"
+        ))),
+    }
+}
+
+fn org_role_from_row(row: &sqlx::postgres::PgRow) -> Result<OrgRole, StorageError> {
+    let id_s: String = row.try_get("id").map_err(sqlx_err)?;
+    let organization_id_s: String = row.try_get("organization_id").map_err(sqlx_err)?;
+    let realm_id_s: String = row.try_get("realm_id").map_err(sqlx_err)?;
+    let name: String = row.try_get("name").map_err(sqlx_err)?;
+    let description: Option<String> = row.try_get("description").map_err(sqlx_err)?;
+    let permissions: serde_json::Value = row.try_get("permissions").map_err(sqlx_err)?;
+    let built_in: bool = row.try_get("built_in").map_err(sqlx_err)?;
+    Ok(OrgRole {
+        id: id_s.parse().map_err(invalid_id)?,
+        organization_id: organization_id_s.parse().map_err(invalid_id)?,
+        realm_id: realm_id_s.parse().map_err(invalid_id)?,
+        name,
+        description,
+        permissions: serde_json::from_value(permissions).map_err(json_err)?,
+        built_in,
+    })
+}
+
+fn org_invitation_from_row(row: &sqlx::postgres::PgRow) -> Result<OrgInvitation, StorageError> {
+    let id_s: String = row.try_get("id").map_err(sqlx_err)?;
+    let organization_id_s: String = row.try_get("organization_id").map_err(sqlx_err)?;
+    let realm_id_s: String = row.try_get("realm_id").map_err(sqlx_err)?;
+    let email: String = row.try_get("email").map_err(sqlx_err)?;
+    let roles: serde_json::Value = row.try_get("roles").map_err(sqlx_err)?;
+    let invited_by_s: String = row.try_get("invited_by").map_err(sqlx_err)?;
+    let token: String = row.try_get("token").map_err(sqlx_err)?;
+    let expires_at: DateTime<Utc> = row.try_get("expires_at").map_err(sqlx_err)?;
+    let accepted_at: Option<DateTime<Utc>> = row.try_get("accepted_at").map_err(sqlx_err)?;
+    Ok(OrgInvitation {
+        id: id_s.parse().map_err(invalid_id)?,
+        organization_id: organization_id_s.parse().map_err(invalid_id)?,
+        realm_id: realm_id_s.parse().map_err(invalid_id)?,
+        email,
+        roles: serde_json::from_value(roles).map_err(json_err)?,
+        invited_by: invited_by_s.parse().map_err(invalid_id)?,
+        token: geonosis_core::Secret::new(token),
+        expires_at,
+        accepted_at,
+    })
+}
+
+fn org_consent_policy_from_row(
+    row: &sqlx::postgres::PgRow,
+) -> Result<OrgConsentPolicy, StorageError> {
+    let id_s: String = row.try_get("id").map_err(sqlx_err)?;
+    let organization_id_s: String = row.try_get("organization_id").map_err(sqlx_err)?;
+    let realm_id_s: String = row.try_get("realm_id").map_err(sqlx_err)?;
+    let client_id_s: String = row.try_get("client_id").map_err(sqlx_err)?;
+    let mode_s: String = row.try_get("mode").map_err(sqlx_err)?;
+    let pre_approved_scopes: serde_json::Value =
+        row.try_get("pre_approved_scopes").map_err(sqlx_err)?;
+    let blocked_scopes: serde_json::Value =
+        row.try_get("blocked_scopes").map_err(sqlx_err)?;
+    let require_admin_approval: bool =
+        row.try_get("require_admin_approval").map_err(sqlx_err)?;
+    let created_by_s: String = row.try_get("created_by").map_err(sqlx_err)?;
+    let created_at: DateTime<Utc> = row.try_get("created_at").map_err(sqlx_err)?;
+    let updated_at: DateTime<Utc> = row.try_get("updated_at").map_err(sqlx_err)?;
+    Ok(OrgConsentPolicy {
+        id: id_s.parse().map_err(invalid_id)?,
+        organization_id: organization_id_s.parse().map_err(invalid_id)?,
+        realm_id: realm_id_s.parse().map_err(invalid_id)?,
+        client_id: client_id_s.parse().map_err(invalid_id)?,
+        mode: org_consent_mode_from_str(&mode_s)?,
+        pre_approved_scopes: serde_json::from_value(pre_approved_scopes).map_err(json_err)?,
+        blocked_scopes: serde_json::from_value(blocked_scopes).map_err(json_err)?,
+        require_admin_approval,
+        created_by: created_by_s.parse().map_err(invalid_id)?,
+        created_at,
+        updated_at,
+    })
+}
+
+fn org_consent_mode_to_str(m: geonosis_core::OrgConsentMode) -> &'static str {
+    use geonosis_core::OrgConsentMode::*;
+    match m {
+        UserDecides => "user-decides",
+        OrgPreApproved => "org-pre-approved",
+        OrgManaged => "org-managed",
+    }
+}
+
+fn org_consent_mode_from_str(
+    s: &str,
+) -> Result<geonosis_core::OrgConsentMode, StorageError> {
+    use geonosis_core::OrgConsentMode::*;
+    match s {
+        "user-decides" => Ok(UserDecides),
+        "org-pre-approved" => Ok(OrgPreApproved),
+        "org-managed" => Ok(OrgManaged),
+        other => Err(StorageError::Invalid(format!(
+            "org consent mode: {other}"
+        ))),
+    }
+}
+
+fn org_idp_binding_from_row(
+    row: &sqlx::postgres::PgRow,
+) -> Result<OrgIdpBinding, StorageError> {
+    let organization_id_s: String = row.try_get("organization_id").map_err(sqlx_err)?;
+    let realm_id_s: String = row.try_get("realm_id").map_err(sqlx_err)?;
+    let idp_alias: String = row.try_get("idp_alias").map_err(sqlx_err)?;
+    let priority: i32 = row.try_get("priority").map_err(sqlx_err)?;
+    let enabled: bool = row.try_get("enabled").map_err(sqlx_err)?;
+    Ok(OrgIdpBinding {
+        organization_id: organization_id_s.parse().map_err(invalid_id)?,
+        realm_id: realm_id_s.parse().map_err(invalid_id)?,
+        idp_alias,
+        priority,
+        enabled,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2315,5 +3666,49 @@ mod tests {
         let err = "not-a-ulid".parse::<RealmId>().unwrap_err();
         let se = invalid_id(err);
         assert!(matches!(se, StorageError::Invalid(_)));
+    }
+
+    #[test]
+    fn membership_state_roundtrips() {
+        use geonosis_core::MembershipState::*;
+        for s in [Active, Invited, Suspended] {
+            let txt = membership_state_to_str(s);
+            assert_eq!(membership_state_from_str(txt).unwrap(), s);
+        }
+        assert!(membership_state_from_str("bogus").is_err());
+    }
+
+    #[test]
+    fn org_consent_mode_roundtrips() {
+        use geonosis_core::OrgConsentMode::*;
+        for m in [UserDecides, OrgPreApproved, OrgManaged] {
+            let txt = org_consent_mode_to_str(m);
+            assert_eq!(org_consent_mode_from_str(txt).unwrap(), m);
+        }
+        assert!(org_consent_mode_from_str("bogus").is_err());
+    }
+
+    #[test]
+    fn agent_auth_method_roundtrips() {
+        use geonosis_core::AgentAuthMethod::*;
+        for m in [PrivateKeyJwt, DpopBoundKey, TokenExchangeOnly] {
+            let txt = agent_auth_method_to_str(m);
+            assert_eq!(agent_auth_method_from_str(txt).unwrap(), m);
+        }
+        assert!(agent_auth_method_from_str("bogus").is_err());
+    }
+
+    #[test]
+    fn agent_kind_roundtrips_kebab_and_custom() {
+        use geonosis_core::AgentKind::*;
+        // Built-in kebab variants.
+        for k in [Assistant, Scraper, Webhook, Batch] {
+            let txt = agent_kind_to_str(&k);
+            assert_eq!(agent_kind_from_str(&txt), k);
+        }
+        // Custom variant flows through as an opaque tag.
+        let custom = Custom("inventory-bot".into());
+        let txt = agent_kind_to_str(&custom);
+        assert_eq!(agent_kind_from_str(&txt), custom);
     }
 }

@@ -43,17 +43,30 @@ pub fn router(state: AppState) -> Router {
         // OIDC authorize
         .route(
             "/realms/:slug/protocol/openid-connect/auth",
-            get(handlers::authorize_get).post(handlers::authorize_post),
+            get(handlers::authorize_get)
+                .post(handlers::authorize_post)
+                .layer(axum::middleware::from_fn_with_state(
+                    state.clone(),
+                    crate::rate_limit::limit_per_realm,
+                )),
         )
         // OIDC token + grants
         .route(
             "/realms/:slug/protocol/openid-connect/token",
-            post(handlers::token),
+            post(handlers::token).layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                crate::rate_limit::limit_per_realm,
+            )),
         )
         // OIDC userinfo
         .route(
             "/realms/:slug/protocol/openid-connect/userinfo",
-            get(handlers::userinfo_get).post(handlers::userinfo_post),
+            get(handlers::userinfo_get)
+                .post(handlers::userinfo_post)
+                .layer(axum::middleware::from_fn_with_state(
+                    state.clone(),
+                    crate::rate_limit::limit_per_realm,
+                )),
         )
         // OIDC logout
         .route(
@@ -73,7 +86,10 @@ pub fn router(state: AppState) -> Router {
         // RFC 9126 — pushed authorization request
         .route(
             "/realms/:slug/protocol/openid-connect/par",
-            post(handlers::par),
+            post(handlers::par).layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                crate::rate_limit::limit_per_realm,
+            )),
         )
         // RFC 8628 — device authorization
         .route(
@@ -184,6 +200,7 @@ mod tests {
             broker: Arc::new(crate::broker::BrokerRuntime::new()),
             ldap: Arc::new(crate::ldap::LdapRuntime::new()),
             metrics: Arc::new(crate::metrics::MetricsState::new()),
+            rate_limiter: Arc::new(crate::rate_limit::PerRealmRateLimiter::default_v0_1()),
         }
     }
 

@@ -12,9 +12,15 @@
 mod key;
 mod local;
 mod noop;
+#[cfg(feature = "redis")]
+pub mod redis;
+mod single_flight;
 mod traits;
 
 pub use key::{CacheClass, CacheKey, CacheKeyPrefix};
 pub use local::{LocalCache, LocalCacheConfig};
 pub use noop::NoopCache;
+#[cfg(feature = "redis")]
+pub use redis::{RedisCache, RedisCacheConfig};
+pub use single_flight::{InflightRegistry, RequestCoalescer};
 pub use traits::{Cache, CacheError, Cached};

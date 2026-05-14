@@ -1,12 +1,11 @@
 use std::sync::Arc;
 
 use clap::Parser;
-use tracing_subscriber::EnvFilter;
 
 use geonosis_audit::Publisher;
 use geonosis_cache::LocalCache;
 use geonosis_crypto::{MasterKey, SoftwareKms};
-use geonosis_server::{router, AppState};
+use geonosis_server::{router, telemetry, AppState};
 use geonosis_spi_host::ProviderRegistry;
 use geonosis_storage::{MemoryStorage, PostgresStorage, Storage};
 
@@ -36,16 +35,25 @@ struct Args {
     /// recommended deploy step.
     #[arg(long, env = "GEONOSIS_MIGRATE_ON_BOOT", default_value_t = false)]
     migrate_on_boot: bool,
+
+    /// Comma-separated webhook URLs to forward audit events to. Each
+    /// URL gets its own `WebhookSink` with the v0.1 default retry
+    /// profile (4 attempts, 250ms → 8s exponential backoff,
+    /// 5s per-attempt timeout). Empty disables webhook forwarding.
+    #[arg(long, env = "GEONOSIS_AUDIT_WEBHOOK_URLS", default_value = "")]
+    audit_webhook_urls: String,
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args = Args::parse();
 
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
-        .json()
-        .init();
+    let otlp_active = telemetry::init().map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+        e.into()
+    })?;
+    if otlp_active {
+        tracing::info!("OTLP tracing exporter active");
+    }
 
     let master = match args.master_key_hex {
         Some(h) => {
@@ -58,30 +66,58 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     };
 
-    let storage: Arc<dyn Storage> = if let Some(url) = &args.database_url {
-        tracing::info!(database_url = %redact_url(url), "connecting to Postgres backend");
-        let pool = geonosis_storage::postgres::build_pool(url).await?;
-        if args.migrate_on_boot {
-            tracing::info!("running pending migrations under advisory lock");
-            geonosis_migrate::run_with_leader_lock(&pool).await?;
-        }
-        // Refuse to start if the live schema is outside our window.
-        geonosis_migrate::enforce_schema_compat(&pool, geonosis_migrate::V0_1_COMPAT).await?;
-        Arc::new(PostgresStorage::new(pool))
-    } else {
-        tracing::warn!("GEONOSIS_DATABASE_URL unset — using in-memory storage (DEV ONLY)");
-        Arc::new(MemoryStorage::new())
-    };
+    let (storage, retention_pool): (Arc<dyn Storage>, Option<sqlx::postgres::PgPool>) =
+        if let Some(url) = &args.database_url {
+            tracing::info!(database_url = %redact_url(url), "connecting to Postgres backend");
+            let pool = geonosis_storage::postgres::build_pool(url).await?;
+            if args.migrate_on_boot {
+                tracing::info!("running pending migrations under advisory lock");
+                geonosis_migrate::run_with_leader_lock(&pool).await?;
+            }
+            // Refuse to start if the live schema is outside our window.
+            geonosis_migrate::enforce_schema_compat(&pool, geonosis_migrate::V0_1_COMPAT)
+                .await?;
+            (
+                Arc::new(PostgresStorage::new(pool.clone())) as Arc<dyn Storage>,
+                Some(pool),
+            )
+        } else {
+            tracing::warn!("GEONOSIS_DATABASE_URL unset — using in-memory storage (DEV ONLY)");
+            (
+                Arc::new(MemoryStorage::new()) as Arc<dyn Storage>,
+                None,
+            )
+        };
     // Derive deployment-wide hash keys from the master key. Per-realm
     // derivation lands in v0.1.x.
     let refresh_hash_key = derive_subkey(&master, b"geonosis-refresh-hash-v1");
     let client_secret_hash_key = derive_subkey(&master, b"geonosis-client-secret-hash-v1");
+
+    // Audit sinks: webhook URLs from env, plus the postgres sink when
+    // a database is configured. Order matters only for log clarity;
+    // the publisher fans out concurrently.
+    let mut audit_sinks: Vec<std::sync::Arc<dyn geonosis_audit::AuditSink>> = Vec::new();
+    for raw in args.audit_webhook_urls.split(',').filter(|s| !s.trim().is_empty()) {
+        let url = raw.trim().to_string();
+        match geonosis_audit::webhook::WebhookSink::new(
+            geonosis_audit::webhook::WebhookSinkConfig::new(url.clone()),
+        ) {
+            Ok(sink) => {
+                tracing::info!(url = %url, "wiring audit webhook sink");
+                audit_sinks.push(std::sync::Arc::new(sink));
+            }
+            Err(e) => {
+                tracing::error!(url = %url, error = %e, "failed to build webhook sink; skipping");
+            }
+        }
+    }
+
     let state = AppState {
         storage,
         cache: Arc::new(LocalCache::default_small()),
         kms: Arc::new(SoftwareKms::new(master)),
         providers: Arc::new(ProviderRegistry::new()),
-        audit: Arc::new(Publisher::new(vec![])),
+        audit: Arc::new(Publisher::new(audit_sinks)),
         public_base_url: url::Url::parse(&args.public_url)?,
         refresh_hash_key,
         client_secret_hash_key,
@@ -90,11 +126,44 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         broker: Arc::new(geonosis_server::broker::BrokerRuntime::new()),
         ldap: Arc::new(geonosis_server::ldap::LdapRuntime::new()),
         metrics: Arc::new(geonosis_server::metrics::MetricsState::new()),
+        rate_limiter: Arc::new(
+            geonosis_server::rate_limit::PerRealmRateLimiter::default_v0_1(),
+        ),
     };
+
+    // Spawn the audit-retention runner when Postgres is the backend.
+    // The closure captures the storage Arc so the runner doesn't need
+    // to know about the trait shape; v0.2 promotes this to a generic
+    // hook on the audit Publisher.
+    if let Some(pool) = retention_pool {
+        let storage_for_retention = state.storage.clone();
+        let list_retention: geonosis_audit::retention::ListRetentionFn =
+            std::sync::Arc::new(move || {
+                let storage = storage_for_retention.clone();
+                Box::pin(async move {
+                    let realms = storage
+                        .list_realms()
+                        .await
+                        .map_err(|e| format!("list_realms: {e}"))?;
+                    Ok(realms
+                        .into_iter()
+                        .map(|r| (r.id.to_string(), r.events.retention_days))
+                        .collect())
+                })
+            });
+        geonosis_audit::retention::spawn_runner(
+            pool,
+            list_retention,
+            geonosis_audit::retention::DEFAULT_RUN_INTERVAL,
+        );
+        tracing::info!("audit retention runner spawned (hourly)");
+    }
 
     let listener = tokio::net::TcpListener::bind(&args.listen).await?;
     tracing::info!(listen = %args.listen, "geonosis-server starting");
-    axum::serve(listener, router(state)).await?;
+    let serve_result = axum::serve(listener, router(state)).await;
+    telemetry::shutdown();
+    serve_result?;
     Ok(())
 }
 

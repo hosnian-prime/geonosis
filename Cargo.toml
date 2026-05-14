@@ -59,6 +59,12 @@ anyhow = "1"
 # Logging / tracing
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "fmt"] }
+# OpenTelemetry — feature-gated in geonosis-server so the CLI / tests
+# don't pull the OTLP stack. v0.1 ships OTLP-gRPC; HTTP follows.
+opentelemetry = "0.27"
+opentelemetry_sdk = { version = "0.27", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.27", features = ["grpc-tonic", "tonic", "trace", "metrics"] }
+tracing-opentelemetry = "0.28"
 
 # Time
 chrono = { version = "0.4", features = ["serde"] }
@@ -113,6 +119,9 @@ wit-bindgen = "0.36"
 
 # LDAP
 ldap3 = { version = "0.11", default-features = false, features = ["tls-rustls"] }
+
+# Redis — feature-gated as v0.1 default cache backend per doc 09.
+redis = { version = "0.27", default-features = false, features = ["tokio-rustls-comp", "aio", "connection-manager"] }
 
 # Outbound HTTP — OIDC discovery, JWKS, broker token exchange, vendor
 # userinfo composition, and the SPI host's WASM `http-client` import.
