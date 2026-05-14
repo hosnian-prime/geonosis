@@ -1,24 +1,36 @@
 //! `geoctl` — operator CLI for Geonosis.
 //!
-//! v0.1 surface (per `docs/08-admin-ui.md` + `docs/21-dx-package.md`):
-//! - `realm create / list / export / import`
-//! - `client create / list`
-//! - `user create / list`
-//! - `keys rotate / list`
-//! - `flows export / import / validate`
-//! - `spi install` (signed manifests)
+//! v0.1 surface mirrors the admin REST API in `docs/08-admin-ui.md`
+//! plus a handful of database-admin commands (migrate, spi install,
+//! federation sync) that run directly against Postgres because they
+//! carry artefacts the HTTP path can't shape well (megabyte-scale
+//! WASM blobs, leader-locked DDL, LDAP credentials).
 //!
-//! Most subcommands talk to the admin REST API of a running server. The
-//! `flows validate` subcommand runs offline against the flow DSL crate.
+//! The split lives in `commands/mod.rs`: entity-management commands
+//! go through [`AdminClient`] (one bearer token, one error mapper,
+//! one user-agent), database-admin commands take `--database-url`.
+
+mod commands;
+mod http;
 
 use clap::{Parser, Subcommand};
+
+use crate::http::AdminClient;
 
 #[derive(Debug, Parser)]
 #[command(name = "geoctl", version, about = "Geonosis operator CLI")]
 struct Cli {
     /// Base URL of the Geonosis admin API. Inferred from `GEONOSIS_URL`.
+    /// Required for any command that talks to the admin REST API.
     #[arg(long, env = "GEONOSIS_URL", global = true)]
     server: Option<String>,
+
+    /// Bearer token for the admin API. Inferred from
+    /// `GEONOSIS_ADMIN_TOKEN`. v0.1 bootstrap reads it directly; the
+    /// OAuth client-credentials login flow lands with `geoctl login`
+    /// in v0.1.x.
+    #[arg(long, env = "GEONOSIS_ADMIN_TOKEN", global = true)]
+    token: Option<String>,
 
     #[command(subcommand)]
     cmd: Cmd,
@@ -26,157 +38,71 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Cmd {
-    /// Realm operations.
-    Realm {
+    /// Realm CRUD.
+    Realms {
         #[command(subcommand)]
-        cmd: RealmCmd,
+        cmd: commands::realms::RealmCmd,
     },
-    /// Flow operations.
+    /// User CRUD + admin credential ops.
+    Users {
+        #[command(subcommand)]
+        cmd: commands::users::UserCmd,
+    },
+    /// OIDC / SAML client CRUD.
+    Clients {
+        #[command(subcommand)]
+        cmd: commands::clients::ClientCmd,
+    },
+    /// Organization CRUD + sub-resources (domains, members,
+    /// invitations, roles, IdP bindings).
+    Orgs {
+        #[command(subcommand)]
+        cmd: commands::orgs::OrgCmd,
+    },
+    /// AI / M2M agent CRUD + revoke.
+    Agents {
+        #[command(subcommand)]
+        cmd: commands::agents::AgentCmd,
+    },
+    /// Realm signing-key inspection.
+    Keys {
+        #[command(subcommand)]
+        cmd: commands::keys::KeyCmd,
+    },
+    /// Audit event log queries.
+    Events {
+        #[command(subcommand)]
+        cmd: commands::events::EventCmd,
+    },
+    /// Flow DSL validate / export / import.
     Flows {
         #[command(subcommand)]
-        cmd: FlowsCmd,
+        cmd: commands::flows::FlowsCmd,
     },
-    /// SPI plugin operations.
+    /// SPI plugin operations (direct DB).
     Spi {
         /// Postgres connection URL. Inferred from `GEONOSIS_DATABASE_URL`.
         #[arg(long, env = "GEONOSIS_DATABASE_URL")]
         database_url: String,
         #[command(subcommand)]
-        cmd: SpiCmd,
+        cmd: commands::spi::SpiCmd,
     },
-    /// Database migration operations.
+    /// Database migration operations (direct DB, leader-locked).
     Migrate {
-        /// Postgres connection URL. Inferred from `GEONOSIS_DATABASE_URL`.
         #[arg(long, env = "GEONOSIS_DATABASE_URL")]
         database_url: String,
         #[command(subcommand)]
-        cmd: MigrateCmd,
+        cmd: commands::migrate::MigrateCmd,
     },
-    /// LDAP / AD federation operations.
+    /// LDAP / AD federation operations (direct DB).
     Federation {
-        /// Postgres connection URL. Inferred from `GEONOSIS_DATABASE_URL`.
         #[arg(long, env = "GEONOSIS_DATABASE_URL")]
         database_url: String,
         #[command(subcommand)]
-        cmd: FederationCmd,
+        cmd: commands::federation::FederationCmd,
     },
     /// Print the version.
     Version,
-}
-
-#[derive(Debug, Subcommand)]
-enum FederationCmd {
-    /// Run a synchronization pass against a federated LDAP source.
-    Sync {
-        /// Realm slug.
-        #[arg(long)]
-        realm: String,
-        /// Source alias.
-        #[arg(long)]
-        source: String,
-        /// Walk the whole tree (default). When `--since` is given, an
-        /// incremental sync runs starting from that RFC 3339 timestamp.
-        #[arg(long, conflicts_with = "since")]
-        full: bool,
-        /// Incremental sync starting from this RFC 3339 timestamp.
-        #[arg(long)]
-        since: Option<String>,
-    },
-    /// List configured LDAP sources for a realm.
-    List {
-        #[arg(long)]
-        realm: String,
-    },
-}
-
-#[derive(Debug, Subcommand)]
-enum RealmCmd {
-    /// Create a realm.
-    Create { slug: String },
-    /// List realms.
-    List,
-    /// Export a realm to JSON on stdout.
-    Export { slug: String },
-}
-
-#[derive(Debug, Subcommand)]
-enum FlowsCmd {
-    /// Validate a flow JSON file offline.
-    Validate { path: String },
-    /// Download the flow under `--realm` / `--alias` from the admin
-    /// API and write it to stdout (or `--out` if given). The server
-    /// returns the canonical `FlowDefinition` JSON so a round-trip
-    /// through `import` is byte-stable.
-    Export {
-        /// Realm slug.
-        #[arg(long)]
-        realm: String,
-        /// Flow alias (e.g. `browser`, `direct-grant`).
-        #[arg(long)]
-        alias: String,
-        /// Output path; defaults to stdout.
-        #[arg(long)]
-        out: Option<String>,
-    },
-    /// Upload a flow JSON file to the admin API. The file is
-    /// validated offline first so a malformed flow never reaches the
-    /// server (the admin endpoint validates again as defense in depth).
-    Import {
-        /// Realm slug.
-        #[arg(long)]
-        realm: String,
-        /// Flow alias to install or replace.
-        #[arg(long)]
-        alias: String,
-        /// Path to a `FlowDefinition` JSON file.
-        #[arg(long)]
-        file: String,
-    },
-}
-
-#[derive(Debug, Subcommand)]
-enum SpiCmd {
-    /// Install a WASM plugin under a realm. Uploads bytes + creates the
-    /// SPI binding row (one transaction-ish flow; admins may roll the
-    /// upload back by deleting the binding).
-    Install {
-        /// Realm slug.
-        #[arg(long)]
-        realm: String,
-        /// Stable WIT interface name, e.g. `geonosis:mapper@0.1.0`.
-        #[arg(long)]
-        interface: String,
-        /// Operator-chosen alias; becomes `wasm:{alias}:{interface-short}`.
-        #[arg(long)]
-        alias: String,
-        /// Path to the compiled `.wasm` component.
-        #[arg(long)]
-        module: String,
-        /// Provider priority. Lower binds higher in the chain.
-        #[arg(long, default_value_t = 500)]
-        priority: i32,
-        /// Force-disables a built-in (URN) while this binding is enabled.
-        #[arg(long)]
-        replaces: Option<String>,
-        /// JSON-encoded provider config.
-        #[arg(long, default_value = "{}")]
-        config: String,
-    },
-    /// List installed bindings for an interface.
-    List {
-        #[arg(long)]
-        realm: String,
-        #[arg(long)]
-        interface: String,
-    },
-}
-
-#[derive(Debug, Subcommand)]
-enum MigrateCmd {
-    /// Apply all pending migrations (leader-locked).
-    Up,
-    /// Print the embedded migration set + applied versions.
-    Status,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -194,274 +120,60 @@ fn main() -> anyhow::Result<()> {
             println!("{}", env!("CARGO_PKG_VERSION"));
             Ok(())
         }
-        Cmd::Flows { cmd } => match cmd {
-            FlowsCmd::Validate { path } => validate_flow(&path),
-            FlowsCmd::Export { realm, alias, out } => {
-                let server = cli.server.clone().ok_or_else(|| {
-                    anyhow::anyhow!("flows export requires --server or GEONOSIS_URL")
-                })?;
-                rt.block_on(export_flow(&server, &realm, &alias, out.as_deref()))
-            }
-            FlowsCmd::Import { realm, alias, file } => {
-                let server = cli.server.clone().ok_or_else(|| {
-                    anyhow::anyhow!("flows import requires --server or GEONOSIS_URL")
-                })?;
-                rt.block_on(import_flow(&server, &realm, &alias, &file))
-            }
-        },
-        Cmd::Realm { cmd } => match cmd {
-            RealmCmd::Create { slug } => anyhow::bail!(
-                "realm create requires admin API connection; pass --server (got slug={slug})"
-            ),
-            RealmCmd::List => {
-                anyhow::bail!("realm list requires admin API connection; pass --server")
-            }
-            RealmCmd::Export { slug } => anyhow::bail!(
-                "realm export requires admin API connection; pass --server (got slug={slug})"
-            ),
-        },
-        Cmd::Spi { database_url, cmd } => rt.block_on(run_spi(&database_url, cmd)),
-        Cmd::Migrate { database_url, cmd } => rt.block_on(run_migrate(&database_url, cmd)),
-        Cmd::Federation { database_url, cmd } => {
-            rt.block_on(run_federation(&database_url, cmd))
+        Cmd::Realms { cmd } => {
+            let client = admin_client(cli.server.as_deref(), cli.token.clone())?;
+            rt.block_on(commands::realms::run(&client, cmd))
         }
-    }
-}
-
-async fn run_federation(database_url: &str, cmd: FederationCmd) -> anyhow::Result<()> {
-    use geonosis_storage::Storage;
-
-    let pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(4)
-        .connect(database_url)
-        .await?;
-    let storage = geonosis_storage::PostgresStorage::new(pool);
-    match cmd {
-        FederationCmd::List { realm } => {
-            let r = storage.get_realm_by_slug(&realm).await?;
-            let sources = storage.list_ldap_sources(r.id).await?;
-            for s in sources {
-                println!(
-                    "{:<24} pri={:<4} {} {}",
-                    s.alias,
-                    s.priority,
-                    if s.enabled { "enabled" } else { "disabled" },
-                    s.urls.join(",")
-                );
-            }
+        Cmd::Users { cmd } => {
+            let client = admin_client(cli.server.as_deref(), cli.token.clone())?;
+            rt.block_on(commands::users::run(&client, cmd))
         }
-        FederationCmd::Sync {
-            realm,
-            source,
-            full: _,
-            since,
-        } => {
-            let r = storage.get_realm_by_slug(&realm).await?;
-            let cfg = storage.get_ldap_source(r.id, &source).await?;
-            let pool = geonosis_federation_ldap::LdapPool::new(cfg);
-            let report = if let Some(s) = since {
-                let dt = chrono::DateTime::parse_from_rfc3339(&s)?
-                    .with_timezone(&chrono::Utc);
-                let (rep, outcomes) =
-                    geonosis_federation_ldap::run_incremental_sync(&pool, r.id, dt).await?;
-                println!("incremental sync: {} entries", outcomes.len());
-                rep
+        Cmd::Clients { cmd } => {
+            let client = admin_client(cli.server.as_deref(), cli.token.clone())?;
+            rt.block_on(commands::clients::run(&client, cmd))
+        }
+        Cmd::Orgs { cmd } => {
+            let client = admin_client(cli.server.as_deref(), cli.token.clone())?;
+            rt.block_on(commands::orgs::run(&client, cmd))
+        }
+        Cmd::Agents { cmd } => {
+            let client = admin_client(cli.server.as_deref(), cli.token.clone())?;
+            rt.block_on(commands::agents::run(&client, cmd))
+        }
+        Cmd::Keys { cmd } => {
+            let client = admin_client(cli.server.as_deref(), cli.token.clone())?;
+            rt.block_on(commands::keys::run(&client, cmd))
+        }
+        Cmd::Events { cmd } => {
+            let client = admin_client(cli.server.as_deref(), cli.token.clone())?;
+            rt.block_on(commands::events::run(&client, cmd))
+        }
+        Cmd::Flows { cmd } => {
+            // `validate` runs offline; the others need the admin API.
+            // Build the client lazily inside the command module via the
+            // shared helper: a malformed `--server` should still let
+            // `flows validate` work.
+            if matches!(cmd, commands::flows::FlowsCmd::Validate { .. }) {
+                let dummy = AdminClient::new("http://localhost/", None)?;
+                rt.block_on(commands::flows::run(&dummy, cmd))
             } else {
-                let (rep, outcomes) =
-                    geonosis_federation_ldap::run_full_sync(&pool, r.id).await?;
-                println!("full sync: {} entries", outcomes.len());
-                rep
-            };
-            println!(
-                "started_at={}  finished_at={}",
-                report.started_at.to_rfc3339(),
-                report.finished_at.to_rfc3339()
-            );
-        }
-    }
-    Ok(())
-}
-
-async fn run_spi(database_url: &str, cmd: SpiCmd) -> anyhow::Result<()> {
-    use geonosis_core::id::{SpiBindingId, WasmModuleId};
-    use geonosis_storage::{SpiBindingRow, Storage, WasmModule};
-
-    let pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(4)
-        .connect(database_url)
-        .await?;
-    let storage = geonosis_storage::PostgresStorage::new(pool);
-    match cmd {
-        SpiCmd::Install {
-            realm,
-            interface,
-            alias,
-            module,
-            priority,
-            replaces,
-            config,
-        } => {
-            let realm_row = storage.get_realm_by_slug(&realm).await?;
-            let bytecode = std::fs::read(&module)?;
-            let sha = {
-                use sha2::Digest;
-                let mut h = sha2::Sha256::new();
-                h.update(&bytecode);
-                hex::encode(h.finalize())
-            };
-            let size = bytecode.len() as i64;
-            let m = WasmModule {
-                id: WasmModuleId::new(),
-                realm_id: realm_row.id,
-                alias: alias.clone(),
-                interface: interface.clone(),
-                sha256_hex: sha.clone(),
-                size_bytes: size,
-                bytecode,
-                uploaded_by: None,
-                created_at: chrono::Utc::now(),
-            };
-            storage.upload_wasm_module(m).await?;
-            let cfg_json: serde_json::Value = serde_json::from_str(&config)?;
-            let now = chrono::Utc::now();
-            let urn_short = interface
-                .strip_prefix("geonosis:")
-                .and_then(|s| s.split_once('@').map(|(p, _)| p))
-                .unwrap_or(&interface);
-            let urn = format!("wasm:{alias}:{urn_short}");
-            let binding = SpiBindingRow {
-                id: SpiBindingId::new(),
-                realm_id: realm_row.id,
-                interface: interface.clone(),
-                provider_urn: urn.clone(),
-                priority,
-                enabled: true,
-                config: cfg_json,
-                replaces,
-                created_at: now,
-                updated_at: now,
-            };
-            storage.create_spi_binding(binding).await?;
-            println!("installed urn={urn} sha256={sha} bytes={size}");
-        }
-        SpiCmd::List { realm, interface } => {
-            let r = storage.get_realm_by_slug(&realm).await?;
-            let rows = storage.list_spi_bindings(r.id, &interface).await?;
-            for row in rows {
-                println!(
-                    "{:<5} {:<60} {} {}",
-                    row.priority,
-                    row.provider_urn,
-                    if row.enabled { "enabled" } else { "disabled" },
-                    row.replaces.as_deref().unwrap_or("-")
-                );
+                let client = admin_client(cli.server.as_deref(), cli.token.clone())?;
+                rt.block_on(commands::flows::run(&client, cmd))
             }
         }
-    }
-    Ok(())
-}
-
-async fn run_migrate(database_url: &str, cmd: MigrateCmd) -> anyhow::Result<()> {
-    let pool = sqlx::postgres::PgPoolOptions::new()
-        .max_connections(4)
-        .connect(database_url)
-        .await?;
-    match cmd {
-        MigrateCmd::Up => {
-            geonosis_migrate::run_with_leader_lock(&pool).await?;
-            geonosis_migrate::enforce_schema_compat(&pool, geonosis_migrate::V0_1_COMPAT).await?;
-            println!("migrations applied");
+        Cmd::Spi { database_url, cmd } => rt.block_on(commands::spi::run(&database_url, cmd)),
+        Cmd::Migrate { database_url, cmd } => {
+            rt.block_on(commands::migrate::run(&database_url, cmd))
         }
-        MigrateCmd::Status => {
-            let applied: Vec<(i64,)> =
-                sqlx::query_as("SELECT version FROM _sqlx_migrations ORDER BY version")
-                    .fetch_all(&pool)
-                    .await
-                    .unwrap_or_default();
-            let applied: std::collections::BTreeSet<i64> =
-                applied.into_iter().map(|(v,)| v).collect();
-            println!("{:<25} {:<10}", "migration", "status");
-            for m in geonosis_migrate::MIGRATIONS.iter() {
-                let status = if applied.contains(&m.version) { "applied" } else { "pending" };
-                println!("{:<25} {:<10}", m.description, status);
-            }
+        Cmd::Federation { database_url, cmd } => {
+            rt.block_on(commands::federation::run(&database_url, cmd))
         }
     }
-    Ok(())
 }
 
-fn validate_flow(path: &str) -> anyhow::Result<()> {
-    let bytes = std::fs::read(path)?;
-    let def: geonosis_flow::FlowDefinition = serde_json::from_slice(&bytes)?;
-    geonosis_flow::compile(def)?;
-    println!("flow OK");
-    Ok(())
-}
-
-async fn export_flow(
-    server: &str,
-    realm: &str,
-    alias: &str,
-    out: Option<&str>,
-) -> anyhow::Result<()> {
-    let url = format!(
-        "{}/admin/v1/realms/{}/flows/{}",
-        server.trim_end_matches('/'),
-        realm,
-        alias
-    );
-    let resp = reqwest::Client::new().get(&url).send().await?;
-    let status = resp.status();
-    let body = resp.bytes().await?;
-    if !status.is_success() {
-        anyhow::bail!(
-            "export failed ({}): {}",
-            status,
-            String::from_utf8_lossy(&body)
-        );
-    }
-    // Round-trip through `FlowDefinition` so we surface JSON errors
-    // here instead of writing garbage to disk.
-    let def: geonosis_flow::FlowDefinition = serde_json::from_slice(&body)?;
-    let pretty = serde_json::to_vec_pretty(&def)?;
-    match out {
-        None => {
-            use std::io::Write as _;
-            std::io::stdout().write_all(&pretty)?;
-            std::io::stdout().write_all(b"\n")?;
-        }
-        Some(path) => std::fs::write(path, pretty)?,
-    }
-    Ok(())
-}
-
-async fn import_flow(
-    server: &str,
-    realm: &str,
-    alias: &str,
-    file: &str,
-) -> anyhow::Result<()> {
-    let bytes = std::fs::read(file)?;
-    // Validate locally first; bad input never hits the server.
-    let def: geonosis_flow::FlowDefinition = serde_json::from_slice(&bytes)?;
-    geonosis_flow::compile(def.clone())?;
-    let url = format!(
-        "{}/admin/v1/realms/{}/flows/{}",
-        server.trim_end_matches('/'),
-        realm,
-        alias
-    );
-    let resp = reqwest::Client::new()
-        .put(&url)
-        .header(reqwest::header::CONTENT_TYPE, "application/json")
-        .body(serde_json::to_vec(&def)?)
-        .send()
-        .await?;
-    let status = resp.status();
-    let body = resp.text().await.unwrap_or_default();
-    if !status.is_success() {
-        anyhow::bail!("import failed ({}): {}", status, body);
-    }
-    println!("flow {alias} imported into realm {realm}");
-    Ok(())
+fn admin_client(server: Option<&str>, token: Option<String>) -> anyhow::Result<AdminClient> {
+    let server = server.ok_or_else(|| {
+        anyhow::anyhow!("admin API URL required; pass --server or set GEONOSIS_URL")
+    })?;
+    AdminClient::new(server, token)
 }
