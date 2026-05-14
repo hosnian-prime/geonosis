@@ -13,6 +13,7 @@ workspace = true
 [features]
 default = []
 redis = ["dep:redis"]
+postgres-listen = ["dep:sqlx", "dep:futures-util"]
 
 [dependencies]
 geonosis-core = { path = "../geonosis-core" }
@@ -26,6 +27,8 @@ tokio.workspace = true
 moka.workspace = true
 parking_lot.workspace = true
 redis = { workspace = true, optional = true }
+sqlx = { workspace = true, optional = true }
+futures-util = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio.workspace = true
