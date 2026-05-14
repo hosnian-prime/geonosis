@@ -18,6 +18,7 @@ pub mod handlers;
 pub mod handlers_v1;
 pub mod html;
 pub mod leptos_ui;
+pub mod org_flow;
 pub mod state;
 
 use std::sync::Arc;
