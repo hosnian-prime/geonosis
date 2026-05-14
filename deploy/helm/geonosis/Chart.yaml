@@ -1,0 +1,19 @@
+apiVersion: v2
+name: geonosis
+description: |
+  Geonosis identity platform server — OIDC + OAuth 2.1 + SAML IdP.
+  Stateless deployment behind a horizontal autoscaler, backed by
+  managed Postgres. See docs/11-deployment-k8s.md for the
+  reference topology.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">=1.27.0"
+home: https://github.com/hosnian-prime/geonosis
+sources:
+  - https://github.com/hosnian-prime/geonosis
+keywords:
+  - iam
+  - oidc
+  - saml
+  - identity
