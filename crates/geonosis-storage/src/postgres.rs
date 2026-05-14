@@ -1509,6 +1509,14 @@ impl Storage for PostgresStorage {
     // default per doc 01 §Runtime; these stubs keep the trait surface
     // intact so the workspace builds against both backends.
 
+    async fn list_users(
+        &self,
+        _realm: RealmId,
+        _limit: usize,
+    ) -> Result<Vec<User>, StorageError> {
+        Err(pg_pending("list_users"))
+    }
+
     async fn create_role(&self, _role: Role) -> Result<(), StorageError> {
         Err(pg_pending("create_role"))
     }

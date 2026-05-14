@@ -36,6 +36,15 @@ pub trait Storage: Send + Sync {
     async fn get_user_by_email(&self, realm: RealmId, email: &str) -> Result<User, StorageError>;
     async fn update_user(&self, user: User) -> Result<(), StorageError>;
     async fn delete_user(&self, realm: RealmId, id: UserId) -> Result<(), StorageError>;
+    /// List users in a realm, capped at `limit`. v0.1 returns the
+    /// first `limit` rows in insertion order; pagination lands in
+    /// v0.1.x once an explicit `(offset, limit, sort)` cursor type is
+    /// added to the trait.
+    async fn list_users(
+        &self,
+        realm: RealmId,
+        limit: usize,
+    ) -> Result<Vec<User>, StorageError>;
 
     /// Credentials carry secrets — separate accessor so we can audit access.
     async fn store_password_hash(
