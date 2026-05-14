@@ -1,0 +1,49 @@
+// `geonosis:authn@0.1.0` — per-flow authenticator plugin.
+// Dispatch mode: NamedSelect (flow names the provider).
+
+package geonosis:authn@0.1.0;
+
+interface authenticator {
+    use geonosis:types/types@0.1.0.{provider-info, plugin-error};
+
+    /// Outcome the host expects back. `claim-set` carries any
+    /// attributes the authenticator wants to attach to the subject.
+    variant step-output {
+        success(success-payload),
+        challenge(challenge-payload),
+        failure(string),
+        skip,
+    }
+
+    record success-payload {
+        amr: list<string>,
+        attributes: list<u8>,
+    }
+
+    record challenge-payload {
+        template: string,
+        locals: list<u8>,
+    }
+
+    /// Inbound — host serializes the flow context + the user-submitted
+    /// form (if any) as JSON.
+    record step-input {
+        flow-context-json: list<u8>,
+        submitted-form-json: list<u8>,
+    }
+
+    describe: func() -> provider-info;
+
+    process: func(
+        realm: string,
+        input: step-input,
+        config: list<u8>,
+    ) -> result<step-output, plugin-error>;
+}
+
+world authn-provider {
+    import geonosis:host/logging@0.1.0;
+    import geonosis:host/secrets@0.1.0;
+    import geonosis:host/http-client@0.1.0;
+    export authenticator;
+}
