@@ -206,6 +206,7 @@ pub fn router(state: Arc<AdminState>) -> Router {
             delete(orgs::remove_idp_binding),
         )
         // ---- Sessions ----
+        .route("/admin/v1/realms/:slug/sessions", get(sessions::list))
         .route(
             "/admin/v1/realms/:slug/sessions/:session_id",
             delete(sessions::revoke),

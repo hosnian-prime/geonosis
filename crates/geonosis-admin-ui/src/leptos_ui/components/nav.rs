@@ -26,6 +26,7 @@ pub fn SidebarNav(active: &'static str) -> impl IntoView {
             {item("flows", "Flows", "/admin-next/flows".to_string())}
             {item("idps", "Identity providers", "/admin-next/idps".to_string())}
             {item("spi", "SPI plugins", "/admin-next/spi".to_string())}
+            {item("sessions", "Sessions", "/admin-next/sessions".to_string())}
             {item("events", "Audit events", "/admin-next/events".to_string())}
         </nav>
     }

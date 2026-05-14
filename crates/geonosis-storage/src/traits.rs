@@ -526,6 +526,15 @@ pub trait Storage: Send + Sync {
         filter: &AuditEventFilter<'_>,
         limit: usize,
     ) -> Result<Vec<AuditEventRow>, StorageError>;
+
+    /// List sessions for a realm, ordered by `last_seen_at DESC`. Hard
+    /// cap on the limit lives at the call site; the schema's
+    /// `session_realm_user_idx` keeps the query bounded.
+    async fn list_sessions(
+        &self,
+        realm: RealmId,
+        limit: usize,
+    ) -> Result<Vec<Session>, StorageError>;
 }
 
 /// Filter inputs for `list_audit_events`. Every field is optional; an

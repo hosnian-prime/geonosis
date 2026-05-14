@@ -7,4 +7,5 @@ pub mod orgs;
 pub mod realm_detail;
 pub mod realms;
 pub mod roles;
+pub mod sessions;
 pub mod users;
