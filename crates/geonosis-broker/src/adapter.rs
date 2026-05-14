@@ -111,15 +111,12 @@ impl Default for BuiltinAdapters {
 
 impl BuiltinAdapters {
     pub fn get(&self, urn: &str) -> &dyn BrokerAdapter {
-        self.by_urn
-            .get(urn)
-            .map(|b| b.as_ref())
-            .unwrap_or_else(|| {
-                self.by_urn
-                    .get(urn::GENERIC_OIDC)
-                    .expect("generic adapter always registered")
-                    .as_ref()
-            })
+        self.by_urn.get(urn).map(|b| b.as_ref()).unwrap_or_else(|| {
+            self.by_urn
+                .get(urn::GENERIC_OIDC)
+                .expect("generic adapter always registered")
+                .as_ref()
+        })
     }
 
     pub fn list(&self) -> impl Iterator<Item = &'static str> + '_ {
@@ -220,10 +217,7 @@ impl BrokerAdapter for GitHubAdapter {
             .map_err(|e| BrokerError::Transport(e.to_string()))?;
         let primary = emails.iter().find(|e| e.primary && e.verified);
         let mut out: BTreeMap<String, AttributeValue> = BTreeMap::new();
-        out.insert(
-            "sub".into(),
-            AttributeValue::String(user.id.to_string()),
-        );
+        out.insert("sub".into(), AttributeValue::String(user.id.to_string()));
         out.insert(
             "preferred_username".into(),
             AttributeValue::String(user.login.clone()),
@@ -344,7 +338,9 @@ mod tests {
             response_mode: None,
         };
         let params = GoogleAdapter.extra_authorization_params(&cfg);
-        assert!(params.iter().any(|(k, v)| *k == "prompt" && v == "select_account"));
+        assert!(params
+            .iter()
+            .any(|(k, v)| *k == "prompt" && v == "select_account"));
     }
 
     #[test]

@@ -63,15 +63,13 @@ pub async fn run(database_url: &str, cmd: FederationCmd) -> anyhow::Result<()> {
             let cfg = storage.get_ldap_source(r.id, &source).await?;
             let pool = geonosis_federation_ldap::LdapPool::new(cfg);
             let report = if let Some(s) = since {
-                let dt = chrono::DateTime::parse_from_rfc3339(&s)?
-                    .with_timezone(&chrono::Utc);
+                let dt = chrono::DateTime::parse_from_rfc3339(&s)?.with_timezone(&chrono::Utc);
                 let (rep, outcomes) =
                     geonosis_federation_ldap::run_incremental_sync(&pool, r.id, dt).await?;
                 println!("incremental sync: {} entries", outcomes.len());
                 rep
             } else {
-                let (rep, outcomes) =
-                    geonosis_federation_ldap::run_full_sync(&pool, r.id).await?;
+                let (rep, outcomes) = geonosis_federation_ldap::run_full_sync(&pool, r.id).await?;
                 println!("full sync: {} entries", outcomes.len());
                 rep
             };

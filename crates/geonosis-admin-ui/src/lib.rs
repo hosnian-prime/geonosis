@@ -37,22 +37,13 @@ pub fn router(state: AdminState) -> Router {
         // HTML pages.
         .route("/admin", get(handlers::page_realms_html))
         .route("/admin/realms", get(handlers::page_realms_html))
-        .route(
-            "/admin/realms/:slug",
-            get(handlers::page_realm_detail_html),
-        )
+        .route("/admin/realms/:slug", get(handlers::page_realm_detail_html))
         .route(
             "/admin/realms/:slug/clients",
             get(handlers::page_clients_html),
         )
-        .route(
-            "/admin/realms/:slug/users",
-            get(handlers::page_users_html),
-        )
-        .route(
-            "/admin/realms/:slug/flows",
-            get(handlers::page_flows_html),
-        )
+        .route("/admin/realms/:slug/users", get(handlers::page_users_html))
+        .route("/admin/realms/:slug/flows", get(handlers::page_flows_html))
         .route("/admin/realms/:slug/spi", get(handlers::page_spi_html))
         .route("/admin/realms/:slug/idps", get(handlers::page_idps_html))
         .route(
@@ -65,14 +56,10 @@ pub fn router(state: AdminState) -> Router {
         // handlers stay reachable only via the Maud-rendered HTML
         // pages above. /spi list + /flows GET/PUT remain here until
         // handlers_v1 absorbs them.
-        .route(
-            "/admin/v1/realms/:slug/spi",
-            get(handlers::api_spi_list),
-        )
+        .route("/admin/v1/realms/:slug/spi", get(handlers::api_spi_list))
         .route(
             "/admin/v1/realms/:slug/flows/:alias",
-            get(handlers::api_flow_get)
-                .put(handlers::api_flow_put),
+            get(handlers::api_flow_get).put(handlers::api_flow_put),
         )
         .with_state(shared.clone());
 

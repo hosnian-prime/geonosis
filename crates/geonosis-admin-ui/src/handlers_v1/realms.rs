@@ -31,9 +31,7 @@ fn default_enabled() -> bool {
     true
 }
 
-pub async fn list(
-    State(state): State<Arc<AdminState>>,
-) -> Result<Json<Vec<Realm>>, AdminError> {
+pub async fn list(State(state): State<Arc<AdminState>>) -> Result<Json<Vec<Realm>>, AdminError> {
     state
         .storage
         .list_realms()
