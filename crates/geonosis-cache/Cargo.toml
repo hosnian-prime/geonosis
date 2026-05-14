@@ -10,6 +10,10 @@ description = "Cache trait + LocalCache impl (Moka LRU)."
 [lints]
 workspace = true
 
+[features]
+default = []
+redis = ["dep:redis"]
+
 [dependencies]
 geonosis-core = { path = "../geonosis-core" }
 
@@ -21,6 +25,7 @@ tracing.workspace = true
 tokio.workspace = true
 moka.workspace = true
 parking_lot.workspace = true
+redis = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio.workspace = true
