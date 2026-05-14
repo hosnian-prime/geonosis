@@ -21,7 +21,7 @@ path = "src/lib.rs"
 geonosis-core = { path = "../geonosis-core" }
 geonosis-crypto = { path = "../geonosis-crypto" }
 geonosis-storage = { path = "../geonosis-storage", features = ["postgres"] }
-geonosis-cache = { path = "../geonosis-cache" }
+geonosis-cache = { path = "../geonosis-cache", features = ["postgres-listen"] }
 geonosis-flow = { path = "../geonosis-flow" }
 geonosis-protocol-oauth = { path = "../geonosis-protocol-oauth" }
 geonosis-protocol-oidc = { path = "../geonosis-protocol-oidc" }

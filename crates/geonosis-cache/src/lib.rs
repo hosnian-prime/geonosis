@@ -10,6 +10,8 @@
 //! their own modules (`redis`, `komino`) feature-gated separately.
 
 mod key;
+#[cfg(feature = "postgres-listen")]
+pub mod listen;
 mod local;
 mod noop;
 #[cfg(feature = "redis")]

@@ -131,10 +131,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         ),
     };
 
-    // Spawn the audit-retention runner when Postgres is the backend.
-    // The closure captures the storage Arc so the runner doesn't need
-    // to know about the trait shape; v0.2 promotes this to a generic
-    // hook on the audit Publisher.
+    // Spawn the cache invalidation listener + audit-retention runner
+    // when Postgres is the backend. Both attach to the same pool.
+    if let Some(pool) = retention_pool.clone() {
+        let cache: Arc<dyn geonosis_cache::Cache> = state.cache.clone();
+        geonosis_cache::listen::spawn_listener(pool, cache);
+        tracing::info!(
+            channel = geonosis_cache::listen::CHANNEL,
+            "cache invalidation listener spawned",
+        );
+    }
+
     if let Some(pool) = retention_pool {
         let storage_for_retention = state.storage.clone();
         let list_retention: geonosis_audit::retention::ListRetentionFn =
