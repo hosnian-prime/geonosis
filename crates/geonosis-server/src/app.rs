@@ -19,6 +19,7 @@ pub fn router(state: AppState) -> Router {
         .route("/-/started", get(handlers::started))
         .route("/-/ready", get(handlers::ready))
         .route("/-/healthy", get(handlers::healthy))
+        .route("/-/drain", post(handlers::drain))
         // Prometheus exposition endpoint — `docs/13-observability.md`.
         .route(
             "/metrics",
@@ -205,6 +206,7 @@ mod tests {
                 geonosis_spi_host::runtime::SandboxConfig::default(),
             )
             .expect("wasm engine bootstrap"),
+            draining: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 
@@ -374,6 +376,57 @@ mod tests {
             .unwrap();
             assert_eq!(resp.status(), StatusCode::OK, "{path}");
         }
+    }
+
+    #[tokio::test]
+    async fn drain_flips_readiness_but_not_liveness() {
+        // The preStop hook contract from docs/11: POST /-/drain → 200,
+        // then readiness reports 503 while liveness stays 200 so the
+        // pod gets pulled out of rotation without restart.
+        let r = router(fixture_state().await);
+        // Sanity: pre-drain, /-/ready is 200.
+        let resp = r
+            .clone()
+            .oneshot(
+                Request::builder().uri("/-/ready").body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        // Flip the drain flag.
+        let resp = r
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/-/drain")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        // /-/ready now reports 503.
+        let resp = r
+            .clone()
+            .oneshot(
+                Request::builder().uri("/-/ready").body(Body::empty()).unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::SERVICE_UNAVAILABLE);
+        // /-/healthy stays 200 — the orchestrator must not restart a
+        // draining pod.
+        let resp = r
+            .oneshot(
+                Request::builder()
+                    .uri("/-/healthy")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
     }
 
     #[tokio::test]
