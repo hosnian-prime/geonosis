@@ -14,6 +14,7 @@
 //! has its `geonosis:ui-component` interface plumbed end-to-end.
 
 pub mod assets;
+pub mod audit_emit;
 pub mod handlers;
 pub mod handlers_v1;
 pub mod html;

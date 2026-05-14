@@ -12,9 +12,11 @@ use axum::extract::{Path, State};
 use axum::Json;
 use serde::Deserialize;
 
+use geonosis_audit::Target;
 use geonosis_core::id::RealmId;
 use geonosis_core::Realm;
 
+use crate::audit_emit;
 use crate::state::{AdminError, AdminState};
 
 #[derive(Debug, Deserialize)]
@@ -88,6 +90,13 @@ pub async fn create(
     geonosis_storage::seed_default_flows(state.storage.as_ref(), realm.id)
         .await
         .map_err(AdminError::from)?;
+    audit_emit::emit(
+        &state,
+        realm.id,
+        "realm.created",
+        Some(Target::Realm { id: realm.id }),
+        serde_json::json!({ "slug": realm.slug }),
+    );
     Ok(Json(realm))
 }
 
@@ -126,6 +135,13 @@ pub async fn update(
         .update_realm(realm.clone())
         .await
         .map_err(AdminError::from)?;
+    audit_emit::emit(
+        &state,
+        realm.id,
+        "realm.updated",
+        Some(Target::Realm { id: realm.id }),
+        serde_json::json!({ "slug": realm.slug }),
+    );
     Ok(Json(realm))
 }
 
@@ -143,5 +159,12 @@ pub async fn delete_(
         .delete_realm(existing.id)
         .await
         .map_err(AdminError::from)?;
+    audit_emit::emit(
+        &state,
+        existing.id,
+        "realm.deleted",
+        Some(Target::Realm { id: existing.id }),
+        serde_json::json!({ "slug": existing.slug }),
+    );
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
