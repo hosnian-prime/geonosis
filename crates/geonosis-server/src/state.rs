@@ -14,6 +14,7 @@ use geonosis_storage::Storage;
 use crate::authenticators::BuiltinAuthenticators;
 use crate::broker::BrokerRuntime;
 use crate::ldap::LdapRuntime;
+use crate::metrics::SharedMetrics;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -42,4 +43,6 @@ pub struct AppState {
     /// LDAP federation runtime — per-realm pool registry. `None` when
     /// the deployment hasn't configured any LDAP source.
     pub ldap: Arc<LdapRuntime>,
+    /// Prometheus counter registry mounted on `/metrics`.
+    pub metrics: SharedMetrics,
 }

@@ -1,0 +1,36 @@
+// `geonosis:user-profile-validator@0.1.0` — per-attribute custom
+// validators invoked by the User Profile validator chain (see
+// docs/16-user-profile.md). Bound to specific attribute names via
+// `AttributeValidator::Custom { module, config }`.
+// Dispatch mode: NamedAttach.
+
+package geonosis:user-profile-validator@0.1.0;
+
+interface validator {
+    use geonosis:types/types@0.1.0.{provider-info, plugin-error};
+
+    /// Validation failure detail. `kind` is a stable machine-readable
+    /// tag (e.g. `length`, `format`, `forbidden-char`). `message` is
+    /// localizable on the host side via the Fluent bundle.
+    record validation-error {
+        attribute: string,
+        kind: string,
+        message: string,
+    }
+
+    describe: func() -> provider-info;
+
+    /// Validate the candidate values for a single attribute. The host
+    /// guarantees `values` is the post-coerced list of strings; an
+    /// empty list signals "unset", which the validator MAY reject.
+    validate: func(
+        attribute: string,
+        values: list<string>,
+        config: list<u8>,
+    ) -> result<_, validation-error>;
+}
+
+world user-profile-validator-provider {
+    import geonosis:host/logging@0.1.0;
+    export validator;
+}
