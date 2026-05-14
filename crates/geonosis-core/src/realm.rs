@@ -41,6 +41,12 @@ pub struct Realm {
     pub default_groups: Vec<GroupId>,
     pub default_roles: DefaultRoles,
     pub organizations_enabled: bool,
+    /// Realm-level org policy. See `docs/15-organizations.md` §"Self-
+    /// service join via domain match" + §"Invitation lifecycle".
+    /// Defaulted via `#[serde(default)]` so existing realm rows
+    /// deserialize cleanly into a no-op policy.
+    #[serde(default)]
+    pub organization_policy: crate::organization::OrganizationPolicy,
 
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -495,6 +501,7 @@ mod tests {
             default_groups: vec![],
             default_roles: DefaultRoles::default(),
             organizations_enabled: true,
+            organization_policy: Default::default(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
