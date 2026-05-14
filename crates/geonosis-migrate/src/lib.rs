@@ -86,7 +86,7 @@ pub struct ServerCompat {
 /// reserves room for sub-millisecond ordering). New majors bump these.
 pub const V0_1_COMPAT: ServerCompat = ServerCompat {
     min_schema: 0,
-    max_schema: 99_999_999,
+    max_schema: 99_999_999_999,
 };
 
 /// Check that the applied migration set is within the server's

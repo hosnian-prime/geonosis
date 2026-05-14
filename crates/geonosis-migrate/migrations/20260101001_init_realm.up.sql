@@ -6,6 +6,10 @@
 -- Geonosis schema bootstrap. Every tenanted table carries `realm_id`
 -- and gets a `tenant_isolation` RLS policy.
 
+-- btree_gin allows composite GIN indexes to include plain scalar columns
+-- (e.g. realm_id TEXT) alongside tsvector / jsonb columns.
+CREATE EXTENSION IF NOT EXISTS btree_gin;
+
 CREATE TABLE realm (
     id            TEXT PRIMARY KEY,
     slug          TEXT NOT NULL UNIQUE,
