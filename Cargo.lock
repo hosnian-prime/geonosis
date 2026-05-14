@@ -1619,6 +1619,7 @@ dependencies = [
  "geonosis-migrate",
  "geonosis-storage",
  "hex",
+ "reqwest",
  "serde",
  "serde_json",
  "sha2",
