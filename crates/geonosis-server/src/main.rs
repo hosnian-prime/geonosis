@@ -47,6 +47,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     };
 
     let storage = Arc::new(MemoryStorage::new());
+    // Derive deployment-wide hash keys from the master key. Per-realm
+    // derivation lands in v0.1.x.
+    let refresh_hash_key = derive_subkey(&master, b"geonosis-refresh-hash-v1");
+    let client_secret_hash_key = derive_subkey(&master, b"geonosis-client-secret-hash-v1");
     let state = AppState {
         storage,
         cache: Arc::new(LocalCache::default_small()),
@@ -54,12 +58,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         providers: Arc::new(ProviderRegistry::new()),
         audit: Arc::new(Publisher::new(vec![])),
         public_base_url: url::Url::parse(&args.public_url)?,
+        refresh_hash_key,
+        client_secret_hash_key,
     };
 
     let listener = tokio::net::TcpListener::bind(&args.listen).await?;
     tracing::info!(listen = %args.listen, "geonosis-server starting");
     axum::serve(listener, router(state)).await?;
     Ok(())
+}
+
+fn derive_subkey(master: &MasterKey, label: &[u8]) -> [u8; 32] {
+    // BLAKE3 in keyed mode over the label gives us a deterministic 32-byte
+    // domain-separated subkey. We deliberately do NOT expose the master
+    // bytes; we wrap an arbitrary throwaway plaintext under it and hash
+    // the ciphertext together with the label to derive the subkey.
+    let proof = master
+        .wrap(b"geonosis-derive")
+        .expect("wrap must succeed");
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(label);
+    hasher.update(&proof.nonce);
+    hasher.update(&proof.ciphertext);
+    *hasher.finalize().as_bytes()
 }
 
 fn hex_decode_32(s: &str) -> Result<[u8; 32], String> {
