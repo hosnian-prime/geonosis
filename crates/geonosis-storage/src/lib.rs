@@ -15,4 +15,4 @@ pub mod traits;
 
 pub use error::StorageError;
 pub use memory::MemoryStorage;
-pub use traits::{DeviceGrant, DeviceGrantStatus, FlowStateRow, ParRequest, Storage};
+pub use traits::{ConsentGrant, DeviceGrant, DeviceGrantStatus, FlowStateRow, ParRequest, Storage};

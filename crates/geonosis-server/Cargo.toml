@@ -29,6 +29,7 @@ geonosis-protocol-saml-idp = { path = "../geonosis-protocol-saml-idp" }
 geonosis-federation-ldap = { path = "../geonosis-federation-ldap" }
 geonosis-broker = { path = "../geonosis-broker" }
 geonosis-spi-host = { path = "../geonosis-spi-host" }
+geonosis-authenticators = { path = "../geonosis-authenticators" }
 geonosis-audit = { path = "../geonosis-audit" }
 
 axum.workspace = true
