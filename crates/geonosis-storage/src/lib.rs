@@ -20,13 +20,16 @@ pub mod error;
 pub mod memory;
 pub mod seed;
 pub mod traits;
+#[cfg(test)]
+mod tests_saml;
 
 pub use error::StorageError;
 pub use memory::MemoryStorage;
 pub use seed::seed_default_flows;
 pub use traits::{
     AuditEventFilter, AuditEventRow, ConsentGrant, DeviceGrant, DeviceGrantStatus, FlowStateRow,
-    OrgIdpBinding, ParRequest, SpiBindingRow, Storage, WasmModule, WasmModuleHeader,
+    OrgIdpBinding, ParRequest, SamlPersistentIdRow, SpiBindingRow, Storage, WasmModule,
+    WasmModuleHeader,
 };
 
 #[cfg(feature = "postgres")]

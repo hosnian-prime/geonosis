@@ -3000,6 +3000,56 @@ impl Storage for PostgresStorage {
         rows.iter().map(session_from_row).collect()
     }
 
+    async fn get_saml_persistent_id(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+        sp_entity_id: &str,
+    ) -> Result<Option<crate::traits::SamlPersistentIdRow>, StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let row = sqlx::query_as::<_, (String, String, String, String, DateTime<Utc>)>(
+            "SELECT realm_id, user_id, sp_entity_id, name_id, created_at
+             FROM saml_persistent_id
+             WHERE realm_id = $1 AND user_id = $2 AND sp_entity_id = $3",
+        )
+        .bind(realm.to_string())
+        .bind(user_id.to_string())
+        .bind(sp_entity_id)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(row.map(|(rid, uid, sp, name, created)| crate::traits::SamlPersistentIdRow {
+            realm_id: rid.parse().unwrap_or(realm),
+            user_id: uid.parse().unwrap_or(user_id),
+            sp_entity_id: sp,
+            name_id: name,
+            created_at: created,
+        }))
+    }
+
+    async fn save_saml_persistent_id(
+        &self,
+        row: crate::traits::SamlPersistentIdRow,
+    ) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, row.realm_id).await?;
+        sqlx::query(
+            "INSERT INTO saml_persistent_id (realm_id, user_id, sp_entity_id, name_id, created_at)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (realm_id, user_id, sp_entity_id) DO NOTHING",
+        )
+        .bind(row.realm_id.to_string())
+        .bind(row.user_id.to_string())
+        .bind(&row.sp_entity_id)
+        .bind(&row.name_id)
+        .bind(row.created_at)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
+    }
+
     async fn list_audit_events(
         &self,
         realm: RealmId,
