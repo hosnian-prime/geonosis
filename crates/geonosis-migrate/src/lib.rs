@@ -7,7 +7,7 @@
 //! - Each `.up.sql` carries a metadata header (`-- kind: expand` etc.)
 //!   that the lint / compatibility-gate logic reads at runtime
 //!
-//! v0.1 ships the bootstrap migration set (10 `.up.sql` files). No
+//! v0.1 ships the bootstrap migration set (11 `.up.sql` files). No
 //! `.down.sql` files yet — rollback is "restore from backup" until the
 //! down-migrations PR lands (an explicit doc decision).
 
@@ -144,7 +144,7 @@ mod tests {
             .collect();
         // Each `.up.sql` is one migration; sqlx strips the timestamp
         // prefix into the description.
-        assert_eq!(names.len(), 10, "migrations: {names:?}");
+        assert_eq!(names.len(), 11, "migrations: {names:?}");
         for n in &names {
             eprintln!("migration: {n}");
         }

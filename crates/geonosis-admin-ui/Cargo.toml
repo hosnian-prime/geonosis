@@ -14,12 +14,17 @@ workspace = true
 geonosis-core = { path = "../geonosis-core" }
 geonosis-storage = { path = "../geonosis-storage" }
 geonosis-flow = { path = "../geonosis-flow" }
+geonosis-broker = { path = "../geonosis-broker" }
 geonosis-ui-kit = { path = "../geonosis-ui-kit" }
 geonosis-theme = { path = "../geonosis-theme" }
 geonosis-i18n = { path = "../geonosis-i18n" }
 
 axum.workspace = true
 maud.workspace = true
+leptos.workspace = true
+leptos_axum.workspace = true
+leptos_meta.workspace = true
+leptos_router.workspace = true
 unic-langid.workspace = true
 serde.workspace = true
 serde_json.workspace = true

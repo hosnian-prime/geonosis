@@ -32,3 +32,23 @@ pub enum AdminError {
     #[error("not found")]
     NotFound,
 }
+
+impl From<geonosis_storage::StorageError> for AdminError {
+    fn from(e: geonosis_storage::StorageError) -> Self {
+        match e {
+            geonosis_storage::StorageError::NotFound => AdminError::NotFound,
+            other => AdminError::Storage(other.to_string()),
+        }
+    }
+}
+
+impl axum::response::IntoResponse for AdminError {
+    fn into_response(self) -> axum::response::Response {
+        use axum::http::StatusCode;
+        let status = match &self {
+            AdminError::NotFound => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        (status, self.to_string()).into_response()
+    }
+}
