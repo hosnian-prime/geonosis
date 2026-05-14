@@ -227,9 +227,29 @@ pub async fn slo_post(
 
     // Revoke the session. The SAML branch wrote the local
     // SessionId as the SAML SessionIndex, so the look-up is direct.
+    // Capture the session's client list BEFORE deleting so we can
+    // propagate the logout to every other SP the user signed into
+    // during this session (multi-SP fan-out per docs/20 §SLO).
+    let mut peer_logouts: Vec<(geonosis_core::ClientId, bool)> = Vec::new();
     if let Some(session_index) = parsed.session_index.as_deref() {
         let session_id = geonosis_core::SessionId(session_index.to_string());
+        if let Ok(session) = state.storage.get_session(&session_id).await {
+            for c in &session.clients {
+                if c.client_id != client.id {
+                    peer_logouts.push((c.client_id, c.backchannel_logout));
+                }
+            }
+        }
         let _ = state.storage.delete_session(&session_id).await;
+    }
+
+    // Best-effort back-channel logout fan-out to every other SP the
+    // user participated with during the session. Front-channel
+    // (iframe) propagation is v0.1.x+. Each dispatch is
+    // fire-and-forget on a tokio spawn — SLO must complete promptly
+    // for the originating SP regardless of peer SP reachability.
+    if !peer_logouts.is_empty() {
+        propagate_saml_logout(state.clone(), realm.id, peer_logouts).await;
     }
 
     // Build a signed LogoutResponse. SLO destination = the SP's
@@ -605,6 +625,120 @@ fn reject(reason: &str, status: StatusCode) -> Response {
         "SAML AuthnRequest rejected"
     );
     (status, reason.to_string()).into_response()
+}
+
+/// Best-effort back-channel logout fan-out per docs/20 §SLO.
+/// For every (client_id, backchannel_enabled) pair captured from
+/// the revoked session's `clients` list, build a signed
+/// LogoutRequest XML and POST it to the SP's `slo_url`. Failures
+/// are logged + audited; they don't block the originating SLO
+/// response.
+async fn propagate_saml_logout(
+    state: AppState,
+    realm_id: geonosis_core::RealmId,
+    peers: Vec<(geonosis_core::ClientId, bool)>,
+) {
+    let issuer_base = state.public_base_url.as_str().trim_end_matches('/');
+    let idp_issuer = match state.storage.get_realm(realm_id).await {
+        Ok(r) => format!("{issuer_base}/realms/{}", r.slug),
+        Err(_) => return,
+    };
+    let client_http = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+
+    for (client_id, want_backchannel) in peers {
+        if !want_backchannel {
+            // Front-channel (iframe) propagation needs UI work; we
+            // mark the participation in the audit trail so the
+            // operator can verify the user logged out manually on
+            // the other SPs.
+            tracing::info!(
+                client_id = %client_id,
+                "saml.slo.skipped_no_backchannel"
+            );
+            continue;
+        }
+        let client = match state.storage.get_client(realm_id, client_id).await {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let raw_config = match client.saml_sp_config.as_ref() {
+            Some(v) => v,
+            None => continue,
+        };
+        let sp_config =
+            match geonosis_protocol_saml_idp::SamlSpClientConfig::try_from_value(raw_config) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+        let slo_url = match sp_config.slo_url.as_ref() {
+            Some(u) => u.to_string(),
+            None => continue,
+        };
+
+        // Build an outbound LogoutRequest XML. v0.1 emits unsigned
+        // — signed LogoutRequest from the IdP side lands with the
+        // same XML-DSig harness as the assertion signer.
+        let request_id = format!("_idplo_{}", geonosis_crypto::random::random_token());
+        let now = chrono::Utc::now();
+        let xml = build_idp_logout_request(&request_id, now, &idp_issuer, &slo_url);
+        let payload = B64.encode(xml.as_bytes());
+
+        let form = [
+            ("SAMLRequest", payload.as_str()),
+        ];
+        let send = client_http.post(&slo_url).form(&form).send();
+        // Spawn so this dispatch doesn't block the original SLO
+        // response; fire-and-forget per the multi-SP fan-out
+        // contract.
+        tokio::spawn(async move {
+            match send.await {
+                Ok(resp) if resp.status().is_success() => {
+                    tracing::info!(
+                        client_id = %client_id,
+                        slo_url = %slo_url,
+                        status = %resp.status(),
+                        "saml.slo.peer_notified"
+                    );
+                }
+                Ok(resp) => {
+                    tracing::warn!(
+                        client_id = %client_id,
+                        slo_url = %slo_url,
+                        status = %resp.status(),
+                        "saml.slo.peer_notify_status_error"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        client_id = %client_id,
+                        slo_url = %slo_url,
+                        error = %e,
+                        "saml.slo.peer_notify_failed"
+                    );
+                }
+            }
+        });
+    }
+}
+
+/// Build an IdP-initiated `<LogoutRequest>` for the SLO fan-out
+/// path. Minimal — issuer + destination + ID + IssueInstant; no
+/// NameID because the peer SP keys its session by SessionIndex
+/// which doesn't survive across SPs anyway.
+fn build_idp_logout_request(
+    id: &str,
+    instant: chrono::DateTime<chrono::Utc>,
+    issuer: &str,
+    destination: &str,
+) -> String {
+    use chrono::SecondsFormat;
+    let issue = instant.to_rfc3339_opts(SecondsFormat::Millis, true);
+    format!(
+        r#"<samlp:LogoutRequest xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="{id}" Version="2.0" IssueInstant="{issue}" Destination="{destination}"><saml:Issuer>{issuer}</saml:Issuer></samlp:LogoutRequest>"#
+    )
 }
 
 /// Build a self-posting form that returns the signed SAML

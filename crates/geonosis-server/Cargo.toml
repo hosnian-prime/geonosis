@@ -60,6 +60,7 @@ base64.workspace = true
 hex.workspace = true
 sha2.workspace = true
 percent-encoding.workspace = true
+reqwest.workspace = true
 blake3.workspace = true
 futures.workspace = true
 parking_lot.workspace = true
