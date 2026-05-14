@@ -1,0 +1,15 @@
+admin-title = إدارة Geonosis
+admin-realms-heading = النطاقات
+admin-realms-empty = لا توجد نطاقات مكوّنة بعد.
+admin-realms-create = إنشاء نطاق
+admin-realm-slug = المعرف
+admin-realm-display-name = الاسم المعروض
+admin-realm-enabled = مفعّل
+admin-realm-created = تاريخ الإنشاء
+nav-realms = النطاقات
+nav-clients = العملاء
+nav-users = المستخدمون
+nav-flows = التدفقات
+nav-spi = الإضافات
+nav-idps = موفّرو الهوية
+nav-events = الأحداث

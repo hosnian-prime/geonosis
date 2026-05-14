@@ -1,0 +1,15 @@
+admin-title = Geonosis Verwaltung
+admin-realms-heading = Mandanten
+admin-realms-empty = Noch keine Mandanten konfiguriert.
+admin-realms-create = Mandant anlegen
+admin-realm-slug = Kürzel
+admin-realm-display-name = Anzeigename
+admin-realm-enabled = Aktiv
+admin-realm-created = Erstellt
+nav-realms = Mandanten
+nav-clients = Clients
+nav-users = Benutzer
+nav-flows = Flows
+nav-spi = SPI
+nav-idps = Identity-Provider
+nav-events = Ereignisse

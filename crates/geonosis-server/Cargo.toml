@@ -32,6 +32,7 @@ geonosis-spi-host = { path = "../geonosis-spi-host" }
 geonosis-authenticators = { path = "../geonosis-authenticators" }
 geonosis-audit = { path = "../geonosis-audit", features = ["postgres"] }
 geonosis-migrate = { path = "../geonosis-migrate" }
+geonosis-admin-ui = { path = "../geonosis-admin-ui" }
 sqlx.workspace = true
 
 axum.workspace = true

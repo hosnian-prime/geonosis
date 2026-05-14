@@ -1,0 +1,37 @@
+[package]
+name = "geonosis-admin-ui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Server-side rendered admin console + REST API."
+
+[lints]
+workspace = true
+
+[dependencies]
+geonosis-core = { path = "../geonosis-core" }
+geonosis-storage = { path = "../geonosis-storage" }
+geonosis-flow = { path = "../geonosis-flow" }
+geonosis-ui-kit = { path = "../geonosis-ui-kit" }
+geonosis-theme = { path = "../geonosis-theme" }
+geonosis-i18n = { path = "../geonosis-i18n" }
+
+axum.workspace = true
+maud.workspace = true
+unic-langid.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+chrono.workspace = true
+rust-embed.workspace = true
+async-trait.workspace = true
+parking_lot.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+tokio.workspace = true
+tower.workspace = true

@@ -8,6 +8,9 @@ use crate::handlers;
 use crate::state::AppState;
 
 pub fn router(state: AppState) -> Router {
+    let admin = geonosis_admin_ui::AdminState::new(state.storage.clone())
+        .expect("admin state");
+    let admin_router = geonosis_admin_ui::router(admin);
     Router::new()
         // Health probes
         .route("/-/started", get(handlers::started))
@@ -93,6 +96,7 @@ pub fn router(state: AppState) -> Router {
         )
         .layer(TraceLayer::new_for_http())
         .with_state(state)
+        .merge(admin_router)
 }
 
 #[cfg(test)]
@@ -166,6 +170,92 @@ mod tests {
             broker: Arc::new(crate::broker::BrokerRuntime::new()),
             ldap: Arc::new(crate::ldap::LdapRuntime::new()),
         }
+    }
+
+    #[tokio::test]
+    async fn admin_realms_html_renders() {
+        let state = fixture_state().await;
+        let r = router(state);
+        let resp = r
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/admin/realms")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let text = std::str::from_utf8(&body).unwrap();
+        assert!(text.contains("<html"));
+        assert!(text.contains("Realms"));
+        assert!(text.contains("acme"));
+    }
+
+    #[tokio::test]
+    async fn admin_realms_api_returns_json() {
+        let state = fixture_state().await;
+        let r = router(state);
+        let resp = r
+            .oneshot(
+                Request::builder()
+                    .uri("/admin/v1/realms")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let arr = json["realms"].as_array().expect("realms array");
+        assert!(arr.iter().any(|r| r["slug"] == "acme"));
+    }
+
+    #[tokio::test]
+    async fn admin_css_served() {
+        let state = fixture_state().await;
+        let r = router(state);
+        let resp = r
+            .oneshot(
+                Request::builder()
+                    .uri("/static/admin.css")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let ct = resp
+            .headers()
+            .get(axum::http::header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(ct.starts_with("text/css"));
+    }
+
+    #[tokio::test]
+    async fn admin_negotiates_turkish() {
+        let state = fixture_state().await;
+        let r = router(state);
+        let resp = r
+            .oneshot(
+                Request::builder()
+                    .uri("/admin/realms")
+                    .header(axum::http::header::ACCEPT_LANGUAGE, "tr,en;q=0.5")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let text = std::str::from_utf8(&body).unwrap();
+        assert!(text.contains("Alanlar"));
+        assert!(text.contains("lang=\"tr\""));
     }
 
     #[tokio::test]
