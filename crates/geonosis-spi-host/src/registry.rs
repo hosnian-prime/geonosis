@@ -75,6 +75,50 @@ pub enum LookupOutcome<T> {
     Found(T),
 }
 
+/// First-party mapper URNs seeded by `seed_v0_1_builtins`. Each is a
+/// stable handle operators reference from admin UI / `geoctl` when
+/// disabling, replacing, or decorating a built-in.
+pub const BUILTIN_MAPPER_URNS: &[&str] = &[
+    "builtin:mapper:claim-from-attribute",
+    "builtin:mapper:realm-role",
+    "builtin:mapper:client-role",
+    "builtin:mapper:groups",
+    "builtin:mapper:audience-resolve",
+];
+
+/// First-party event-sink URNs (audit pipeline + outbound webhook).
+pub const BUILTIN_EVENT_URNS: &[&str] = &[
+    "builtin:event:postgres-audit",
+    "builtin:event:webhook",
+];
+
+/// First-party policy-provider URNs.
+pub const BUILTIN_POLICY_URNS: &[&str] = &[
+    "builtin:policy:default-scope-policy",
+];
+
+fn builtin_binding(
+    realm: RealmId,
+    interface: &'static str,
+    urn: &str,
+) -> ProviderBinding {
+    ProviderBinding {
+        id: SpiBindingId::new(),
+        realm_id: realm,
+        interface: WitInterfaceName(interface.into()),
+        provider_urn: urn.into(),
+        // Built-ins live at priority 0; operator-supplied bindings
+        // default to 500 in `geoctl spi install`, so they shadow
+        // built-ins without needing an explicit `replaces`.
+        priority: 0,
+        enabled: true,
+        config: serde_json::Value::Object(serde_json::Map::new()),
+        replaces: None,
+        capabilities: ProviderCapabilities::default(),
+        origin: ProviderOrigin::Builtin,
+    }
+}
+
 #[derive(Default)]
 pub struct ProviderRegistry {
     inner: RwLock<RegistryInner>,
@@ -97,6 +141,50 @@ impl ProviderRegistry {
         let v = guard.by_iface.entry(key).or_default();
         v.push(binding);
         // Stable-sort by descending priority — higher first.
+        v.sort_by(|a, b| b.priority.cmp(&a.priority));
+    }
+
+    /// Per `docs/07-spi-wasm.md` §"Provider registry + built-ins-as-
+    /// plugins": every built-in provider registers under the same
+    /// `SpiBinding` namespace WASM plugins use, so operators see and
+    /// can override built-ins from the same admin surface. Seeds the
+    /// v0.1 first-party mappers, event sinks, and policy providers.
+    /// Idempotent across re-seeds — each binding gets a fresh
+    /// `SpiBindingId`, but the URN namespace prevents semantic
+    /// collisions on dispatch (`first_enabled` filters by URN).
+    ///
+    /// Called from `bootstrap::run` for the master realm and from the
+    /// admin `realms::create` handler so every operator-created realm
+    /// inherits the v0.1 built-in set. Idempotent — a URN that already
+    /// exists for `(realm, interface)` is left alone.
+    pub fn seed_v0_1_builtins(&self, realm: RealmId) {
+        for urn in BUILTIN_MAPPER_URNS {
+            self.register_if_absent(builtin_binding(
+                realm,
+                WitInterfaceName::MAPPER,
+                urn,
+            ));
+        }
+        for urn in BUILTIN_EVENT_URNS {
+            self.register_if_absent(builtin_binding(realm, WitInterfaceName::EVENT, urn));
+        }
+        for urn in BUILTIN_POLICY_URNS {
+            self.register_if_absent(builtin_binding(realm, WitInterfaceName::POLICY, urn));
+        }
+    }
+
+    /// Like [`register`], but a no-op when a binding with the same
+    /// `(realm, interface, provider_urn)` already exists. Used by
+    /// `seed_v0_1_builtins` so re-seeding (e.g. after a pod restart
+    /// where the registry is in-memory) doesn't churn the list.
+    pub fn register_if_absent(&self, binding: ProviderBinding) {
+        let key = (binding.realm_id, binding.interface.clone());
+        let mut guard = self.inner.write();
+        let v = guard.by_iface.entry(key).or_default();
+        if v.iter().any(|b| b.provider_urn == binding.provider_urn) {
+            return;
+        }
+        v.push(binding);
         v.sort_by(|a, b| b.priority.cmp(&a.priority));
     }
 
@@ -203,5 +291,85 @@ mod tests {
         r.register(b1);
         let chosen = r.first_enabled(realm, &WitInterfaceName(WitInterfaceName::USER_STORAGE.into()));
         assert!(chosen.is_none());
+    }
+
+    #[test]
+    fn seed_v0_1_builtins_registers_every_documented_urn() {
+        // Per `docs/07-spi-wasm.md` §"Provider registry + built-ins-
+        // as-plugins" every built-in mapper, event sink, and policy
+        // provider lands in the registry under its stable URN so
+        // operators can list, disable, or replace it from the same
+        // surface as WASM plugins.
+        let r = ProviderRegistry::new();
+        let realm = RealmId::new();
+        r.seed_v0_1_builtins(realm);
+
+        let mappers = r.list(realm, &WitInterfaceName(WitInterfaceName::MAPPER.into()));
+        let mapper_urns: Vec<&str> = mappers.iter().map(|b| b.provider_urn.as_str()).collect();
+        for expected in BUILTIN_MAPPER_URNS {
+            assert!(
+                mapper_urns.contains(expected),
+                "missing built-in mapper {expected}: registry has {mapper_urns:?}",
+            );
+        }
+
+        let events = r.list(realm, &WitInterfaceName(WitInterfaceName::EVENT.into()));
+        let event_urns: Vec<&str> = events.iter().map(|b| b.provider_urn.as_str()).collect();
+        for expected in BUILTIN_EVENT_URNS {
+            assert!(
+                event_urns.contains(expected),
+                "missing built-in event sink {expected}",
+            );
+        }
+
+        let policies = r.list(realm, &WitInterfaceName(WitInterfaceName::POLICY.into()));
+        let policy_urns: Vec<&str> = policies.iter().map(|b| b.provider_urn.as_str()).collect();
+        for expected in BUILTIN_POLICY_URNS {
+            assert!(
+                policy_urns.contains(expected),
+                "missing built-in policy {expected}",
+            );
+        }
+    }
+
+    #[test]
+    fn seeded_builtins_are_enabled_and_origin_builtin() {
+        let r = ProviderRegistry::new();
+        let realm = RealmId::new();
+        r.seed_v0_1_builtins(realm);
+        let all = r.list(realm, &WitInterfaceName(WitInterfaceName::MAPPER.into()));
+        for b in &all {
+            assert!(b.enabled, "built-in {} must be enabled by default", b.provider_urn);
+            assert!(matches!(b.origin, ProviderOrigin::Builtin), "wrong origin");
+            assert_eq!(b.priority, 0, "built-ins sit at priority 0 so plugins shadow them");
+        }
+    }
+
+    #[test]
+    fn seeded_builtin_chosen_when_no_override() {
+        let r = ProviderRegistry::new();
+        let realm = RealmId::new();
+        r.seed_v0_1_builtins(realm);
+        let chosen = r
+            .first_enabled(realm, &WitInterfaceName(WitInterfaceName::EVENT.into()))
+            .expect("a built-in event sink must be available");
+        assert!(chosen.provider_urn.starts_with("builtin:event:"));
+    }
+
+    #[test]
+    fn seed_is_idempotent_across_repeat_invocations() {
+        let r = ProviderRegistry::new();
+        let realm = RealmId::new();
+        r.seed_v0_1_builtins(realm);
+        let first_count = r
+            .list(realm, &WitInterfaceName(WitInterfaceName::MAPPER.into()))
+            .len();
+        // Second seed should observe the same URN set and not add duplicates.
+        r.seed_v0_1_builtins(realm);
+        let second_count = r
+            .list(realm, &WitInterfaceName(WitInterfaceName::MAPPER.into()))
+            .len();
+        assert_eq!(first_count, second_count, "seed must be idempotent");
+        assert_eq!(first_count, BUILTIN_MAPPER_URNS.len());
     }
 }

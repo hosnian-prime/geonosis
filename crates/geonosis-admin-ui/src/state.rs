@@ -63,6 +63,11 @@ pub enum AdminError {
     /// human-readable list.
     #[error("policy violation: {0:?}")]
     PasswordPolicy(Vec<String>),
+    /// Client-correctable input error — registration-time validators
+    /// reject malformed input (bad redirect_uri scheme, malformed
+    /// JSON, etc.) with a 400.
+    #[error("invalid input: {0}")]
+    InvalidInput(String),
 }
 
 impl From<geonosis_storage::StorageError> for AdminError {
@@ -87,6 +92,13 @@ impl axum::response::IntoResponse for AdminError {
                 let body = serde_json::json!({
                     "error": "password_policy_violation",
                     "violations": violations,
+                });
+                (StatusCode::BAD_REQUEST, axum::Json(body)).into_response()
+            }
+            AdminError::InvalidInput(msg) => {
+                let body = serde_json::json!({
+                    "error": "invalid_input",
+                    "message": msg,
                 });
                 (StatusCode::BAD_REQUEST, axum::Json(body)).into_response()
             }

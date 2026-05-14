@@ -13,15 +13,19 @@
 //! - [`sign`] — XML-DSig signing of an assertion against the realm's
 //!   active RSA-SHA256 key via the `KeyManagementService` trait.
 
+pub mod front_channel_logout;
 pub mod logout;
+pub mod post_signature;
 pub mod redirect;
 pub mod request;
 pub mod sign;
 pub mod xml;
 
+pub use front_channel_logout::{render_front_channel_logout_html, FrontChannelLogoutPeer};
 pub use logout::{
     parse_logout_request, serialize_logout_response, LogoutParseError, ParsedLogoutRequest,
 };
+pub use post_signature::{verify_post_authn_request_signature, PostSigError};
 pub use redirect::{
     decode_redirect_payload, verify_redirect_signature, RedirectDecodeError,
     RedirectSigError, RedirectSignatureCheck, REDIRECT_SIG_ALG_RSA_SHA256,
@@ -70,6 +74,67 @@ pub struct SamlSpClientConfig {
     /// signature-verification path.
     #[serde(default)]
     pub authn_request_signing_certificates: Vec<String>,
+    /// Per `docs/20-saml-idp.md` §"Attribute mapping": operator-
+    /// configured mappings that drive the `<AttributeStatement>`
+    /// emitted with each assertion. Empty list keeps the hardcoded
+    /// default attributes (username, email, given_name,
+    /// family_name) — operators opt in to fine-grained control by
+    /// supplying mappings. WASM mapper SPI integration adds a
+    /// `WasmMapper` variant in v0.1.x; declarative mappings cover
+    /// the everyday case in v0.1.
+    #[serde(default)]
+    pub attribute_mappers: Vec<SamlAttributeMapping>,
+    /// Optional front-channel SLO endpoint per `docs/20-saml-idp.md`
+    /// §"Single Logout". When the IdP fans logout out to peer SPs
+    /// it renders an HTML page with one `<iframe>` per
+    /// participating SP whose `src` is this URL. Browser-driven
+    /// fan-out clears the SP's cookie state without needing the
+    /// SP to expose a back-channel POST endpoint. `None` keeps the
+    /// SP in back-channel-only mode (the v0.1 default).
+    #[serde(default)]
+    pub front_channel_logout_url: Option<Url>,
+}
+
+/// One operator-defined `<Attribute>` row to include in the
+/// `<AttributeStatement>` per docs/20 §"Attribute mapping".
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SamlAttributeMapping {
+    /// The SAML `Name` attribute on the emitted `<Attribute>`
+    /// element. Conventionally a URI for `nameFormat=uri`.
+    pub saml_name: String,
+    /// Optional `FriendlyName` SAML attribute.
+    #[serde(default)]
+    pub friendly_name: Option<String>,
+    /// SAML AttributeNameFormat URI; the OASIS uri format is the
+    /// default and what every default attribute uses.
+    #[serde(default = "default_attribute_name_format")]
+    pub name_format: String,
+    /// Value source — read from user, static literal, etc.
+    pub source: SamlAttributeSource,
+}
+
+fn default_attribute_name_format() -> String {
+    "urn:oasis:names:tc:SAML:2.0:attrname-format:uri".to_string()
+}
+
+/// Where the value(s) for a [`SamlAttributeMapping`] come from.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum SamlAttributeSource {
+    /// Fixed value(s) regardless of user.
+    Static { values: Vec<String> },
+    /// `User.attributes[name]` — multi-valued attribute supported.
+    UserAttribute { name: String },
+    /// `User.email` (omitted if absent).
+    Email,
+    /// `User.username` (always present).
+    Username,
+    /// `User.name.given` if present.
+    GivenName,
+    /// `User.name.family` if present.
+    FamilyName,
+    /// `User.name.display` if present.
+    DisplayName,
 }
 
 impl SamlSpClientConfig {
@@ -103,6 +168,89 @@ pub struct SamlPersistentId {
     pub sp_entity_id: String,
     pub name_id: String,
     pub created_at: DateTime<Utc>,
+}
+
+/// Resolve `attribute_mappers` against a `User` into a flat list of
+/// `SamlAttribute` rows ready for the `<AttributeStatement>`. Empty
+/// mappers yield an empty list — the caller decides whether to fall
+/// back to default attributes. Per `docs/20-saml-idp.md` §"Attribute
+/// mapping".
+///
+/// Empty resolved values are skipped so an SP never receives an
+/// `<Attribute>` with zero `<AttributeValue>` children (a few SP
+/// libs treat that as malformed).
+pub fn apply_attribute_mappers(
+    user: &geonosis_core::User,
+    mappings: &[SamlAttributeMapping],
+) -> Vec<SamlAttribute> {
+    let mut out = Vec::with_capacity(mappings.len());
+    for m in mappings {
+        let values = resolve_attribute_source(&m.source, user);
+        if values.is_empty() {
+            continue;
+        }
+        out.push(SamlAttribute {
+            name: m.saml_name.clone(),
+            friendly_name: m.friendly_name.clone(),
+            name_format: m.name_format.clone(),
+            values,
+        });
+    }
+    out
+}
+
+fn resolve_attribute_source(
+    source: &SamlAttributeSource,
+    user: &geonosis_core::User,
+) -> Vec<String> {
+    match source {
+        SamlAttributeSource::Static { values } => values.clone(),
+        SamlAttributeSource::UserAttribute { name } => user
+            .attributes
+            .get(name)
+            .map(flatten_attribute_value)
+            .unwrap_or_default(),
+        SamlAttributeSource::Email => user
+            .email
+            .as_ref()
+            .filter(|s| !s.is_empty())
+            .map(|s| vec![s.clone()])
+            .unwrap_or_default(),
+        SamlAttributeSource::Username => vec![user.username.clone()],
+        SamlAttributeSource::GivenName => user
+            .name
+            .as_ref()
+            .and_then(|n| n.given.clone())
+            .filter(|s| !s.is_empty())
+            .map(|s| vec![s])
+            .unwrap_or_default(),
+        SamlAttributeSource::FamilyName => user
+            .name
+            .as_ref()
+            .and_then(|n| n.family.clone())
+            .filter(|s| !s.is_empty())
+            .map(|s| vec![s])
+            .unwrap_or_default(),
+        SamlAttributeSource::DisplayName => user
+            .name
+            .as_ref()
+            .and_then(|n| n.display.clone())
+            .filter(|s| !s.is_empty())
+            .map(|s| vec![s])
+            .unwrap_or_default(),
+    }
+}
+
+fn flatten_attribute_value(v: &geonosis_core::AttributeValue) -> Vec<String> {
+    use geonosis_core::AttributeValue;
+    match v {
+        AttributeValue::String(s) => vec![s.clone()],
+        AttributeValue::Strings(ss) => ss.clone(),
+        AttributeValue::Integer(i) => vec![i.to_string()],
+        AttributeValue::Bool(b) => vec![b.to_string()],
+        AttributeValue::Float(f) => vec![f.to_string()],
+        AttributeValue::Null => vec![],
+    }
 }
 
 /// Build an unsigned `SamlAssertion` for a `(user, SP)` pair. The actual
@@ -151,6 +299,8 @@ mod tests {
             default_audience: None,
             session_index_strategy: SessionIndexStrategy::UseSessionId,
             authn_request_signing_certificates: vec![],
+            attribute_mappers: vec![],
+            front_channel_logout_url: None,
         }
     }
 
@@ -189,6 +339,8 @@ mod tests {
             default_audience: None,
             session_index_strategy: SessionIndexStrategy::UseSessionId,
             authn_request_signing_certificates: vec![],
+            attribute_mappers: vec![],
+            front_channel_logout_url: None,
         };
         let a = build_assertion(
             "https://idp.example",
@@ -202,5 +354,146 @@ mod tests {
         assert_eq!(a.audience, vec!["sp.example".to_string()]);
         assert_eq!(a.session_index.as_deref(), Some("session-1"));
         assert!(a.not_on_or_after > a.issue_instant);
+    }
+
+    fn user_with(
+        username: &str,
+        email: Option<&str>,
+        given: Option<&str>,
+        family: Option<&str>,
+        attrs: Vec<(&str, geonosis_core::AttributeValue)>,
+    ) -> geonosis_core::User {
+        let mut u = geonosis_core::User::default();
+        u.username = username.into();
+        u.email = email.map(String::from);
+        u.email_verified = email.is_some();
+        u.name = Some(geonosis_core::PersonName {
+            given: given.map(String::from),
+            family: family.map(String::from),
+            middle: None,
+            display: None,
+        });
+        for (k, v) in attrs {
+            u.attributes.insert(k.into(), v);
+        }
+        u
+    }
+
+    #[test]
+    fn empty_mappers_yield_no_attributes() {
+        let user = user_with("ada", Some("a@x"), Some("Ada"), Some("L"), vec![]);
+        let out = apply_attribute_mappers(&user, &[]);
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn static_mapper_emits_literal_values() {
+        let user = user_with("ada", None, None, None, vec![]);
+        let m = vec![SamlAttributeMapping {
+            saml_name: "https://saml.example/role".into(),
+            friendly_name: Some("role".into()),
+            name_format: default_attribute_name_format(),
+            source: SamlAttributeSource::Static {
+                values: vec!["editor".into(), "viewer".into()],
+            },
+        }];
+        let out = apply_attribute_mappers(&user, &m);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].name, "https://saml.example/role");
+        assert_eq!(out[0].values, vec!["editor".to_string(), "viewer".into()]);
+    }
+
+    #[test]
+    fn user_attribute_source_reads_attributes() {
+        let user = user_with(
+            "ada",
+            None,
+            None,
+            None,
+            vec![(
+                "department",
+                geonosis_core::AttributeValue::String("eng".into()),
+            )],
+        );
+        let m = vec![SamlAttributeMapping {
+            saml_name: "https://saml.example/department".into(),
+            friendly_name: None,
+            name_format: default_attribute_name_format(),
+            source: SamlAttributeSource::UserAttribute {
+                name: "department".into(),
+            },
+        }];
+        let out = apply_attribute_mappers(&user, &m);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].values, vec!["eng".to_string()]);
+    }
+
+    #[test]
+    fn user_attribute_strings_emits_multi_valued() {
+        let user = user_with(
+            "ada",
+            None,
+            None,
+            None,
+            vec![(
+                "groups",
+                geonosis_core::AttributeValue::Strings(vec!["a".into(), "b".into()]),
+            )],
+        );
+        let m = vec![SamlAttributeMapping {
+            saml_name: "https://saml.example/groups".into(),
+            friendly_name: None,
+            name_format: default_attribute_name_format(),
+            source: SamlAttributeSource::UserAttribute {
+                name: "groups".into(),
+            },
+        }];
+        let out = apply_attribute_mappers(&user, &m);
+        assert_eq!(out[0].values, vec!["a".to_string(), "b".into()]);
+    }
+
+    #[test]
+    fn email_givenname_familyname_sources() {
+        let user = user_with("ada", Some("ada@x.com"), Some("Ada"), Some("Lovelace"), vec![]);
+        let m = vec![
+            SamlAttributeMapping {
+                saml_name: "email".into(),
+                friendly_name: None,
+                name_format: default_attribute_name_format(),
+                source: SamlAttributeSource::Email,
+            },
+            SamlAttributeMapping {
+                saml_name: "given".into(),
+                friendly_name: None,
+                name_format: default_attribute_name_format(),
+                source: SamlAttributeSource::GivenName,
+            },
+            SamlAttributeMapping {
+                saml_name: "family".into(),
+                friendly_name: None,
+                name_format: default_attribute_name_format(),
+                source: SamlAttributeSource::FamilyName,
+            },
+        ];
+        let out = apply_attribute_mappers(&user, &m);
+        assert_eq!(out.len(), 3);
+        assert_eq!(out[0].values, vec!["ada@x.com".to_string()]);
+        assert_eq!(out[1].values, vec!["Ada".to_string()]);
+        assert_eq!(out[2].values, vec!["Lovelace".to_string()]);
+    }
+
+    #[test]
+    fn empty_sources_skip_emission() {
+        // No email on user → email mapper should produce nothing
+        // (rather than an empty `<Attribute>`).
+        let user = user_with("ada", None, None, None, vec![]);
+        let m = vec![SamlAttributeMapping {
+            saml_name: "email".into(),
+            friendly_name: None,
+            name_format: default_attribute_name_format(),
+            source: SamlAttributeSource::Email,
+        }];
+        let out = apply_attribute_mappers(&user, &m);
+        assert!(out.is_empty(), "empty-source mapper should skip emission");
     }
 }

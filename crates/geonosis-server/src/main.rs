@@ -147,6 +147,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         geonosis_server::bootstrap::run(state.storage.clone()).await?;
     }
 
+    // Per `docs/07-spi-wasm.md` §"Provider registry + built-ins-as-
+    // plugins": built-in mapper / event / policy providers register
+    // under the same `SpiBinding` namespace as WASM plugins so
+    // operators can list, disable, or replace them through the
+    // admin surface. Idempotent — repeat boots don't churn the
+    // registry.
+    match state.storage.list_realms().await {
+        Ok(realms) => {
+            for r in &realms {
+                state.providers.seed_v0_1_builtins(r.id);
+            }
+            tracing::info!(
+                count = realms.len(),
+                "seeded v0.1 built-in providers into registry",
+            );
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "list_realms failed; skipping built-in SPI seed");
+        }
+    }
+
     // Spawn the cache invalidation listener + audit-retention runner
     // when Postgres is the backend. Both attach to the same pool.
     if let Some(pool) = retention_pool.clone() {
