@@ -36,6 +36,7 @@ pub fn FlowsPage(realm_slug: String, rows: Vec<FlowRow>) -> impl IntoView {
     let ctx = PageContext {
         title: "Flows".into(),
         active_section: "flows",
+        realm_slug: Some(realm_slug.clone()),
     };
     let back = format!("/admin-next/realms/{realm_slug}");
     let realm = realm_slug.clone();
@@ -80,6 +81,7 @@ pub fn FlowEditPage(
     let ctx = PageContext {
         title: format!("Edit flow {alias}"),
         active_section: "flows",
+        realm_slug: Some(realm_slug.clone()),
     };
     let back = format!("/admin-next/realms/{realm_slug}/flows");
     let post = format!("/admin-next/realms/{realm_slug}/flows/{alias}");

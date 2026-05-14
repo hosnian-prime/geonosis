@@ -103,8 +103,8 @@ pub async fn run(storage: Arc<dyn Storage>) -> Result<(), BootstrapError> {
     storage.create_realm(realm).await?;
     geonosis_storage::seed_default_flows(storage.as_ref(), realm_id).await?;
 
-    provision_user(&storage, realm_id, END_USER, END_USER_PW, now).await?;
-    provision_user(&storage, realm_id, ADMIN_USER, ADMIN_PW, now).await?;
+    provision_user(&storage, realm_id, END_USER, END_USER_PW, false, now).await?;
+    provision_user(&storage, realm_id, ADMIN_USER, ADMIN_PW, true, now).await?;
     provision_client(&storage, realm_id, now).await?;
 
     tracing::info!(
@@ -120,10 +120,18 @@ async fn provision_user(
     realm_id: RealmId,
     username: &str,
     password: &str,
+    is_admin: bool,
     now: chrono::DateTime<Utc>,
 ) -> Result<(), BootstrapError> {
     let user_id = UserId::new();
     let credential_id = CredentialId::new();
+    let mut attributes = std::collections::BTreeMap::new();
+    if is_admin {
+        attributes.insert(
+            "admin".to_string(),
+            geonosis_core::attribute::AttributeValue::Bool(true),
+        );
+    }
     let user = User {
         id: user_id,
         realm_id,
@@ -139,7 +147,7 @@ async fn provision_user(
             last_used_at: None,
         }],
         federation: None,
-        attributes: Default::default(),
+        attributes,
         required_actions: vec![],
         required_flow: None,
         organizations: vec![],

@@ -73,6 +73,7 @@ pub async fn page_realms_html(
         lang,
         i18n: &state.i18n,
         active: "realms",
+        realm_slug: None,
     };
     let realms = state
         .storage
@@ -97,6 +98,7 @@ pub async fn page_realm_detail_html(
         lang,
         i18n: &state.i18n,
         active: "realms",
+        realm_slug: Some(&slug),
     };
     let realm = state
         .storage
@@ -133,6 +135,7 @@ pub async fn page_clients_html(
         lang,
         i18n: &state.i18n,
         active: "clients",
+        realm_slug: Some(&slug),
     };
     let realm = state
         .storage
@@ -183,6 +186,7 @@ pub async fn page_users_html(
         lang,
         i18n: &state.i18n,
         active: "users",
+        realm_slug: Some(&slug),
     };
     // v0.1: storage doesn't expose a paginated user-list method; the
     // section is a placeholder until the admin REST gets `/users?cursor=`.
@@ -210,6 +214,7 @@ pub async fn page_flows_html(
         lang,
         i18n: &state.i18n,
         active: "flows",
+        realm_slug: Some(&slug),
     };
     let realm = state
         .storage
@@ -245,6 +250,7 @@ pub async fn page_spi_html(
         lang,
         i18n: &state.i18n,
         active: "spi",
+        realm_slug: Some(&slug),
     };
     let _ = state
         .storage
@@ -269,6 +275,7 @@ pub async fn page_idps_html(
         lang,
         i18n: &state.i18n,
         active: "idps",
+        realm_slug: Some(&slug),
     };
     let _ = state
         .storage
@@ -293,6 +300,7 @@ pub async fn page_events_html(
         lang,
         i18n: &state.i18n,
         active: "events",
+        realm_slug: Some(&slug),
     };
     let _ = state
         .storage
@@ -308,6 +316,190 @@ pub async fn page_events_html(
         &ctx.t("admin-events-heading"),
         body,
     )))
+}
+
+// ---- Login / Logout ----
+
+pub async fn login_page(
+    State(state): State<Arc<AdminState>>,
+    headers: HeaderMap,
+    Query(q): Query<LangQuery>,
+) -> Response {
+    login_page_inner(&state, &headers, q.lang.as_deref(), None).await
+}
+
+async fn login_page_inner(
+    state: &AdminState,
+    headers: &HeaderMap,
+    lang_override: Option<&str>,
+    error: Option<&str>,
+) -> Response {
+    let lang = negotiate(&state.i18n, headers, lang_override);
+    let lang_str = lang.to_string();
+    let body = maud::html! {
+        (maud::DOCTYPE)
+        html lang=(lang_str) dir="auto" {
+            head {
+                meta charset="utf-8";
+                meta name="viewport" content="width=device-width,initial-scale=1";
+                title { "Sign in · Geonosis" }
+                link rel="stylesheet" href="/static/admin.css";
+            }
+            body {
+                div class="gn-login-page" {
+                    div class="gn-login-card" {
+                        h1 { "Geonosis" }
+                        p class="gn-login-subtitle" { "Sign in to the admin console" }
+                        @if let Some(err) = error {
+                            div class="gn-login-error" { (err) }
+                        }
+                        form method="post" action="/admin/login" {
+                            label class="gn-field" {
+                                span class="gn-field-label" { "Username or email" }
+                                input class="gn-input" type="text" name="username"
+                                    autocomplete="username" required autofocus;
+                            }
+                            label class="gn-field" {
+                                span class="gn-field-label" { "Password" }
+                                input class="gn-input" type="password" name="password"
+                                    autocomplete="current-password" required;
+                            }
+                            button type="submit" class="gn-button gn-button--primary" {
+                                "Sign in"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    };
+    html_response(body)
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LoginForm {
+    pub username: String,
+    pub password: String,
+}
+
+pub async fn login_submit(
+    State(state): State<Arc<AdminState>>,
+    headers: HeaderMap,
+    axum::Form(form): axum::Form<LoginForm>,
+) -> Response {
+    match try_login(&state, &form.username, &form.password).await {
+        Ok((session_id, _realm_id)) => {
+            let cookie = format!(
+                "{}={}; Path=/admin; HttpOnly; SameSite=Lax; Max-Age=86400",
+                crate::auth::COOKIE_NAME,
+                session_id,
+            );
+            (
+                StatusCode::SEE_OTHER,
+                [
+                    (header::LOCATION, "/admin/realms"),
+                    (header::SET_COOKIE, &cookie),
+                ],
+            )
+                .into_response()
+        }
+        Err(msg) => login_page_inner(&state, &headers, None, Some(&msg)).await,
+    }
+}
+
+async fn try_login(
+    state: &AdminState,
+    username: &str,
+    password: &str,
+) -> Result<(String, geonosis_core::RealmId), String> {
+    // v0.1: look up the first realm. Multi-realm admin auth follows.
+    let realms = state
+        .storage
+        .list_realms()
+        .await
+        .map_err(|_| "internal error".to_string())?;
+    let realm = realms.first().ok_or("no realm configured")?;
+
+    // Try by username, then by email.
+    let user = match state.storage.get_user_by_username(realm.id, username).await {
+        Ok(u) => u,
+        Err(_) => state
+            .storage
+            .get_user_by_email(realm.id, username)
+            .await
+            .map_err(|_| "Invalid username or password".to_string())?,
+    };
+
+    if !user.enabled {
+        return Err("Account is disabled".into());
+    }
+
+    // Check admin attribute.
+    let is_admin = matches!(
+        user.attributes.get("admin"),
+        Some(geonosis_core::attribute::AttributeValue::Bool(true))
+    );
+    if !is_admin {
+        return Err("Admin access required".into());
+    }
+
+    // Verify password.
+    let hash = state
+        .storage
+        .get_password_hash(realm.id, user.id)
+        .await
+        .map_err(|_| "Invalid username or password".to_string())?;
+    let valid = geonosis_crypto::verify_password(password, &hash)
+        .map_err(|_| "Invalid username or password".to_string())?;
+    if !valid {
+        return Err("Invalid username or password".into());
+    }
+
+    // Create session.
+    let now = chrono::Utc::now();
+    let session = geonosis_core::Session {
+        id: geonosis_core::id::SessionId::new_random(),
+        realm_id: realm.id,
+        user_id: user.id,
+        authn_level: geonosis_core::common::AuthnLevel::Single,
+        idp_alias: None,
+        started_at: now,
+        last_seen_at: now,
+        expires_at: now + chrono::Duration::hours(24),
+        clients: vec![],
+    };
+    let sid = session.id.to_string();
+    state
+        .storage
+        .create_session(session)
+        .await
+        .map_err(|_| "internal error".to_string())?;
+
+    Ok((sid, realm.id))
+}
+
+pub async fn logout(
+    State(state): State<Arc<AdminState>>,
+    headers: HeaderMap,
+) -> Response {
+    // Try to delete the session.
+    if let Some(sid) = crate::auth::cookie_value_from(&headers) {
+        let session_id = geonosis_core::id::SessionId(sid);
+        let _ = state.storage.delete_session(&session_id).await;
+    }
+
+    let clear_cookie = format!(
+        "{}=; Path=/admin; HttpOnly; SameSite=Lax; Max-Age=0",
+        crate::auth::COOKIE_NAME,
+    );
+    (
+        StatusCode::SEE_OTHER,
+        [
+            (header::LOCATION, "/admin/login"),
+            (header::SET_COOKIE, &clear_cookie),
+        ],
+    )
+        .into_response()
 }
 
 // ---- REST API ----

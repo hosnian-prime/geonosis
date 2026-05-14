@@ -19,6 +19,7 @@ pub fn OrgsPage(realm_slug: String, rows: Vec<OrgRow>) -> impl IntoView {
     let ctx = PageContext {
         title: "Organizations".into(),
         active_section: "orgs",
+        realm_slug: Some(realm_slug.clone()),
     };
     let back = format!("/admin-next/realms/{realm_slug}");
     view! {

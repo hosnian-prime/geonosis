@@ -10,9 +10,13 @@ use crate::security_headers;
 use crate::state::AppState;
 
 pub fn router(state: AppState) -> Router {
-    let admin =
-        geonosis_admin_ui::AdminState::with_audit(state.storage.clone(), state.audit.clone())
-            .expect("admin state");
+    let admin = geonosis_admin_ui::AdminState::with_audit(
+        state.storage.clone(),
+        state.audit.clone(),
+        state.kms.clone(),
+        state.public_base_url.clone(),
+    )
+    .expect("admin state");
     let admin_router = geonosis_admin_ui::router(admin);
     let metrics_state = state.metrics.clone();
     Router::new()
@@ -236,15 +240,65 @@ mod tests {
         }
     }
 
+    /// Create an admin session and return the cookie header value for
+    /// test requests that hit auth-protected admin routes.
+    async fn admin_session_cookie(state: &AppState) -> String {
+        use geonosis_core::attribute::AttributeValue;
+        use geonosis_core::common::AuthnLevel;
+
+        let realm = state.storage.get_realm_by_slug("acme").await.unwrap();
+        let user_id = geonosis_core::id::UserId::new();
+        let now = Utc::now();
+        let user = geonosis_core::User {
+            id: user_id,
+            realm_id: realm.id,
+            username: "test-admin@acme.test".into(),
+            email: Some("test-admin@acme.test".into()),
+            email_verified: true,
+            name: None,
+            credentials: vec![],
+            federation: None,
+            attributes: [("admin".into(), AttributeValue::Bool(true))]
+                .into_iter()
+                .collect(),
+            required_actions: vec![],
+            required_flow: None,
+            organizations: vec![],
+            enabled: true,
+            failed_attempts: 0,
+            locked_until: None,
+            last_failed_at: None,
+            created_at: now,
+            updated_at: now,
+        };
+        state.storage.create_user(user).await.unwrap();
+        let session = geonosis_core::Session {
+            id: geonosis_core::id::SessionId::new_random(),
+            realm_id: realm.id,
+            user_id,
+            authn_level: AuthnLevel::Single,
+            idp_alias: None,
+            started_at: now,
+            last_seen_at: now,
+            expires_at: now + chrono::Duration::hours(1),
+            clients: vec![],
+        };
+        let sid = session.id.to_string();
+        state.storage.create_session(session).await.unwrap();
+        format!("geonosis_admin_sid={sid}")
+    }
+
     #[tokio::test]
     async fn admin_realms_html_renders() {
         let state = fixture_state().await;
+        let cookie = admin_session_cookie(&state).await;
         let r = router(state);
         let resp = r
             .clone()
             .oneshot(
                 Request::builder()
                     .uri("/admin/realms")
+                    .header(axum::http::header::COOKIE, &cookie)
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -263,11 +317,13 @@ mod tests {
     #[tokio::test]
     async fn admin_realms_api_returns_json() {
         let state = fixture_state().await;
+        let cookie = admin_session_cookie(&state).await;
         let r = router(state);
         let resp = r
             .oneshot(
                 Request::builder()
                     .uri("/admin/v1/realms")
+                    .header(axum::http::header::COOKIE, &cookie)
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -311,12 +367,14 @@ mod tests {
     #[tokio::test]
     async fn admin_negotiates_turkish() {
         let state = fixture_state().await;
+        let cookie = admin_session_cookie(&state).await;
         let r = router(state);
         let resp = r
             .oneshot(
                 Request::builder()
                     .uri("/admin/realms")
                     .header(axum::http::header::ACCEPT_LANGUAGE, "tr,en;q=0.5")
+                    .header(axum::http::header::COOKIE, &cookie)
                     .body(Body::empty())
                     .unwrap(),
             )

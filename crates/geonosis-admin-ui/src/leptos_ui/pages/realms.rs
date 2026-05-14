@@ -22,6 +22,7 @@ pub fn RealmsPage(realms: Vec<RealmRow>) -> impl IntoView {
     let ctx = PageContext {
         title: "Realms".into(),
         active_section: "realms",
+        realm_slug: None,
     };
     view! {
         <Page context=ctx>

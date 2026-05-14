@@ -21,6 +21,7 @@ pub fn RolesPage(realm_slug: String, rows: Vec<RoleRow>) -> impl IntoView {
     let ctx = PageContext {
         title: "Roles".into(),
         active_section: "roles",
+        realm_slug: Some(realm_slug.clone()),
     };
     let back = format!("/admin-next/realms/{realm_slug}");
     view! {

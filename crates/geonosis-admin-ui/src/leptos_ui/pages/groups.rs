@@ -22,6 +22,7 @@ pub fn GroupsPage(realm_slug: String, rows: Vec<GroupRow>) -> impl IntoView {
     let ctx = PageContext {
         title: "Groups".into(),
         active_section: "groups",
+        realm_slug: Some(realm_slug.clone()),
     };
     let back = format!("/admin-next/realms/{realm_slug}");
     view! {

@@ -3,9 +3,9 @@
 use leptos::prelude::*;
 
 #[component]
-pub fn SidebarNav(active: &'static str) -> impl IntoView {
-    let item = |slug: &'static str, label: &'static str, href: String| {
-        let class = if slug == active {
+pub fn SidebarNav(active: &'static str, #[prop(default = String::new())] realm_slug: String) -> impl IntoView {
+    let item = |section: &'static str, label: &'static str, href: String| {
+        let class = if section == active {
             "gn-nav__item is-active"
         } else {
             "gn-nav__item"
@@ -14,20 +14,27 @@ pub fn SidebarNav(active: &'static str) -> impl IntoView {
             <a class=class href=href>{label}</a>
         }
     };
+    let base = if realm_slug.is_empty() {
+        None
+    } else {
+        Some(format!("/admin-next/realms/{realm_slug}"))
+    };
     view! {
         <nav class="gn-nav" aria-label="Admin sections">
             {item("realms", "Realms", "/admin-next/realms".to_string())}
-            {item("clients", "Clients", "/admin-next/clients".to_string())}
-            {item("users", "Users", "/admin-next/users".to_string())}
-            {item("roles", "Roles", "/admin-next/roles".to_string())}
-            {item("groups", "Groups", "/admin-next/groups".to_string())}
-            {item("orgs", "Organizations", "/admin-next/orgs".to_string())}
-            {item("agents", "Agents", "/admin-next/agents".to_string())}
-            {item("flows", "Flows", "/admin-next/flows".to_string())}
-            {item("idps", "Identity providers", "/admin-next/idps".to_string())}
-            {item("spi", "SPI plugins", "/admin-next/spi".to_string())}
-            {item("sessions", "Sessions", "/admin-next/sessions".to_string())}
-            {item("events", "Audit events", "/admin-next/events".to_string())}
+            {base.as_ref().map(|b| view! {
+                {item("clients", "Clients", format!("{b}/clients"))}
+                {item("users", "Users", format!("{b}/users"))}
+                {item("roles", "Roles", format!("{b}/roles"))}
+                {item("groups", "Groups", format!("{b}/groups"))}
+                {item("orgs", "Organizations", format!("{b}/orgs"))}
+                {item("agents", "Agents", format!("{b}/agents"))}
+                {item("flows", "Flows", format!("{b}/flows"))}
+                {item("idps", "Identity providers", format!("{b}/idps"))}
+                {item("spi", "SPI plugins", format!("{b}/spi"))}
+                {item("sessions", "Sessions", format!("{b}/sessions"))}
+                {item("events", "Audit events", format!("{b}/events"))}
+            })}
         </nav>
     }
 }
