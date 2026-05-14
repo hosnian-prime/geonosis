@@ -16,7 +16,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use crate::{AuditEvent, AuditError, AuditSink};
+use crate::{AuditError, AuditEvent, AuditSink};
 
 /// Configuration for one webhook sink instance.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -141,11 +141,7 @@ impl AuditSink for WebhookSink {
                 Err(e) => {
                     let permanent = e
                         .status()
-                        .map(|s| {
-                            s.is_client_error()
-                                && s.as_u16() != 429
-                                && s.as_u16() != 408
-                        })
+                        .map(|s| s.is_client_error() && s.as_u16() != 429 && s.as_u16() != 408)
                         .unwrap_or(false);
                     if permanent {
                         // 4xx (except 429/408) — won't change on retry.
@@ -167,9 +163,7 @@ impl AuditSink for WebhookSink {
                             event_action = %event.action,
                             "audit webhook retries exhausted; dropping event",
                         );
-                        return Err(AuditError::Backend(format!(
-                            "retries exhausted: {e}"
-                        )));
+                        return Err(AuditError::Backend(format!("retries exhausted: {e}")));
                     }
                     let wait = self.backoff_for(attempt);
                     tracing::debug!(

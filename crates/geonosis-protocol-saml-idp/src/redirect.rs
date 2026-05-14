@@ -22,8 +22,7 @@ use thiserror::Error;
 
 /// XML-DSig algorithm URI for RSA-SHA256. The only inbound
 /// signature algorithm v0.1.x verifies for the Redirect binding.
-pub const REDIRECT_SIG_ALG_RSA_SHA256: &str =
-    "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256";
+pub const REDIRECT_SIG_ALG_RSA_SHA256: &str = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256";
 
 #[derive(Debug, Error)]
 pub enum RedirectDecodeError {
@@ -144,8 +143,8 @@ fn load_rsa_public_from_cert_pem(pem: &str) -> Result<rsa::RsaPublicKey, String>
         .decode(body.as_bytes())
         .map_err(|e| format!("base64: {e}"))?;
     if trimmed.contains("BEGIN CERTIFICATE") {
-        let (_, cert) = x509_parser::parse_x509_certificate(&bytes)
-            .map_err(|e| format!("x509: {e}"))?;
+        let (_, cert) =
+            x509_parser::parse_x509_certificate(&bytes).map_err(|e| format!("x509: {e}"))?;
         let spki_der = cert.public_key().raw;
         if let Ok(k) = rsa::RsaPublicKey::from_public_key_der(spki_der) {
             return Ok(k);

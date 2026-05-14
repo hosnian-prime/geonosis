@@ -70,8 +70,15 @@ pub fn entry_to_user(
         .and_then(|a| entry.first(a))
         .map(str::to_string);
 
-    let enabled = match map.user_account_control.as_deref().and_then(|a| entry.first(a)) {
-        Some(s) => s.parse::<u32>().map(|v| (v & AD_ACCOUNT_DISABLED) == 0).unwrap_or(true),
+    let enabled = match map
+        .user_account_control
+        .as_deref()
+        .and_then(|a| entry.first(a))
+    {
+        Some(s) => s
+            .parse::<u32>()
+            .map(|v| (v & AD_ACCOUNT_DISABLED) == 0)
+            .unwrap_or(true),
         None => true,
     };
 

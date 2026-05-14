@@ -222,7 +222,7 @@ mod tests {
     fn bucket_refills_over_time() {
         let base = Instant::now();
         let b = Bucket::new(10, 100, base); // 100 tokens/sec
-        // Drain the bucket.
+                                            // Drain the bucket.
         for _ in 0..10 {
             assert!(b.try_consume(base, base));
         }
@@ -259,7 +259,7 @@ mod tests {
         assert!(limiter.try_consume(a));
         assert!(limiter.try_consume(a));
         assert!(!limiter.try_consume(a)); // exhausted
-        // Realm b unaffected.
+                                          // Realm b unaffected.
         assert!(limiter.try_consume(b));
         assert!(limiter.try_consume(b));
     }

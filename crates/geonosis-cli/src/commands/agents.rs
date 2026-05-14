@@ -122,7 +122,7 @@ pub async fn run(client: &AdminClient, cmd: AgentCmd) -> anyhow::Result<()> {
         AgentCmd::List { realm } => {
             let path = format!("/admin/v1/realms/{realm}/agents");
             let rows: Vec<AgentRow> = client.get(&path).await?;
-            println!("{:<32} {:<32} {}", "ALIAS", "DISPLAY NAME", "ENABLED");
+            println!("{:<32} {:<32} ENABLED", "ALIAS", "DISPLAY NAME");
             for r in rows {
                 println!(
                     "{:<32} {:<32} {}",

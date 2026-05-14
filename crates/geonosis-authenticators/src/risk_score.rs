@@ -15,7 +15,7 @@ use serde_json::json;
 use geonosis_core::attribute::AttributeValue;
 
 use crate::context::AuthnContext;
-use crate::traits::{AuthnError, AuthnInput, AuthnOutput, Authenticator, FailureKind};
+use crate::traits::{Authenticator, AuthnError, AuthnInput, AuthnOutput, FailureKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -207,14 +207,20 @@ mod tests {
     #[tokio::test]
     async fn defaults_to_low_and_stamps_locals() {
         let mut ctx = fixture(None).await;
-        RiskScoreAuthenticator::new().process(&mut ctx, AuthnInput::Init).await.unwrap();
+        RiskScoreAuthenticator::new()
+            .process(&mut ctx, AuthnInput::Init)
+            .await
+            .unwrap();
         assert_eq!(ctx.locals.get("risk:decision").unwrap(), &json!("low"));
     }
 
     #[tokio::test]
     async fn user_attribute_overrides_default() {
         let mut ctx = fixture(Some("medium")).await;
-        RiskScoreAuthenticator::new().process(&mut ctx, AuthnInput::Init).await.unwrap();
+        RiskScoreAuthenticator::new()
+            .process(&mut ctx, AuthnInput::Init)
+            .await
+            .unwrap();
         assert_eq!(ctx.locals.get("risk:decision").unwrap(), &json!("medium"));
     }
 

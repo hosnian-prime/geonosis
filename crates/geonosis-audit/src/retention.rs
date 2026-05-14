@@ -75,10 +75,8 @@ pub fn spawn_runner(
 /// audit crate must not depend on storage; the server bootstrap
 /// wires a closure that reads from the storage backend.
 pub type ListRetentionFn = std::sync::Arc<
-    dyn Fn() -> futures_util::future::BoxFuture<
-            'static,
-            Result<Vec<(String, u32)>, String>,
-        > + Send
+    dyn Fn() -> futures_util::future::BoxFuture<'static, Result<Vec<(String, u32)>, String>>
+        + Send
         + Sync,
 >;
 

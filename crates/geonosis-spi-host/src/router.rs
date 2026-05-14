@@ -176,10 +176,8 @@ where
 /// `ProviderRegistry::first_enabled` so the router doesn't need a
 /// live registry — callers can preload the slice once per request.
 pub fn active_bindings(bindings: &[ProviderBinding]) -> Vec<ProviderBinding> {
-    let replaced: std::collections::HashSet<String> = bindings
-        .iter()
-        .filter_map(|b| b.replaces.clone())
-        .collect();
+    let replaced: std::collections::HashSet<String> =
+        bindings.iter().filter_map(|b| b.replaces.clone()).collect();
     bindings
         .iter()
         .filter(|b| b.enabled && !replaced.contains(&b.provider_urn))
@@ -211,10 +209,7 @@ mod tests {
 
     #[tokio::test]
     async fn first_match_short_circuits() {
-        let bs = vec![
-            binding("a", 200, None, true),
-            binding("b", 100, None, true),
-        ];
+        let bs = vec![binding("a", 200, None, true), binding("b", 100, None, true)];
         let calls = std::sync::atomic::AtomicUsize::new(0);
         let result: Option<&str> = first_match(&bs, |b| {
             calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -260,11 +255,9 @@ mod tests {
     #[tokio::test]
     async fn named_select_missing_returns_error() {
         let bs = vec![binding("a", 100, None, true)];
-        let err = named_select(&bs, "z", |_b| async move {
-            Ok::<_, DispatchError>(())
-        })
-        .await
-        .unwrap_err();
+        let err = named_select(&bs, "z", |_b| async move { Ok::<_, DispatchError>(()) })
+            .await
+            .unwrap_err();
         assert!(matches!(err, DispatchError::NamedNotFound(_)));
     }
 
@@ -272,7 +265,10 @@ mod tests {
     async fn chain_folds_in_priority_order() {
         // Higher-priority bindings come first in the slice (matches
         // ProviderRegistry::list output).
-        let bs = vec![binding("plus1", 200, None, true), binding("times2", 100, None, true)];
+        let bs = vec![
+            binding("plus1", 200, None, true),
+            binding("times2", 100, None, true),
+        ];
         let result = chain(&bs, 0_i32, |b, acc| {
             let urn = b.provider_urn.clone();
             async move {
@@ -291,7 +287,10 @@ mod tests {
 
     #[tokio::test]
     async fn named_attach_collects_every_provider() {
-        let bs = vec![binding("v1", 200, None, true), binding("v2", 100, None, true)];
+        let bs = vec![
+            binding("v1", 200, None, true),
+            binding("v2", 100, None, true),
+        ];
         let result = named_attach(&bs, |b| {
             let len = b.provider_urn.len();
             async move { Ok::<_, DispatchError>(len) }
@@ -341,9 +340,10 @@ mod tests {
     #[tokio::test]
     async fn first_decision_all_skip_yields_none() {
         let bs = vec![binding("a", 100, None, true)];
-        let result = first_decision(&bs, |_b| async move {
-            Ok::<_, DispatchError>(Decision::Skip)
-        })
+        let result = first_decision(
+            &bs,
+            |_b| async move { Ok::<_, DispatchError>(Decision::Skip) },
+        )
         .await
         .unwrap();
         assert!(result.is_none());
@@ -353,7 +353,12 @@ mod tests {
     fn active_bindings_filters_replaced_and_disabled() {
         let bs = vec![
             binding("builtin:authn:password", 100, None, true),
-            binding("wasm:authn:custom", 200, Some("builtin:authn:password"), true),
+            binding(
+                "wasm:authn:custom",
+                200,
+                Some("builtin:authn:password"),
+                true,
+            ),
             binding("dead", 50, None, false),
         ];
         let active = active_bindings(&bs);

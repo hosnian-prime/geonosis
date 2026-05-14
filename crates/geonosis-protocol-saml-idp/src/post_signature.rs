@@ -40,8 +40,7 @@ use quick_xml::events::Event;
 use quick_xml::reader::Reader;
 use thiserror::Error;
 
-const SIG_ALG_RSA_SHA256: &str =
-    "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256";
+const SIG_ALG_RSA_SHA256: &str = "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256";
 
 #[derive(Debug, Error)]
 pub enum PostSigError {
@@ -80,9 +79,7 @@ pub fn verify_post_authn_request_signature(
     if extracted.signature_method_alg != SIG_ALG_RSA_SHA256 {
         return Err(PostSigError::UnsupportedAlg(extracted.signature_method_alg));
     }
-    let embedded_cert_b64 = extracted
-        .x509_cert_b64
-        .ok_or(PostSigError::NoCert)?;
+    let embedded_cert_b64 = extracted.x509_cert_b64.ok_or(PostSigError::NoCert)?;
     let pinned_match = trusted_cert_pems
         .iter()
         .any(|p| cert_pem_matches_b64(p, &embedded_cert_b64));
@@ -93,18 +90,17 @@ pub fn verify_post_authn_request_signature(
     let sig_bytes = B64
         .decode(extracted.signature_value_b64.trim().as_bytes())
         .map_err(|e| PostSigError::DecodeSignature(e.to_string()))?;
-    let signed_info_bytes = &xml.as_bytes()[extracted.signed_info_range.0..extracted.signed_info_range.1];
+    let signed_info_bytes =
+        &xml.as_bytes()[extracted.signed_info_range.0..extracted.signed_info_range.1];
 
-    let pk = load_rsa_public_from_cert_b64(&embedded_cert_b64)
-        .map_err(PostSigError::CertLoad)?;
+    let pk = load_rsa_public_from_cert_b64(&embedded_cert_b64).map_err(PostSigError::CertLoad)?;
 
     use rsa::pkcs1v15::{Signature, VerifyingKey};
     use rsa::sha2::Sha256;
     use rsa::signature::Verifier;
 
     let vk = VerifyingKey::<Sha256>::new(pk);
-    let sig = Signature::try_from(sig_bytes.as_slice())
-        .map_err(|_| PostSigError::BadSignature)?;
+    let sig = Signature::try_from(sig_bytes.as_slice()).map_err(|_| PostSigError::BadSignature)?;
     vk.verify(signed_info_bytes, &sig)
         .map_err(|_| PostSigError::BadSignature)?;
     Ok(())
@@ -144,9 +140,8 @@ fn extract_signature_pieces(xml: &str) -> Result<SigPieces, PostSigError> {
                 if local == b"SignatureMethod" {
                     for attr in e.attributes().with_checks(false).flatten() {
                         if attr.key.as_ref() == b"Algorithm" {
-                            sig_method_alg = Some(
-                                String::from_utf8_lossy(attr.value.as_ref()).into_owned(),
-                            );
+                            sig_method_alg =
+                                Some(String::from_utf8_lossy(attr.value.as_ref()).into_owned());
                         }
                     }
                 }
@@ -160,9 +155,8 @@ fn extract_signature_pieces(xml: &str) -> Result<SigPieces, PostSigError> {
                 if local == b"SignatureMethod" {
                     for attr in e.attributes().with_checks(false).flatten() {
                         if attr.key.as_ref() == b"Algorithm" {
-                            sig_method_alg = Some(
-                                String::from_utf8_lossy(attr.value.as_ref()).into_owned(),
-                            );
+                            sig_method_alg =
+                                Some(String::from_utf8_lossy(attr.value.as_ref()).into_owned());
                         }
                     }
                 }
@@ -237,10 +231,7 @@ fn load_rsa_public_from_cert_b64(b64: &str) -> Result<rsa::RsaPublicKey, String>
     use rsa::pkcs1::DecodeRsaPublicKey;
     use rsa::pkcs8::DecodePublicKey;
 
-    let cleaned: String = b64
-        .chars()
-        .filter(|c| !c.is_ascii_whitespace())
-        .collect();
+    let cleaned: String = b64.chars().filter(|c| !c.is_ascii_whitespace()).collect();
     let bytes = B64
         .decode(cleaned.as_bytes())
         .map_err(|e| format!("base64: {e}"))?;
@@ -260,7 +251,8 @@ mod tests {
 
     #[test]
     fn rejects_unsigned_authnrequest() {
-        let xml = r##"<samlp:AuthnRequest xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" ID="_a"/>"##;
+        let xml =
+            r##"<samlp:AuthnRequest xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" ID="_a"/>"##;
         let err = verify_post_authn_request_signature(xml, &[]).unwrap_err();
         assert!(matches!(err, PostSigError::NoSignature));
     }

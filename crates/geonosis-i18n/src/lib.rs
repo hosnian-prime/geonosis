@@ -45,7 +45,9 @@ pub struct I18n {
 impl I18n {
     /// Load every bundled FTL file at construction time.
     pub fn load_embedded() -> Result<Self, I18nError> {
-        let fallback: LanguageIdentifier = "en".parse().map_err(|e: unic_langid::LanguageIdentifierError| I18nError::Lang(e.to_string()))?;
+        let fallback: LanguageIdentifier = "en"
+            .parse()
+            .map_err(|e: unic_langid::LanguageIdentifierError| I18nError::Lang(e.to_string()))?;
         let me = Self {
             bundles: RwLock::new(HashMap::new()),
             fallback,
@@ -60,16 +62,15 @@ impl I18n {
             let data = Bundles::get(&path).ok_or_else(|| I18nError::Bundle(path.clone()))?;
             let text = String::from_utf8(data.data.into_owned())
                 .map_err(|e| I18nError::Parse(e.to_string()))?;
-            by_lang
-                .entry(lang.into())
-                .or_default()
-                .push((path, text));
+            by_lang.entry(lang.into()).or_default().push((path, text));
         }
 
         for (lang, files) in by_lang {
-            let lid: LanguageIdentifier = lang
-                .parse()
-                .map_err(|e: unic_langid::LanguageIdentifierError| I18nError::Lang(e.to_string()))?;
+            let lid: LanguageIdentifier =
+                lang.parse()
+                    .map_err(|e: unic_langid::LanguageIdentifierError| {
+                        I18nError::Lang(e.to_string())
+                    })?;
             let mut bundle = ConcurrentBundle::new_concurrent(vec![lid.clone()]);
             for (path, body) in files {
                 let res = FluentResource::try_new(body)

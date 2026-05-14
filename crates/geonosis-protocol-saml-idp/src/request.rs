@@ -69,7 +69,12 @@ pub fn parse_authn_request(xml_bytes: &[u8]) -> Result<ParsedAuthnRequest, Parse
 
     loop {
         match reader.read_event_into(&mut buf) {
-            Err(e) => return Err(ParseError::Xml(format!("at pos {}: {e}", reader.buffer_position()))),
+            Err(e) => {
+                return Err(ParseError::Xml(format!(
+                    "at pos {}: {e}",
+                    reader.buffer_position()
+                )))
+            }
             Ok(Event::Eof) => break,
             Ok(Event::Start(e)) | Ok(Event::Empty(e)) => {
                 let qname = e.name();
@@ -84,9 +89,8 @@ pub fn parse_authn_request(xml_bytes: &[u8]) -> Result<ParsedAuthnRequest, Parse
                     if let Some(ref mut r) = out {
                         for attr in e.attributes().flatten() {
                             if attr.key.as_ref() == b"Format" {
-                                r.name_id_policy_format = Some(
-                                    String::from_utf8_lossy(&attr.value).into_owned(),
-                                );
+                                r.name_id_policy_format =
+                                    Some(String::from_utf8_lossy(&attr.value).into_owned());
                             }
                         }
                     }
@@ -95,9 +99,10 @@ pub fn parse_authn_request(xml_bytes: &[u8]) -> Result<ParsedAuthnRequest, Parse
             Ok(Event::Text(e)) => {
                 if in_issuer {
                     if let Some(ref mut s) = current_text {
-                        s.push_str(&e.unescape().map_err(|err| {
-                            ParseError::Xml(format!("text decode: {err}"))
-                        })?);
+                        s.push_str(
+                            &e.unescape()
+                                .map_err(|err| ParseError::Xml(format!("text decode: {err}")))?,
+                        );
                     }
                 }
             }
@@ -122,7 +127,9 @@ pub fn parse_authn_request(xml_bytes: &[u8]) -> Result<ParsedAuthnRequest, Parse
     Ok(req)
 }
 
-fn start_authn_request(e: &quick_xml::events::BytesStart) -> Result<ParsedAuthnRequest, ParseError> {
+fn start_authn_request(
+    e: &quick_xml::events::BytesStart,
+) -> Result<ParsedAuthnRequest, ParseError> {
     let mut id: Option<String> = None;
     let mut issue_instant: Option<DateTime<Utc>> = None;
     let mut destination: Option<String> = None;

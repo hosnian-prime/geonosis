@@ -12,7 +12,9 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use chrono::{Duration, Utc};
 
-use geonosis_protocol_oidc::{generate_request_uri, AuthorizeRequest, ParResponse, PAR_DEFAULT_TTL_SECS};
+use geonosis_protocol_oidc::{
+    generate_request_uri, AuthorizeRequest, ParResponse, PAR_DEFAULT_TTL_SECS,
+};
 use geonosis_storage::ParRequest;
 
 use crate::handlers::client_auth::authenticate_client;

@@ -92,8 +92,7 @@ impl<K: KeyManagementService + ?Sized + 'static> TokenIssuer for OidcIssuer<K> {
             ext: Default::default(),
         };
         let header = JwsHeader::new(alg, kid.to_string(), "JWT");
-        let jwt =
-            sign_jwt_compat(&header, &claims, &private).map_err(|e| GrantError::Internal(e))?;
+        let jwt = sign_jwt_compat(&header, &claims, &private).map_err(GrantError::Internal)?;
         Ok((jwt, exp_secs))
     }
 
@@ -222,7 +221,10 @@ fn issuer_url(base: &url::Url, slug: &str) -> String {
     let mut u = base.clone();
     let path = format!(
         "{}/realms/{}",
-        u.path().trim_end_matches('/').trim_end_matches("/realms").trim_end_matches('/'),
+        u.path()
+            .trim_end_matches('/')
+            .trim_end_matches("/realms")
+            .trim_end_matches('/'),
         slug
     );
     u.set_path(&path);

@@ -58,9 +58,10 @@ impl Theme {
         let root = root.as_ref().to_path_buf();
         let toml_path = root.join("theme.toml");
         let bytes = std::fs::read(&toml_path).map_err(|e| ThemeError::Io(e.to_string()))?;
-        let meta: ThemeMeta =
-            toml::from_str(std::str::from_utf8(&bytes).map_err(|e| ThemeError::Toml(e.to_string()))?)
-                .map_err(|e| ThemeError::Toml(e.to_string()))?;
+        let meta: ThemeMeta = toml::from_str(
+            std::str::from_utf8(&bytes).map_err(|e| ThemeError::Toml(e.to_string()))?,
+        )
+        .map_err(|e| ThemeError::Toml(e.to_string()))?;
         if meta.name.is_empty() {
             return Err(ThemeError::Invalid("name is empty".into()));
         }
@@ -107,22 +108,22 @@ impl TemplateOverlay {
     }
 
     pub fn register_theme(&self, theme: Theme) {
-        self.themes
-            .write()
-            .insert(theme.meta.name.clone(), theme);
+        self.themes.write().insert(theme.meta.name.clone(), theme);
     }
 
     /// Resolve a slot following the theme → parent → builtin chain.
-    pub fn find(&self, active_theme: Option<&str>, slot: &str) -> Result<Option<String>, ThemeError> {
+    pub fn find(
+        &self,
+        active_theme: Option<&str>,
+        slot: &str,
+    ) -> Result<Option<String>, ThemeError> {
         if let Some(name) = active_theme {
             let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
             let mut next = Some(name.to_string());
             while let Some(t) = next {
                 if !visited.insert(t.clone()) {
                     // Cycle — bail.
-                    return Err(ThemeError::Invalid(format!(
-                        "parent cycle through {t}"
-                    )));
+                    return Err(ThemeError::Invalid(format!("parent cycle through {t}")));
                 }
                 let themes = self.themes.read();
                 let Some(theme) = themes.get(&t) else {
@@ -170,17 +171,9 @@ display_name = "Acme"
     #[test]
     fn overlay_uses_theme_when_present() {
         let dir = tempdir().unwrap();
-        fs::write(
-            dir.path().join("theme.toml"),
-            "name = \"acme\"\n",
-        )
-        .unwrap();
+        fs::write(dir.path().join("theme.toml"), "name = \"acme\"\n").unwrap();
         fs::create_dir(dir.path().join("login")).unwrap();
-        fs::write(
-            dir.path().join("login/login.html"),
-            "<p>themed</p>",
-        )
-        .unwrap();
+        fs::write(dir.path().join("login/login.html"), "<p>themed</p>").unwrap();
         let overlay = TemplateOverlay::new();
         overlay.register_builtin("login/login.html", "<p>builtin</p>");
         overlay.register_theme(Theme::load_dir(dir.path()).unwrap());
@@ -191,11 +184,7 @@ display_name = "Acme"
     #[test]
     fn parent_chain_resolves() {
         let parent_dir = tempdir().unwrap();
-        fs::write(
-            parent_dir.path().join("theme.toml"),
-            "name = \"base\"\n",
-        )
-        .unwrap();
+        fs::write(parent_dir.path().join("theme.toml"), "name = \"base\"\n").unwrap();
         fs::create_dir(parent_dir.path().join("login")).unwrap();
         fs::write(
             parent_dir.path().join("login/login.html"),

@@ -50,7 +50,13 @@ async fn handle(slug: String, state: AppState, headers: HeaderMap) -> Response {
         Ok(id) => id,
         // Service-account / agent tokens have non-ULID `sub` values; the
         // OIDC userinfo endpoint is for user subjects.
-        Err(_) => return (StatusCode::BAD_REQUEST, "userinfo only valid for user subjects").into_response(),
+        Err(_) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                "userinfo only valid for user subjects",
+            )
+                .into_response()
+        }
     };
     let user = match state.storage.get_user(realm.id, user_id).await {
         Ok(u) => u,

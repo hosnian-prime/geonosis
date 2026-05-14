@@ -97,14 +97,17 @@ pub async fn authenticate_client(
                 "JWT-based client auth not yet wired in v0.1",
             ))
         }
-        ClientAuthMethod::TlsClientAuth => Err(OAuthError::invalid_client(
-            "tls_client_auth is v0.2",
-        )),
+        ClientAuthMethod::TlsClientAuth => {
+            Err(OAuthError::invalid_client("tls_client_auth is v0.2"))
+        }
     }
 }
 
 fn parse_basic_auth(headers: &HeaderMap) -> Option<(String, String)> {
-    let h = headers.get(axum::http::header::AUTHORIZATION)?.to_str().ok()?;
+    let h = headers
+        .get(axum::http::header::AUTHORIZATION)?
+        .to_str()
+        .ok()?;
     let rest = h.strip_prefix("Basic ")?;
     let decoded = STANDARD.decode(rest.trim()).ok()?;
     let s = std::str::from_utf8(&decoded).ok()?;
@@ -122,7 +125,10 @@ fn percent_decode(s: &str) -> String {
 
 /// Bearer token extraction for `/userinfo` + `/introspect` introspection auth.
 pub fn bearer_from(headers: &HeaderMap) -> Option<String> {
-    let h = headers.get(axum::http::header::AUTHORIZATION)?.to_str().ok()?;
+    let h = headers
+        .get(axum::http::header::AUTHORIZATION)?
+        .to_str()
+        .ok()?;
     h.strip_prefix("Bearer ").map(|s| s.trim().to_string())
 }
 

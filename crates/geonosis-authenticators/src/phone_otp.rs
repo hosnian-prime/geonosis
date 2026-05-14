@@ -23,7 +23,7 @@ use geonosis_crypto::hash::{ct_eq, token_hash};
 
 use crate::context::AuthnContext;
 use crate::traits::{
-    AuthnError, AuthnInput, AuthnOutput, Authenticator, FailureKind, RenderInstruction,
+    Authenticator, AuthnError, AuthnInput, AuthnOutput, FailureKind, RenderInstruction,
 };
 
 /// TTL of a single SMS code.
@@ -116,11 +116,7 @@ impl PhoneOtpAuthenticator {
         })
     }
 
-    async fn verify(
-        &self,
-        ctx: &mut AuthnContext,
-        code: &str,
-    ) -> Result<AuthnOutput, AuthnError> {
+    async fn verify(&self, ctx: &mut AuthnContext, code: &str) -> Result<AuthnOutput, AuthnError> {
         let user_id = ctx
             .user_id
             .ok_or_else(|| AuthnError::Invalid("phone-otp verify requires resolved user".into()))?;
@@ -225,7 +221,9 @@ mod tests {
         }
         let uid = u.id;
         storage.create_user(u).await.unwrap();
-        let rec = Arc::new(RecorderSms { sent: Mutex::new(vec![]) });
+        let rec = Arc::new(RecorderSms {
+            sent: Mutex::new(vec![]),
+        });
         let ctx = AuthnContext {
             realm_id: realm,
             client: Arc::new(geonosis_core::Client {
@@ -307,7 +305,10 @@ mod tests {
         let mut form = std::collections::BTreeMap::new();
         form.insert("code".into(), "000000".into());
         let out = a.process(&mut ctx, AuthnInput::Submit(form)).await.unwrap();
-        assert!(matches!(out, AuthnOutput::Failure(FailureKind::InvalidCredential)));
+        assert!(matches!(
+            out,
+            AuthnOutput::Failure(FailureKind::InvalidCredential)
+        ));
     }
 
     #[tokio::test]
@@ -315,7 +316,10 @@ mod tests {
         let (mut ctx, _uid, rec) = fixture(None).await;
         let a = PhoneOtpAuthenticator::new(rec.clone());
         let form = std::collections::BTreeMap::new();
-        let err = a.process(&mut ctx, AuthnInput::Submit(form)).await.unwrap_err();
+        let err = a
+            .process(&mut ctx, AuthnInput::Submit(form))
+            .await
+            .unwrap_err();
         assert!(matches!(err, AuthnError::Invalid(_)));
     }
 }

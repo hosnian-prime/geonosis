@@ -112,7 +112,7 @@ pub async fn run(client: &AdminClient, cmd: RealmCmd) -> anyhow::Result<()> {
 }
 
 fn print_table(rows: &[RealmRow]) {
-    println!("{:<24} {:<32} {}", "SLUG", "DISPLAY NAME", "ENABLED");
+    println!("{:<24} {:<32} ENABLED", "SLUG", "DISPLAY NAME");
     for r in rows {
         println!(
             "{:<24} {:<32} {}",

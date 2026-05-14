@@ -111,7 +111,9 @@ mod tests {
         let key = [3u8; 32];
         let fam = new_family();
         let secret = "secret-A";
-        s.save_refresh_token(token(fam, &key, secret)).await.unwrap();
+        s.save_refresh_token(token(fam, &key, secret))
+            .await
+            .unwrap();
         let out = validate_refresh(&s, secret, &key).await.unwrap();
         match out {
             RefreshOutcome::Ok { prior } => assert_eq!(prior.family_id, fam),
@@ -159,7 +161,9 @@ mod tests {
         let prior = token(fam, &key, "first");
         s.save_refresh_token(prior.clone()).await.unwrap();
         let replacement = token(fam, &key, "second");
-        rotate_refresh_token(&s, &prior, replacement.clone()).await.unwrap();
+        rotate_refresh_token(&s, &prior, replacement.clone())
+            .await
+            .unwrap();
         // Old is marked used.
         let p = s.get_refresh_token(&prior.id).await.unwrap();
         assert!(p.used);

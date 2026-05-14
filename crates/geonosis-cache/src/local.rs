@@ -183,8 +183,10 @@ mod tests {
         let realm = RealmId::new();
         let k1 = CacheKey::new(realm, CacheClass::User, "u1");
         let k2 = CacheKey::new(realm, CacheClass::Client, "c1");
-        c.put(k1.clone(), &V { n: 1 }, Duration::from_secs(30)).await;
-        c.put(k2.clone(), &V { n: 2 }, Duration::from_secs(30)).await;
+        c.put(k1.clone(), &V { n: 1 }, Duration::from_secs(30))
+            .await;
+        c.put(k2.clone(), &V { n: 2 }, Duration::from_secs(30))
+            .await;
         c.invalidate_prefix(&CacheKeyPrefix::new(realm, CacheClass::User))
             .await;
         let r1: Option<super::super::Cached<V>> = c.get(&k1).await;
