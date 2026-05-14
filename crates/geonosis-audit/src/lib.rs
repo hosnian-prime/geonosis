@@ -14,6 +14,9 @@ use geonosis_core::id::{ClientId, EventId, FlowId, KeyId, RealmId, SessionId, Us
 #[cfg(feature = "postgres")]
 pub mod postgres;
 
+#[cfg(feature = "postgres")]
+pub mod retention;
+
 #[cfg(feature = "webhook")]
 pub mod webhook;
 
