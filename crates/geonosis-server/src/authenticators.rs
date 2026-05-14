@@ -1,12 +1,43 @@
 //! Server-side wiring for the built-in authenticator runtimes.
 //!
-//! Holds the singleton runtime instances (`PasswordAuthenticator`,
-//! `OtpAuthenticator`, …) keyed by URN and exposes a `dispatch` helper
-//! the flow executor can call by `provider_urn`.
+//! **Layer**: registry. Holds the singleton `Arc<dyn Authenticator>`
+//! instances keyed by URN. The convenience `dispatch(urn, ctx, input)`
+//! method composes `lookup() + Authenticator::process()` for callers
+//! that already own a built `AuthnContext`.
+//!
+//! **Not the canonical entry point.** Flow-level code goes through
+//! [`crate::flow_runtime::BuiltinAuthnDispatcher`] (which implements
+//! [`geonosis_flow::AuthnDispatcher`]) — that's where flow-world
+//! types (`FlowState`, `StepInput`) translate into authenticator-world
+//! types (`AuthnContext`, `AuthnInput`) before reaching this registry.
+//! See `flow_runtime.rs` for the bridge.
+//!
+//! **Why two `dispatch` methods exist** (intentional layering, not
+//! duplication):
+//! - `BuiltinAuthenticators::dispatch` — registry layer, takes an
+//!   already-built `AuthnContext`.
+//! - `BuiltinAuthnDispatcher::dispatch` — flow layer, builds the
+//!   `AuthnContext` from `FlowState` + storage + realm hash key,
+//!   then calls into the registry layer.
 //!
 //! Runtime instances are shared across realms — they hold no
 //! per-realm state. Per-realm config flows through `AuthnContext` /
 //! `OtpConfig::from_policy(&realm.otp_policy)`.
+//!
+//! ## Pattern note
+//!
+//! This registry's shape — URN → single-method trait → `.process()` —
+//! differs intentionally from:
+//! - `geonosis_broker::BuiltinAdapters` — multi-hook trait (each
+//!   adapter exposes 4 distinct lifecycle methods, not a single
+//!   `process`).
+//! - `geonosis_broker::mapper` — config-driven enum (no URN
+//!   dispatch; mapper bindings are configuration, not pluggable
+//!   runtimes in the same sense).
+//!
+//! Each shape matches the domain need. The three registries are not
+//! a fourth pattern waiting to be unified — they are three appropriate
+//! patterns for three different dispatch problems.
 
 use std::collections::HashMap;
 use std::sync::Arc;
