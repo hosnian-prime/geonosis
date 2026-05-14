@@ -26,8 +26,8 @@ geonosis-flow = { path = "../geonosis-flow" }
 geonosis-protocol-oauth = { path = "../geonosis-protocol-oauth" }
 geonosis-protocol-oidc = { path = "../geonosis-protocol-oidc" }
 geonosis-protocol-saml-idp = { path = "../geonosis-protocol-saml-idp" }
-geonosis-federation-ldap = { path = "../geonosis-federation-ldap" }
-geonosis-broker = { path = "../geonosis-broker" }
+geonosis-federation-ldap = { path = "../geonosis-federation-ldap", features = ["ldap-runtime"] }
+geonosis-broker = { path = "../geonosis-broker", features = ["broker-runtime"] }
 geonosis-spi-host = { path = "../geonosis-spi-host" }
 geonosis-authenticators = { path = "../geonosis-authenticators" }
 geonosis-audit = { path = "../geonosis-audit", features = ["postgres"] }
@@ -56,6 +56,7 @@ hex.workspace = true
 percent-encoding.workspace = true
 blake3.workspace = true
 futures.workspace = true
+parking_lot.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

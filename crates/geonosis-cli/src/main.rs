@@ -49,8 +49,41 @@ enum Cmd {
         #[command(subcommand)]
         cmd: MigrateCmd,
     },
+    /// LDAP / AD federation operations.
+    Federation {
+        /// Postgres connection URL. Inferred from `GEONOSIS_DATABASE_URL`.
+        #[arg(long, env = "GEONOSIS_DATABASE_URL")]
+        database_url: String,
+        #[command(subcommand)]
+        cmd: FederationCmd,
+    },
     /// Print the version.
     Version,
+}
+
+#[derive(Debug, Subcommand)]
+enum FederationCmd {
+    /// Run a synchronization pass against a federated LDAP source.
+    Sync {
+        /// Realm slug.
+        #[arg(long)]
+        realm: String,
+        /// Source alias.
+        #[arg(long)]
+        source: String,
+        /// Walk the whole tree (default). When `--since` is given, an
+        /// incremental sync runs starting from that RFC 3339 timestamp.
+        #[arg(long, conflicts_with = "since")]
+        full: bool,
+        /// Incremental sync starting from this RFC 3339 timestamp.
+        #[arg(long)]
+        since: Option<String>,
+    },
+    /// List configured LDAP sources for a realm.
+    List {
+        #[arg(long)]
+        realm: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -118,7 +151,64 @@ fn main() -> anyhow::Result<()> {
             ),
         },
         Cmd::Migrate { database_url, cmd } => rt.block_on(run_migrate(&database_url, cmd)),
+        Cmd::Federation { database_url, cmd } => {
+            rt.block_on(run_federation(&database_url, cmd))
+        }
     }
+}
+
+async fn run_federation(database_url: &str, cmd: FederationCmd) -> anyhow::Result<()> {
+    use geonosis_storage::Storage;
+
+    let pool = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(4)
+        .connect(database_url)
+        .await?;
+    let storage = geonosis_storage::PostgresStorage::new(pool);
+    match cmd {
+        FederationCmd::List { realm } => {
+            let r = storage.get_realm_by_slug(&realm).await?;
+            let sources = storage.list_ldap_sources(r.id).await?;
+            for s in sources {
+                println!(
+                    "{:<24} pri={:<4} {} {}",
+                    s.alias,
+                    s.priority,
+                    if s.enabled { "enabled" } else { "disabled" },
+                    s.urls.join(",")
+                );
+            }
+        }
+        FederationCmd::Sync {
+            realm,
+            source,
+            full: _,
+            since,
+        } => {
+            let r = storage.get_realm_by_slug(&realm).await?;
+            let cfg = storage.get_ldap_source(r.id, &source).await?;
+            let pool = geonosis_federation_ldap::LdapPool::new(cfg);
+            let report = if let Some(s) = since {
+                let dt = chrono::DateTime::parse_from_rfc3339(&s)?
+                    .with_timezone(&chrono::Utc);
+                let (rep, outcomes) =
+                    geonosis_federation_ldap::run_incremental_sync(&pool, r.id, dt).await?;
+                println!("incremental sync: {} entries", outcomes.len());
+                rep
+            } else {
+                let (rep, outcomes) =
+                    geonosis_federation_ldap::run_full_sync(&pool, r.id).await?;
+                println!("full sync: {} entries", outcomes.len());
+                rep
+            };
+            println!(
+                "started_at={}  finished_at={}",
+                report.started_at.to_rfc3339(),
+                report.finished_at.to_rfc3339()
+            );
+        }
+    }
+    Ok(())
 }
 
 async fn run_migrate(database_url: &str, cmd: MigrateCmd) -> anyhow::Result<()> {
