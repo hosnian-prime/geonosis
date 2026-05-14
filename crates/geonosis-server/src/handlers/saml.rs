@@ -741,6 +741,232 @@ fn build_idp_logout_request(
     )
 }
 
+/// `GET /realms/:slug/clients-saml/:alias/unsolicited` — IdP-
+/// initiated SSO entry. The authenticated user (via the
+/// `geonosis_sid` cookie set by `login_actions`) picks an SP by
+/// alias; we mint + sign an assertion as if responding to an
+/// `<AuthnRequest>` and auto-POST to the SP's first registered
+/// ACS URL.
+///
+/// Per docs/20-saml-idp.md §"URL surface" / §"Assertion
+/// construction": the IdP-initiated case differs from
+/// SP-initiated only in that there is no inbound `AuthnRequest`
+/// — `InResponseTo` is omitted from the Response.
+pub async fn unsolicited(
+    State(state): State<AppState>,
+    Path((slug, alias)): Path<(String, String)>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    use geonosis_protocol_saml_idp::{
+        serialize_assertion, serialize_response, sign_assertion, KeyInfoMaterial,
+        SamlSpClientConfig,
+    };
+
+    let realm = match state.storage.get_realm_by_slug(&slug).await {
+        Ok(r) => r,
+        Err(_) => return (StatusCode::NOT_FOUND, "realm not found").into_response(),
+    };
+
+    let session_id = match read_session_cookie(&headers) {
+        Some(s) => geonosis_core::SessionId(s),
+        None => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                "no SSO session — sign in first via /authorize",
+            )
+                .into_response()
+        }
+    };
+    let session = match state.storage.get_session(&session_id).await {
+        Ok(s) if s.realm_id == realm.id => s,
+        _ => {
+            return (
+                StatusCode::UNAUTHORIZED,
+                "session not found or realm mismatch",
+            )
+                .into_response()
+        }
+    };
+    let user = match state.storage.get_user(realm.id, session.user_id).await {
+        Ok(u) => u,
+        Err(_) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "user lookup failed",
+            )
+                .into_response()
+        }
+    };
+
+    // Resolve the SP client by alias (its client_id).
+    let client = match state
+        .storage
+        .get_client_by_client_id(realm.id, &alias)
+        .await
+    {
+        Ok(c) => c,
+        Err(_) => return (StatusCode::NOT_FOUND, "unknown SP alias").into_response(),
+    };
+    if !matches!(client.kind, geonosis_core::ClientKind::SamlServiceProvider) {
+        return (
+            StatusCode::BAD_REQUEST,
+            "client is not a SAML service provider",
+        )
+            .into_response();
+    }
+    let raw_config = match client.saml_sp_config.as_ref() {
+        Some(v) => v,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                "SP has no saml_sp_config",
+            )
+                .into_response()
+        }
+    };
+    let sp_config = match SamlSpClientConfig::try_from_value(raw_config) {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("invalid SP config: {e}"),
+            )
+                .into_response()
+        }
+    };
+    let acs_url = match sp_config.acs_urls.first() {
+        Some(u) => u.as_str().to_string(),
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                "SP has no registered ACS URL",
+            )
+                .into_response()
+        }
+    };
+
+    // NameID resolution mirrors the SP-initiated branch.
+    let name_id = match sp_config.name_id_format {
+        geonosis_saml_types::NameIdFormat::EmailAddress => {
+            user.email.clone().unwrap_or_else(|| user.username.clone())
+        }
+        geonosis_saml_types::NameIdFormat::Unspecified => user.username.clone(),
+        geonosis_saml_types::NameIdFormat::Transient => session.id.0.clone(),
+        geonosis_saml_types::NameIdFormat::Persistent
+        | geonosis_saml_types::NameIdFormat::X509SubjectName => {
+            // Reuse the same persistent NameID lookup as the
+            // SP-initiated branch (login_actions).
+            match crate::handlers::login_actions::resolve_persistent_name_id(
+                &state,
+                &realm,
+                &user,
+                &sp_config.entity_id,
+            )
+            .await
+            {
+                Ok(n) => n,
+                Err(e) => {
+                    return (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        format!("persistent NameID resolve failed: {e}"),
+                    )
+                        .into_response()
+                }
+            }
+        }
+    };
+
+    let session_index_value = match sp_config.session_index_strategy {
+        geonosis_protocol_saml_idp::SessionIndexStrategy::UseSessionId => session.id.0.clone(),
+        geonosis_protocol_saml_idp::SessionIndexStrategy::Random => {
+            geonosis_crypto::random::random_token()
+        }
+    };
+    let issuer_base = state.public_base_url.as_str().trim_end_matches('/');
+    let idp_issuer = format!("{issuer_base}/realms/{}", realm.slug);
+
+    let attrs = crate::handlers::login_actions::default_user_attributes(&user);
+    let assertion = geonosis_protocol_saml_idp::build_assertion(
+        &idp_issuer,
+        &sp_config,
+        &name_id,
+        &session_index_value,
+        attrs,
+        Some("urn:oasis:names:tc:SAML:2.0:ac:classes:Password".into()),
+        5,
+    );
+    let assertion_xml = serialize_assertion(&assertion);
+    let kid = match state
+        .kms
+        .active_signing_kid(realm.id, geonosis_core::JwsAlgorithm::RS256)
+        .await
+    {
+        Ok(k) => k,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("no active RS256 key: {e}"),
+            )
+                .into_response()
+        }
+    };
+    let key_info = match crate::handlers::login_actions::build_key_info_for_realm(
+        &state, &realm,
+    )
+    .await
+    {
+        Ok(k) => k,
+        Err(_) => KeyInfoMaterial::RsaKeyValue {
+            modulus_b64: "".into(),
+            exponent_b64: "AQAB".into(),
+        },
+    };
+    let signed_xml = match sign_assertion(
+        state.kms.as_ref(),
+        realm.id,
+        &kid,
+        &assertion.id,
+        &assertion_xml,
+        key_info,
+    )
+    .await
+    {
+        Ok(x) => x,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("assertion sign failed: {e}"),
+            )
+                .into_response()
+        }
+    };
+    // IdP-initiated → no InResponseTo.
+    let response_xml = serialize_response(
+        &format!("_resp_{}", geonosis_crypto::random::random_token()),
+        chrono::Utc::now(),
+        &idp_issuer,
+        &acs_url,
+        None,
+        &signed_xml,
+    );
+    let response_b64 = B64.encode(response_xml.as_bytes());
+    Html(acs_auto_post_form(&acs_url, &response_b64, None)).into_response()
+}
+
+/// Read the `geonosis_sid` cookie value out of a request's
+/// Cookie header. Returns `None` if the cookie isn't set or the
+/// header doesn't parse.
+fn read_session_cookie(headers: &axum::http::HeaderMap) -> Option<String> {
+    let raw = headers.get(axum::http::header::COOKIE)?.to_str().ok()?;
+    for segment in raw.split(';') {
+        let segment = segment.trim();
+        if let Some(rest) = segment.strip_prefix("geonosis_sid=") {
+            return Some(rest.to_string());
+        }
+    }
+    None
+}
+
 /// Build a self-posting form that returns the signed SAML
 /// Response to the SP's ACS URL. Called from `login_actions` when
 /// the SAML continuation is set on the completed flow state.

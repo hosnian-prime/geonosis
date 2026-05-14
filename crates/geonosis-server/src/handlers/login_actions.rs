@@ -344,7 +344,24 @@ async fn mint_code_and_redirect(
     if let Some(s) = p.get("state") {
         url.query_pairs_mut().append_pair("state", s);
     }
-    Redirect::to(url.as_str()).into_response()
+    // Set the realm-scoped SSO session cookie so IdP-initiated SAML
+    // entry (`GET /realms/:slug/clients-saml/:alias/unsolicited`)
+    // can resolve the user without re-prompting. HttpOnly +
+    // SameSite=Lax + path-scoped — v0.1.x security baseline; doc
+    // 08-admin-ui.md §"Security baselines" tracks the broader
+    // cookie posture (Secure flag landed once we enforce HTTPS at
+    // the listener).
+    use axum::http::header::SET_COOKIE;
+    let cookie = format!(
+        "geonosis_sid={}; Path=/realms/{}; HttpOnly; SameSite=Lax",
+        session_id.0,
+        realm.slug
+    );
+    let mut resp = Redirect::to(url.as_str()).into_response();
+    if let Ok(v) = axum::http::HeaderValue::from_str(&cookie) {
+        resp.headers_mut().append(SET_COOKIE, v);
+    }
+    resp
 }
 
 /// Detect a SAML continuation set on the flow state by
@@ -515,7 +532,7 @@ async fn try_complete_saml(
 /// Mint the `<ds:KeyInfo>` payload for the assertion signature.
 /// Tries X.509 cert generation (canonical SAML form) and falls
 /// back to RSAKeyValue if cert minting fails.
-async fn build_key_info_for_realm(
+pub(crate) async fn build_key_info_for_realm(
     state: &AppState,
     realm: &geonosis_core::Realm,
 ) -> Result<geonosis_protocol_saml_idp::KeyInfoMaterial, String> {
@@ -547,7 +564,7 @@ async fn build_key_info_for_realm(
 /// Resolve (or mint + persist) the persistent SAML NameID for a
 /// `(realm, user, SP)` tuple. The mint format is `g_<ULID-base32>`
 /// — opaque to the SP, never reveals the underlying user_id.
-async fn resolve_persistent_name_id(
+pub(crate) async fn resolve_persistent_name_id(
     state: &AppState,
     realm: &geonosis_core::Realm,
     user: &geonosis_core::User,
@@ -588,7 +605,9 @@ async fn resolve_persistent_name_id(
 /// transformation per docs/20 §"Attribute mapping (the SPI)"
 /// adds on top of this baseline (v0.1.x+ once SP-config carries
 /// the `attribute_mappers` binding list).
-fn default_user_attributes(user: &geonosis_core::User) -> Vec<geonosis_saml_types::SamlAttribute> {
+pub(crate) fn default_user_attributes(
+    user: &geonosis_core::User,
+) -> Vec<geonosis_saml_types::SamlAttribute> {
     use geonosis_saml_types::SamlAttribute;
     let mut out: Vec<SamlAttribute> = Vec::new();
 

@@ -38,6 +38,13 @@ pub fn router(state: AppState) -> Router {
             "/realms/:slug/protocol/saml/slo",
             get(handlers::saml_slo_get).post(handlers::saml_slo_post),
         )
+        // IdP-initiated SSO entry — authenticated user picks an SP
+        // by alias and the IdP mints + posts an assertion as if
+        // responding to an AuthnRequest (no InResponseTo).
+        .route(
+            "/realms/:slug/clients-saml/:alias/unsolicited",
+            get(handlers::saml_unsolicited),
+        )
         // Prometheus exposition endpoint — `docs/13-observability.md`.
         .route(
             "/metrics",
@@ -725,6 +732,48 @@ mod tests {
         let body = axum::body::to_bytes(resp.into_body(), 16 * 1024).await.unwrap();
         let text = std::str::from_utf8(&body).unwrap();
         assert!(text.contains("unknown SP"), "got: {text}");
+    }
+
+    #[tokio::test]
+    async fn saml_unsolicited_requires_session_cookie() {
+        // GET /realms/:slug/clients-saml/:alias/unsolicited without
+        // a `geonosis_sid` cookie must reject with 401 — the
+        // operator hasn't signed in yet.
+        let r = router(fixture_state().await);
+        let resp = r
+            .oneshot(
+                Request::builder()
+                    .uri("/realms/acme/clients-saml/some-sp/unsolicited")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+        let body = axum::body::to_bytes(resp.into_body(), 16 * 1024).await.unwrap();
+        let text = std::str::from_utf8(&body).unwrap();
+        assert!(text.contains("no SSO session"));
+    }
+
+    #[tokio::test]
+    async fn saml_unsolicited_rejects_unknown_session() {
+        // A `geonosis_sid` cookie that doesn't match a stored
+        // session must reject with 401.
+        let r = router(fixture_state().await);
+        let resp = r
+            .oneshot(
+                Request::builder()
+                    .uri("/realms/acme/clients-saml/some-sp/unsolicited")
+                    .header(
+                        axum::http::header::COOKIE,
+                        "geonosis_sid=does-not-exist; Path=/realms/acme",
+                    )
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]
