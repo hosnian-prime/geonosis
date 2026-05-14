@@ -226,6 +226,56 @@ impl RedirectUri {
         }
         false
     }
+
+    /// Per `docs/03-protocols-oidc.md` §"Conformance defaults" and OAuth 2.1
+    /// §9.7.2, registered redirect URIs MUST use HTTPS, except for:
+    /// - loopback (`http://localhost`, `http://127.0.0.1`, `http://[::1]`)
+    /// - non-HTTP custom schemes (e.g. mobile deep links `com.example.app://`)
+    ///
+    /// Admin REST + `geoctl` clients call this when accepting redirect URIs
+    /// so that an `http://example.com/cb` registration fails fast instead of
+    /// being silently honoured at runtime. The runtime `authorize` path
+    /// still enforces exact-match against the registered list — this is the
+    /// register-time gate.
+    pub fn validate_scheme(uri: &str) -> Result<(), RedirectUriError> {
+        // `*` wildcards are stripped before parse so `https://app/*` validates.
+        let parseable = uri.trim_end_matches("/*");
+        let parsed = url::Url::parse(parseable)
+            .map_err(|e| RedirectUriError::Unparseable(e.to_string()))?;
+        match parsed.scheme() {
+            "https" => Ok(()),
+            "http" => {
+                let host = parsed.host_str().unwrap_or("");
+                if is_loopback_host(host) {
+                    Ok(())
+                } else {
+                    Err(RedirectUriError::HttpRequiresLoopback {
+                        host: host.to_string(),
+                    })
+                }
+            }
+            // OAuth 2.1 §9.7.2 native-app callback schemes (must contain a
+            // dot, per RFC 7595 — `com.example.app`, `bundle.id`, etc.).
+            // Bare `urn:` or `data:` are excluded.
+            s if s.contains('.') => Ok(()),
+            other => Err(RedirectUriError::UnsupportedScheme(other.to_string())),
+        }
+    }
+}
+
+fn is_loopback_host(host: &str) -> bool {
+    matches!(host, "localhost" | "127.0.0.1" | "[::1]" | "::1")
+}
+
+/// Errors returned by [`RedirectUri::validate_scheme`].
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum RedirectUriError {
+    #[error("redirect_uri unparseable as URL: {0}")]
+    Unparseable(String),
+    #[error("http:// redirect_uri only allowed for loopback hosts (got `{host}`); use https://")]
+    HttpRequiresLoopback { host: String },
+    #[error("unsupported redirect_uri scheme `{0}`; expected https://, http:// loopback, or a reverse-DNS custom scheme")]
+    UnsupportedScheme(String),
 }
 
 /// Per-client PKCE policy. The realm/global default is "required for public".
@@ -277,6 +327,48 @@ mod tests {
         assert!(r.matches("https://example.com/a/b"));
         // host-only wildcard should not collapse the slash boundary
         assert!(!r.matches("https://example.com2/a"));
+    }
+
+    #[test]
+    fn redirect_scheme_https_accepted() {
+        RedirectUri::validate_scheme("https://example.com/cb").unwrap();
+        RedirectUri::validate_scheme("https://app.example.com/auth/callback").unwrap();
+    }
+
+    #[test]
+    fn redirect_scheme_http_loopback_accepted() {
+        RedirectUri::validate_scheme("http://localhost:3000/cb").unwrap();
+        RedirectUri::validate_scheme("http://127.0.0.1/cb").unwrap();
+        RedirectUri::validate_scheme("http://[::1]:8080/cb").unwrap();
+    }
+
+    #[test]
+    fn redirect_scheme_http_non_loopback_rejected() {
+        let err = RedirectUri::validate_scheme("http://example.com/cb").unwrap_err();
+        assert!(matches!(err, RedirectUriError::HttpRequiresLoopback { .. }));
+        let err = RedirectUri::validate_scheme("http://10.0.0.1/cb").unwrap_err();
+        assert!(matches!(err, RedirectUriError::HttpRequiresLoopback { .. }));
+    }
+
+    #[test]
+    fn redirect_scheme_native_app_custom_scheme_accepted() {
+        // Reverse-DNS mobile deep-link callbacks per RFC 7595 + OAuth 2.1 §9.7.2.
+        RedirectUri::validate_scheme("com.example.app://cb").unwrap();
+        RedirectUri::validate_scheme("io.geonosis.demo://oauth/callback").unwrap();
+    }
+
+    #[test]
+    fn redirect_scheme_bare_custom_rejected() {
+        // `urn:` and `data:` shouldn't be valid OAuth redirect schemes.
+        let err = RedirectUri::validate_scheme("urn:foo:bar").unwrap_err();
+        assert!(matches!(err, RedirectUriError::UnsupportedScheme(_)));
+    }
+
+    #[test]
+    fn redirect_scheme_validates_with_wildcard_suffix() {
+        RedirectUri::validate_scheme("https://example.com/*").unwrap();
+        let err = RedirectUri::validate_scheme("http://example.com/*").unwrap_err();
+        assert!(matches!(err, RedirectUriError::HttpRequiresLoopback { .. }));
     }
 
     #[test]
