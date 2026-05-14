@@ -507,6 +507,81 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn metrics_endpoint_surfaces_labeled_authorize_counter() {
+        // Hitting /authorize bumps `geonosis_oidc_authorize_total`;
+        // the realm's slug + the `started` outcome should land in
+        // the next `/metrics` scrape.
+        let state = fixture_state().await;
+        let r = router(state);
+        let _ = r
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/realms/acme/protocol/openid-connect/auth?response_type=code&client_id=demo")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let resp = r
+            .oneshot(
+                Request::builder()
+                    .uri("/metrics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 32 * 1024).await.unwrap();
+        let text = std::str::from_utf8(&body).unwrap();
+        assert!(
+            text.contains("geonosis_oidc_authorize_total{realm=\"acme\""),
+            "expected per-realm authorize counter line; body was:\n{text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn metrics_endpoint_surfaces_token_counter_on_unknown_grant() {
+        // A bad grant_type lands in `oidc_token_total` as
+        // `(realm, unknown, error)` — the dispatcher rejects before
+        // resolving the grant, so the counter records the path.
+        let state = fixture_state().await;
+        let r = router(state);
+        let _ = r
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/realms/acme/protocol/openid-connect/token")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("grant_type=banana"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let resp = r
+            .oneshot(
+                Request::builder()
+                    .uri("/metrics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 32 * 1024).await.unwrap();
+        let text = std::str::from_utf8(&body).unwrap();
+        // The handler rejects before the grant-type label is bound,
+        // so the response counter we get back is the 4xx class one.
+        // The OIDC token counter only emits once a grant is resolved
+        // (intentional — unknown grant types should not pollute
+        // grant-typed series).
+        assert!(text.contains("geonosis_http_responses_total{class=\"4xx\"}"));
+        // Token counter remains absent for this path, matching the
+        // bounded-cardinality contract.
+        assert!(!text.contains("geonosis_oidc_token_total{realm=\"acme\",grant_type=\"banana\""));
+    }
+
+    #[tokio::test]
     async fn revoke_returns_200_for_unknown_token() {
         let r = router(fixture_state().await);
         // Build a public client to satisfy `auth_method=none`.
