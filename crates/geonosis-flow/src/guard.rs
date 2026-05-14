@@ -98,6 +98,7 @@ mod tests {
         FlowContext {
             username: Some("padme".into()),
             user_id: Some("01H...".into()),
+            client_id: None,
             amr: vec!["pwd".into()],
             authn_level: 2,
             locals,

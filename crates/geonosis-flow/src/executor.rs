@@ -171,7 +171,7 @@ impl FlowExecutor for DefaultExecutor {
                 (NodeKind::Authenticator { provider_urn }, _) => {
                     let outcome = self
                         .authn
-                        .dispatch(provider_urn, &state.context, &input)
+                        .dispatch(provider_urn, state, &input)
                         .await?;
                     use crate::authenticator::AuthnStepOutcome::*;
                     match outcome {
