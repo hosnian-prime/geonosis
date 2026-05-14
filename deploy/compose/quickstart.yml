@@ -41,7 +41,7 @@ services:
       GEONOSIS_PUBLIC_URL: "http://localhost:8080"
       GEONOSIS_DATABASE_URL: "postgres://geonosis:geonosis@postgres:5432/geonosis"
       GEONOSIS_MIGRATE_ON_BOOT: "true"
-      GEONOSIS_BOOTSTRAP_QUICKSTART: "1"
+      GEONOSIS_BOOTSTRAP_QUICKSTART: "true"
       # Stable dev key. Replace in any non-quickstart environment.
       GEONOSIS_MASTER_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
       RUST_LOG: "info"
