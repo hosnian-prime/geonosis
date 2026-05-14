@@ -2981,6 +2981,25 @@ impl Storage for PostgresStorage {
         Ok(())
     }
 
+    async fn list_sessions(
+        &self,
+        realm: RealmId,
+        limit: usize,
+    ) -> Result<Vec<Session>, StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let rows = sqlx::query(
+            "SELECT * FROM session WHERE realm_id = $1
+             ORDER BY last_seen_at DESC LIMIT $2",
+        )
+        .bind(realm.to_string())
+        .bind(limit as i64)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        rows.iter().map(session_from_row).collect()
+    }
+
     async fn list_audit_events(
         &self,
         realm: RealmId,

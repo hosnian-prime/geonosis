@@ -1733,6 +1733,24 @@ impl Storage for MemoryStorage {
         // data when the Postgres storage backend is active.
         Ok(Vec::new())
     }
+
+    async fn list_sessions(
+        &self,
+        realm: RealmId,
+        limit: usize,
+    ) -> Result<Vec<Session>, StorageError> {
+        let mut rows: Vec<Session> = self
+            .inner
+            .read()
+            .sessions
+            .values()
+            .filter(|s| s.realm_id == realm)
+            .cloned()
+            .collect();
+        rows.sort_by(|a, b| b.last_seen_at.cmp(&a.last_seen_at));
+        rows.truncate(limit);
+        Ok(rows)
+    }
 }
 
 

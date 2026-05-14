@@ -23,6 +23,7 @@ use crate::leptos_ui::pages::orgs::{OrgRow, OrgsPage};
 use crate::leptos_ui::pages::realm_detail::{RealmDetailData, RealmDetailPage};
 use crate::leptos_ui::pages::realms::{RealmRow, RealmsPage};
 use crate::leptos_ui::pages::roles::{RoleRow, RolesPage};
+use crate::leptos_ui::pages::sessions::{SessionRow, SessionsPage};
 use crate::leptos_ui::pages::users::{UserRow, UsersPage};
 use crate::state::{AdminError, AdminState};
 
@@ -40,6 +41,7 @@ pub fn leptos_router(state: Arc<AdminState>) -> Router {
         .route("/admin-next/realms/:slug/roles", get(page_roles))
         .route("/admin-next/realms/:slug/groups", get(page_groups))
         .route("/admin-next/realms/:slug/events", get(page_events))
+        .route("/admin-next/realms/:slug/sessions", get(page_sessions))
         .with_state(state)
 }
 
@@ -244,6 +246,28 @@ fn parse_optional_rfc3339(
             Ok(Some(parsed))
         }
     }
+}
+
+async fn page_sessions(
+    State(state): State<Arc<AdminState>>,
+    Path(slug): Path<String>,
+) -> Result<Html<String>, AdminError> {
+    let realm = realm_by_slug(&state, &slug).await?;
+    let sessions = state.storage.list_sessions(realm.id, 200).await?;
+    let rows: Vec<SessionRow> = sessions
+        .into_iter()
+        .map(|s| SessionRow {
+            id: s.id.to_string(),
+            user_id: s.user_id.to_string(),
+            authn_level: format!("{:?}", s.authn_level).to_lowercase(),
+            idp_alias: s.idp_alias,
+            started_at: s.started_at.to_rfc3339(),
+            last_seen_at: s.last_seen_at.to_rfc3339(),
+            client_count: s.clients.len(),
+        })
+        .collect();
+    let slug = realm.slug;
+    Ok(render(move || view! { <SessionsPage realm_slug=slug rows=rows/> }))
 }
 
 async fn page_events(

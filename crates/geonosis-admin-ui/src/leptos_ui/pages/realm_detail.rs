@@ -41,6 +41,7 @@ pub fn RealmDetailPage(data: RealmDetailData) -> impl IntoView {
                 {link("agents", "Agents")}
                 {link("idps", "Identity providers")}
                 {link("flows", "Flows")}
+                {link("sessions", "Sessions")}
                 {link("events", "Audit events")}
             </ul>
         </Page>
