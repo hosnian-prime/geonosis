@@ -1,9 +1,12 @@
 //! Built-in `MapperBinding` runtimes.
 //!
-//! Per `docs/05-identity-broker.md` §"Mappers" four mappers ship out
+//! Per `docs/05-identity-broker.md` §"Mappers" five mappers ship out
 //! of the box:
 //! - `claim-to-attribute` — copy a claim into a user attribute
 //! - `claim-to-role` — assign a role when a claim matches a predicate
+//! - `claim-to-org` — propose an organization membership when a claim
+//!   matches; the first-broker-login flow promotes the proposal to an
+//!   `OrgMembership` after domain / policy checks
 //! - `username-template` — synthesize a username from claims
 //! - `email-verified-passthrough` — accept the IdP's `email_verified`
 //!
@@ -49,6 +52,20 @@ pub enum MapperKind {
         match_any: bool,
         role: String,
     },
+    /// Propose an organization membership when a broker claim matches.
+    /// The first-broker-login flow consumes the proposed alias(es) and
+    /// performs the actual `OrgMembership` upsert after policy checks
+    /// (domain verification, auto-join allow-list, ...).
+    ClaimToOrg {
+        claim: String,
+        values: Vec<String>,
+        #[serde(default)]
+        match_any: bool,
+        org_alias: String,
+        /// Optional default org-scoped role alias the user receives.
+        #[serde(default)]
+        role: Option<String>,
+    },
     UsernameTemplate {
         /// String with `${claim}` placeholders.
         template: String,
@@ -61,7 +78,7 @@ fn default_true() -> bool {
 }
 
 /// The shape mappers contribute to. Returned to the flow executor as
-/// the draft `User` row + role assignments.
+/// the draft `User` row + role assignments + proposed org memberships.
 #[derive(Debug, Clone, Default)]
 pub struct DraftUser {
     pub username: Option<String>,
@@ -69,6 +86,15 @@ pub struct DraftUser {
     pub email_verified: bool,
     pub attributes: BTreeMap<String, AttributeValue>,
     pub roles: Vec<String>,
+    /// Org alias → optional initial role. Flow executor calls
+    /// `storage.get_organization_by_alias` and upserts membership.
+    pub org_assignments: Vec<DraftOrgAssignment>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DraftOrgAssignment {
+    pub org_alias: String,
+    pub role: Option<String>,
 }
 
 /// Apply every mapper to the assertion in priority order. The
@@ -108,6 +134,26 @@ fn apply_one(kind: &MapperKind, assertion: &BrokerAssertion, draft: &mut DraftUs
             if claim_matches(assertion, claim, values, *match_any) {
                 if !draft.roles.contains(role) {
                     draft.roles.push(role.clone());
+                }
+            }
+        }
+        MapperKind::ClaimToOrg {
+            claim,
+            values,
+            match_any,
+            org_alias,
+            role,
+        } => {
+            if claim_matches(assertion, claim, values, *match_any) {
+                let already = draft
+                    .org_assignments
+                    .iter()
+                    .any(|a| a.org_alias == *org_alias);
+                if !already {
+                    draft.org_assignments.push(DraftOrgAssignment {
+                        org_alias: org_alias.clone(),
+                        role: role.clone(),
+                    });
                 }
             }
         }
@@ -257,6 +303,35 @@ mod tests {
             &mut draft,
         );
         assert_eq!(draft.username.as_deref(), Some("padme@google"));
+    }
+
+    #[test]
+    fn claim_to_org_pushes_assignment() {
+        let mut claims = BTreeMap::new();
+        claims.insert(
+            "groups".into(),
+            AttributeValue::Strings(vec!["acme-employees".into()]),
+        );
+        let a = assertion_with(claims);
+        let mut draft = DraftUser::default();
+        apply_all(
+            &[MapperBinding {
+                name: "acme".into(),
+                priority: 0,
+                kind: MapperKind::ClaimToOrg {
+                    claim: "groups".into(),
+                    values: vec!["acme-employees".into()],
+                    match_any: true,
+                    org_alias: "acme".into(),
+                    role: Some("member".into()),
+                },
+            }],
+            &a,
+            &mut draft,
+        );
+        assert_eq!(draft.org_assignments.len(), 1);
+        assert_eq!(draft.org_assignments[0].org_alias, "acme");
+        assert_eq!(draft.org_assignments[0].role.as_deref(), Some("member"));
     }
 
     #[test]

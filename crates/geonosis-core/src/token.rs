@@ -119,10 +119,38 @@ pub struct AccessTokenClaims {
     pub resource_access: BTreeMap<String, ResourceAccess>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub groups: Option<Vec<String>>,
+    /// Active Organization context, when the user signed in inside an
+    /// org-scoped flow or has a default org membership. Shape matches
+    /// doc 15 §"Token shape".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub org: Option<OrgClaim>,
+    /// RFC 8693 `act` chain. When present, the token was issued via
+    /// Token Exchange; each level identifies an upstream actor. Shape
+    /// is recursive: `act.sub` is the actor and `act.act` (optional)
+    /// the actor's actor. See doc 18 §"`act` claim chain".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub act: Option<serde_json::Value>,
     /// Mapper-emitted custom claims. Flattened into the top-level token by
     /// the OIDC layer.
     #[serde(skip_serializing_if = "BTreeMap::is_empty", default)]
     pub ext: BTreeMap<String, serde_json::Value>,
+}
+
+/// Per doc 15 §"Token shape — `org` claim". One organization context
+/// per token; multi-org users get one token per org and switch by
+/// re-authorizing with `?org=<alias>` or by Token Exchange.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OrgClaim {
+    /// Stable URL-safe alias.
+    pub alias: String,
+    /// Organization id (ULID, encoded as text on the wire).
+    pub id: String,
+    /// Optional human-readable name (omitted when chrome only needs the alias).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    /// Org-scoped role names the user holds in this org.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub roles: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

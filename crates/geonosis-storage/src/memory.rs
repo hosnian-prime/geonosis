@@ -8,15 +8,18 @@ use parking_lot::RwLock;
 
 use geonosis_broker::{BrokerAuthnState, BrokerLink, IdentityProvider};
 use geonosis_core::{
-    Client, ClientId, CodeGrant, CodeId, FlowStateId, Realm, RealmId, RefreshToken, RefreshTokenId,
-    Session, SessionId, TokenFamilyId, User, UserId,
+    Agent, Client, ClientId, CodeGrant, CodeId, FlowStateId, Group, GroupId, OrgConsentPolicy,
+    OrgDomain, OrgInvitation, OrgMembership, OrgRole, Organization, OrganizationId, Realm, RealmId,
+    RefreshToken, RefreshTokenId, Role, RoleId, Session, SessionId, TokenFamilyId, User, UserId,
+    UserProfile,
 };
+use geonosis_core::id::{AgentId, OrgInvitationId, OrgRoleId};
 use geonosis_federation_ldap::LdapFederationConfig;
 
 use crate::error::StorageError;
 use crate::traits::{
-    ConsentGrant, DeviceGrant, FlowStateRow, ParRequest, SpiBindingRow, Storage, WasmModule,
-    WasmModuleHeader,
+    ConsentGrant, DeviceGrant, FlowStateRow, OrgIdpBinding, ParRequest, SpiBindingRow, Storage,
+    WasmModule, WasmModuleHeader,
 };
 
 #[derive(Default)]
@@ -46,6 +49,22 @@ struct Tables {
     ldap_sources: HashMap<(RealmId, String), LdapFederationConfig>,
     wasm_modules: HashMap<(RealmId, String), WasmModule>,
     spi_bindings: HashMap<(RealmId, geonosis_core::id::SpiBindingId), SpiBindingRow>,
+    roles: HashMap<(RealmId, RoleId), Role>,
+    user_roles: HashMap<(RealmId, UserId), Vec<RoleId>>,
+    groups: HashMap<(RealmId, GroupId), Group>,
+    user_groups: HashMap<(RealmId, UserId), Vec<GroupId>>,
+    group_roles: HashMap<(RealmId, GroupId), Vec<RoleId>>,
+    user_profile_schemas: HashMap<RealmId, UserProfile>,
+    agents: HashMap<(RealmId, AgentId), Agent>,
+    organizations: HashMap<(RealmId, OrganizationId), Organization>,
+    org_by_alias: HashMap<(RealmId, String), OrganizationId>,
+    org_domains: HashMap<(OrganizationId, String), OrgDomain>,
+    org_memberships: HashMap<(OrganizationId, UserId), OrgMembership>,
+    org_roles: HashMap<(RealmId, OrgRoleId), OrgRole>,
+    org_invitations: HashMap<OrgInvitationId, OrgInvitation>,
+    org_invitations_by_token: HashMap<String, OrgInvitationId>,
+    org_consent_policies: HashMap<(OrganizationId, ClientId), OrgConsentPolicy>,
+    org_idp_bindings: HashMap<(OrganizationId, String), OrgIdpBinding>,
 }
 
 pub struct MemoryStorage {
@@ -180,6 +199,22 @@ impl Storage for MemoryStorage {
         }
         t.users.insert((user.realm_id, user.id), user);
         Ok(())
+    }
+
+    async fn list_users(
+        &self,
+        realm: RealmId,
+        limit: usize,
+    ) -> Result<Vec<User>, StorageError> {
+        Ok(self
+            .inner
+            .read()
+            .users
+            .iter()
+            .filter(|((r, _), _)| *r == realm)
+            .take(limit)
+            .map(|(_, u)| u.clone())
+            .collect())
     }
 
     async fn delete_user(&self, realm: RealmId, id: UserId) -> Result<(), StorageError> {
@@ -771,7 +806,848 @@ impl Storage for MemoryStorage {
             .ok_or(StorageError::NotFound)
             .map(|_| ())
     }
+
+    // ---- Role ----
+    async fn create_role(&self, role: Role) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        let key = (role.realm_id, role.id);
+        if t.roles.contains_key(&key) {
+            return Err(StorageError::Conflict("role exists".into()));
+        }
+        if t.roles
+            .values()
+            .any(|r| r.realm_id == role.realm_id && r.client_id == role.client_id && r.name == role.name)
+        {
+            return Err(StorageError::Conflict("role name taken".into()));
+        }
+        t.roles.insert(key, role);
+        Ok(())
+    }
+
+    async fn get_role(&self, realm: RealmId, id: RoleId) -> Result<Role, StorageError> {
+        self.inner
+            .read()
+            .roles
+            .get(&(realm, id))
+            .cloned()
+            .ok_or(StorageError::NotFound)
+    }
+
+    async fn get_role_by_name(
+        &self,
+        realm: RealmId,
+        client_id: Option<ClientId>,
+        name: &str,
+    ) -> Result<Role, StorageError> {
+        self.inner
+            .read()
+            .roles
+            .values()
+            .find(|r| r.realm_id == realm && r.client_id == client_id && r.name == name)
+            .cloned()
+            .ok_or(StorageError::NotFound)
+    }
+
+    async fn list_roles(
+        &self,
+        realm: RealmId,
+        client_id: Option<ClientId>,
+    ) -> Result<Vec<Role>, StorageError> {
+        Ok(self
+            .inner
+            .read()
+            .roles
+            .values()
+            .filter(|r| r.realm_id == realm && r.client_id == client_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn update_role(&self, role: Role) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        let key = (role.realm_id, role.id);
+        if !t.roles.contains_key(&key) {
+            return Err(StorageError::NotFound);
+        }
+        t.roles.insert(key, role);
+        Ok(())
+    }
+
+    async fn delete_role(&self, realm: RealmId, id: RoleId) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        t.roles
+            .remove(&(realm, id))
+            .ok_or(StorageError::NotFound)?;
+        // Cascade unassign.
+        for v in t.user_roles.values_mut() {
+            v.retain(|r| *r != id);
+        }
+        for v in t.group_roles.values_mut() {
+            v.retain(|r| *r != id);
+        }
+        Ok(())
+    }
+
+    async fn assign_user_role(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+        role_id: RoleId,
+    ) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        if !t.roles.contains_key(&(realm, role_id)) {
+            return Err(StorageError::NotFound);
+        }
+        let entry = t.user_roles.entry((realm, user_id)).or_default();
+        if !entry.contains(&role_id) {
+            entry.push(role_id);
+        }
+        Ok(())
+    }
+
+    async fn unassign_user_role(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+        role_id: RoleId,
+    ) -> Result<(), StorageError> {
+        if let Some(v) = self.inner.write().user_roles.get_mut(&(realm, user_id)) {
+            v.retain(|r| *r != role_id);
+        }
+        Ok(())
+    }
+
+    async fn list_user_roles(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+    ) -> Result<Vec<Role>, StorageError> {
+        let t = self.inner.read();
+        let ids = t
+            .user_roles
+            .get(&(realm, user_id))
+            .cloned()
+            .unwrap_or_default();
+        Ok(ids
+            .into_iter()
+            .filter_map(|id| t.roles.get(&(realm, id)).cloned())
+            .collect())
+    }
+
+    // ---- Group ----
+    async fn create_group(&self, group: Group) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        let key = (group.realm_id, group.id);
+        if t.groups.contains_key(&key) {
+            return Err(StorageError::Conflict("group exists".into()));
+        }
+        if t.groups
+            .values()
+            .any(|g| g.realm_id == group.realm_id && g.path == group.path)
+        {
+            return Err(StorageError::Conflict("group path taken".into()));
+        }
+        t.groups.insert(key, group);
+        Ok(())
+    }
+
+    async fn get_group(&self, realm: RealmId, id: GroupId) -> Result<Group, StorageError> {
+        self.inner
+            .read()
+            .groups
+            .get(&(realm, id))
+            .cloned()
+            .ok_or(StorageError::NotFound)
+    }
+
+    async fn get_group_by_path(
+        &self,
+        realm: RealmId,
+        path: &str,
+    ) -> Result<Group, StorageError> {
+        self.inner
+            .read()
+            .groups
+            .values()
+            .find(|g| g.realm_id == realm && g.path == path)
+            .cloned()
+            .ok_or(StorageError::NotFound)
+    }
+
+    async fn list_groups(&self, realm: RealmId) -> Result<Vec<Group>, StorageError> {
+        Ok(self
+            .inner
+            .read()
+            .groups
+            .values()
+            .filter(|g| g.realm_id == realm)
+            .cloned()
+            .collect())
+    }
+
+    async fn update_group(&self, group: Group) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        let key = (group.realm_id, group.id);
+        if !t.groups.contains_key(&key) {
+            return Err(StorageError::NotFound);
+        }
+        t.groups.insert(key, group);
+        Ok(())
+    }
+
+    async fn delete_group(&self, realm: RealmId, id: GroupId) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        t.groups
+            .remove(&(realm, id))
+            .ok_or(StorageError::NotFound)?;
+        for v in t.user_groups.values_mut() {
+            v.retain(|g| *g != id);
+        }
+        t.group_roles.remove(&(realm, id));
+        Ok(())
+    }
+
+    async fn assign_user_group(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+        group_id: GroupId,
+    ) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        if !t.groups.contains_key(&(realm, group_id)) {
+            return Err(StorageError::NotFound);
+        }
+        let entry = t.user_groups.entry((realm, user_id)).or_default();
+        if !entry.contains(&group_id) {
+            entry.push(group_id);
+        }
+        Ok(())
+    }
+
+    async fn unassign_user_group(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+        group_id: GroupId,
+    ) -> Result<(), StorageError> {
+        if let Some(v) = self.inner.write().user_groups.get_mut(&(realm, user_id)) {
+            v.retain(|g| *g != group_id);
+        }
+        Ok(())
+    }
+
+    async fn list_user_groups(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+    ) -> Result<Vec<Group>, StorageError> {
+        let t = self.inner.read();
+        let ids = t
+            .user_groups
+            .get(&(realm, user_id))
+            .cloned()
+            .unwrap_or_default();
+        Ok(ids
+            .into_iter()
+            .filter_map(|id| t.groups.get(&(realm, id)).cloned())
+            .collect())
+    }
+
+    async fn assign_group_role(
+        &self,
+        realm: RealmId,
+        group_id: GroupId,
+        role_id: RoleId,
+    ) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        if !t.groups.contains_key(&(realm, group_id)) {
+            return Err(StorageError::NotFound);
+        }
+        if !t.roles.contains_key(&(realm, role_id)) {
+            return Err(StorageError::NotFound);
+        }
+        let entry = t.group_roles.entry((realm, group_id)).or_default();
+        if !entry.contains(&role_id) {
+            entry.push(role_id);
+        }
+        Ok(())
+    }
+
+    async fn unassign_group_role(
+        &self,
+        realm: RealmId,
+        group_id: GroupId,
+        role_id: RoleId,
+    ) -> Result<(), StorageError> {
+        if let Some(v) = self.inner.write().group_roles.get_mut(&(realm, group_id)) {
+            v.retain(|r| *r != role_id);
+        }
+        Ok(())
+    }
+
+    async fn list_group_roles(
+        &self,
+        realm: RealmId,
+        group_id: GroupId,
+    ) -> Result<Vec<Role>, StorageError> {
+        let t = self.inner.read();
+        let ids = t
+            .group_roles
+            .get(&(realm, group_id))
+            .cloned()
+            .unwrap_or_default();
+        Ok(ids
+            .into_iter()
+            .filter_map(|id| t.roles.get(&(realm, id)).cloned())
+            .collect())
+    }
+
+    // ---- User Profile schema ----
+    async fn get_user_profile_schema(
+        &self,
+        realm: RealmId,
+    ) -> Result<UserProfile, StorageError> {
+        Ok(self
+            .inner
+            .read()
+            .user_profile_schemas
+            .get(&realm)
+            .cloned()
+            .unwrap_or_else(|| UserProfile::default_for(realm)))
+    }
+
+    async fn save_user_profile_schema(
+        &self,
+        profile: UserProfile,
+    ) -> Result<(), StorageError> {
+        self.inner
+            .write()
+            .user_profile_schemas
+            .insert(profile.realm_id, profile);
+        Ok(())
+    }
+
+    // ---- Agent ----
+    async fn create_agent(&self, agent: Agent) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        let key = (agent.realm_id, agent.id);
+        if t.agents.contains_key(&key) {
+            return Err(StorageError::Conflict("agent exists".into()));
+        }
+        if t.agents
+            .values()
+            .any(|a| a.realm_id == agent.realm_id && a.alias == agent.alias)
+        {
+            return Err(StorageError::Conflict("agent alias taken".into()));
+        }
+        t.agents.insert(key, agent);
+        Ok(())
+    }
+
+    async fn get_agent(&self, realm: RealmId, id: AgentId) -> Result<Agent, StorageError> {
+        self.inner
+            .read()
+            .agents
+            .get(&(realm, id))
+            .cloned()
+            .ok_or(StorageError::NotFound)
+    }
+
+    async fn get_agent_by_alias(
+        &self,
+        realm: RealmId,
+        alias: &str,
+    ) -> Result<Agent, StorageError> {
+        self.inner
+            .read()
+            .agents
+            .values()
+            .find(|a| a.realm_id == realm && a.alias == alias)
+            .cloned()
+            .ok_or(StorageError::NotFound)
+    }
+
+    async fn list_agents(&self, realm: RealmId) -> Result<Vec<Agent>, StorageError> {
+        Ok(self
+            .inner
+            .read()
+            .agents
+            .values()
+            .filter(|a| a.realm_id == realm)
+            .cloned()
+            .collect())
+    }
+
+    async fn update_agent(&self, agent: Agent) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        let key = (agent.realm_id, agent.id);
+        if !t.agents.contains_key(&key) {
+            return Err(StorageError::NotFound);
+        }
+        t.agents.insert(key, agent);
+        Ok(())
+    }
+
+    async fn revoke_agent(&self, realm: RealmId, id: AgentId) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        let agent = t
+            .agents
+            .get_mut(&(realm, id))
+            .ok_or(StorageError::NotFound)?;
+        agent.revoked_at = Some(chrono::Utc::now());
+        agent.enabled = false;
+        Ok(())
+    }
+
+    // ---- Organization ----
+    async fn create_organization(&self, org: Organization) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        if t.org_by_alias
+            .contains_key(&(org.realm_id, org.alias.clone()))
+        {
+            return Err(StorageError::Conflict("org alias taken".into()));
+        }
+        t.org_by_alias
+            .insert((org.realm_id, org.alias.clone()), org.id);
+        t.organizations.insert((org.realm_id, org.id), org);
+        Ok(())
+    }
+
+    async fn get_organization(
+        &self,
+        realm: RealmId,
+        id: OrganizationId,
+    ) -> Result<Organization, StorageError> {
+        self.inner
+            .read()
+            .organizations
+            .get(&(realm, id))
+            .cloned()
+            .ok_or(StorageError::NotFound)
+    }
+
+    async fn get_organization_by_alias(
+        &self,
+        realm: RealmId,
+        alias: &str,
+    ) -> Result<Organization, StorageError> {
+        let t = self.inner.read();
+        let id = t
+            .org_by_alias
+            .get(&(realm, alias.to_string()))
+            .ok_or(StorageError::NotFound)?;
+        t.organizations
+            .get(&(realm, *id))
+            .cloned()
+            .ok_or(StorageError::NotFound)
+    }
+
+    async fn list_organizations(
+        &self,
+        realm: RealmId,
+    ) -> Result<Vec<Organization>, StorageError> {
+        Ok(self
+            .inner
+            .read()
+            .organizations
+            .values()
+            .filter(|o| o.realm_id == realm)
+            .cloned()
+            .collect())
+    }
+
+    async fn update_organization(&self, org: Organization) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        let key = (org.realm_id, org.id);
+        if !t.organizations.contains_key(&key) {
+            return Err(StorageError::NotFound);
+        }
+        // Keep alias index in sync.
+        let old_alias = t.organizations.get(&key).map(|o| o.alias.clone());
+        if let Some(a) = old_alias {
+            if a != org.alias {
+                t.org_by_alias.remove(&(org.realm_id, a));
+                t.org_by_alias
+                    .insert((org.realm_id, org.alias.clone()), org.id);
+            }
+        }
+        t.organizations.insert(key, org);
+        Ok(())
+    }
+
+    async fn delete_organization(
+        &self,
+        realm: RealmId,
+        id: OrganizationId,
+    ) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        let o = t
+            .organizations
+            .remove(&(realm, id))
+            .ok_or(StorageError::NotFound)?;
+        t.org_by_alias.remove(&(realm, o.alias));
+        t.org_domains.retain(|(oid, _), _| *oid != id);
+        t.org_memberships.retain(|(oid, _), _| *oid != id);
+        t.org_consent_policies.retain(|(oid, _), _| *oid != id);
+        t.org_idp_bindings.retain(|(oid, _), _| *oid != id);
+        Ok(())
+    }
+
+    async fn upsert_org_domain(&self, domain: OrgDomain) -> Result<(), StorageError> {
+        self.inner
+            .write()
+            .org_domains
+            .insert((domain.organization_id, domain.domain.clone()), domain);
+        Ok(())
+    }
+
+    async fn list_org_domains(
+        &self,
+        realm: RealmId,
+        organization_id: OrganizationId,
+    ) -> Result<Vec<OrgDomain>, StorageError> {
+        Ok(self
+            .inner
+            .read()
+            .org_domains
+            .values()
+            .filter(|d| d.organization_id == organization_id && d.realm_id == realm)
+            .cloned()
+            .collect())
+    }
+
+    async fn delete_org_domain(
+        &self,
+        _realm: RealmId,
+        organization_id: OrganizationId,
+        domain: &str,
+    ) -> Result<(), StorageError> {
+        self.inner
+            .write()
+            .org_domains
+            .remove(&(organization_id, domain.to_string()))
+            .ok_or(StorageError::NotFound)
+            .map(|_| ())
+    }
+
+    async fn find_org_by_verified_domain(
+        &self,
+        realm: RealmId,
+        domain: &str,
+    ) -> Result<Option<Organization>, StorageError> {
+        let t = self.inner.read();
+        let Some(d) = t.org_domains.values().find(|d| {
+            d.realm_id == realm && d.domain == domain && d.verified
+        }) else {
+            return Ok(None);
+        };
+        Ok(t.organizations
+            .get(&(realm, d.organization_id))
+            .cloned())
+    }
+
+    async fn upsert_org_membership(
+        &self,
+        membership: OrgMembership,
+    ) -> Result<(), StorageError> {
+        self.inner.write().org_memberships.insert(
+            (membership.organization_id, membership.user_id),
+            membership,
+        );
+        Ok(())
+    }
+
+    async fn get_org_membership(
+        &self,
+        _realm: RealmId,
+        organization_id: OrganizationId,
+        user_id: UserId,
+    ) -> Result<OrgMembership, StorageError> {
+        self.inner
+            .read()
+            .org_memberships
+            .get(&(organization_id, user_id))
+            .cloned()
+            .ok_or(StorageError::NotFound)
+    }
+
+    async fn list_org_memberships(
+        &self,
+        _realm: RealmId,
+        organization_id: OrganizationId,
+    ) -> Result<Vec<OrgMembership>, StorageError> {
+        Ok(self
+            .inner
+            .read()
+            .org_memberships
+            .values()
+            .filter(|m| m.organization_id == organization_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn list_user_orgs(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+    ) -> Result<Vec<OrgMembership>, StorageError> {
+        Ok(self
+            .inner
+            .read()
+            .org_memberships
+            .values()
+            .filter(|m| m.user_id == user_id && m.realm_id == realm)
+            .cloned()
+            .collect())
+    }
+
+    async fn delete_org_membership(
+        &self,
+        _realm: RealmId,
+        organization_id: OrganizationId,
+        user_id: UserId,
+    ) -> Result<(), StorageError> {
+        self.inner
+            .write()
+            .org_memberships
+            .remove(&(organization_id, user_id))
+            .ok_or(StorageError::NotFound)
+            .map(|_| ())
+    }
+
+    async fn create_org_role(&self, role: OrgRole) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        let key = (role.realm_id, role.id);
+        if t.org_roles.contains_key(&key) {
+            return Err(StorageError::Conflict("org role exists".into()));
+        }
+        t.org_roles.insert(key, role);
+        Ok(())
+    }
+
+    async fn get_org_role(
+        &self,
+        realm: RealmId,
+        id: OrgRoleId,
+    ) -> Result<OrgRole, StorageError> {
+        self.inner
+            .read()
+            .org_roles
+            .get(&(realm, id))
+            .cloned()
+            .ok_or(StorageError::NotFound)
+    }
+
+    async fn list_org_roles(
+        &self,
+        realm: RealmId,
+        organization_id: OrganizationId,
+    ) -> Result<Vec<OrgRole>, StorageError> {
+        Ok(self
+            .inner
+            .read()
+            .org_roles
+            .values()
+            .filter(|r| r.realm_id == realm && r.organization_id == organization_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn update_org_role(&self, role: OrgRole) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        let key = (role.realm_id, role.id);
+        if !t.org_roles.contains_key(&key) {
+            return Err(StorageError::NotFound);
+        }
+        t.org_roles.insert(key, role);
+        Ok(())
+    }
+
+    async fn delete_org_role(
+        &self,
+        realm: RealmId,
+        id: OrgRoleId,
+    ) -> Result<(), StorageError> {
+        self.inner
+            .write()
+            .org_roles
+            .remove(&(realm, id))
+            .ok_or(StorageError::NotFound)
+            .map(|_| ())
+    }
+
+    async fn create_org_invitation(
+        &self,
+        invitation: OrgInvitation,
+    ) -> Result<(), StorageError> {
+        use geonosis_core::Secret;
+        let mut t = self.inner.write();
+        // Take the token plaintext for the lookup index. Secret<String> stays
+        // boxed elsewhere; we only need its bytes for the by-token lookup.
+        let token_value: &Secret<String> = &invitation.token;
+        let token = token_value.expose().to_string();
+        if t.org_invitations_by_token.contains_key(&token) {
+            return Err(StorageError::Conflict("invitation token reuse".into()));
+        }
+        t.org_invitations_by_token.insert(token, invitation.id);
+        t.org_invitations.insert(invitation.id, invitation);
+        Ok(())
+    }
+
+    async fn get_org_invitation_by_token(
+        &self,
+        token: &str,
+    ) -> Result<OrgInvitation, StorageError> {
+        let t = self.inner.read();
+        let id = t
+            .org_invitations_by_token
+            .get(token)
+            .ok_or(StorageError::NotFound)?;
+        t.org_invitations
+            .get(id)
+            .cloned()
+            .ok_or(StorageError::NotFound)
+    }
+
+    async fn list_org_invitations(
+        &self,
+        realm: RealmId,
+        organization_id: OrganizationId,
+    ) -> Result<Vec<OrgInvitation>, StorageError> {
+        Ok(self
+            .inner
+            .read()
+            .org_invitations
+            .values()
+            .filter(|i| i.realm_id == realm && i.organization_id == organization_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn mark_org_invitation_accepted(
+        &self,
+        id: OrgInvitationId,
+    ) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        let i = t
+            .org_invitations
+            .get_mut(&id)
+            .ok_or(StorageError::NotFound)?;
+        i.accepted_at = Some(chrono::Utc::now());
+        Ok(())
+    }
+
+    async fn delete_org_invitation(
+        &self,
+        id: OrgInvitationId,
+    ) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        let i = t
+            .org_invitations
+            .remove(&id)
+            .ok_or(StorageError::NotFound)?;
+        t.org_invitations_by_token.remove(i.token.expose());
+        Ok(())
+    }
+
+    async fn upsert_org_consent_policy(
+        &self,
+        policy: OrgConsentPolicy,
+    ) -> Result<(), StorageError> {
+        self.inner
+            .write()
+            .org_consent_policies
+            .insert((policy.organization_id, policy.client_id), policy);
+        Ok(())
+    }
+
+    async fn get_org_consent_policy(
+        &self,
+        _realm: RealmId,
+        organization_id: OrganizationId,
+        client_id: ClientId,
+    ) -> Result<Option<OrgConsentPolicy>, StorageError> {
+        Ok(self
+            .inner
+            .read()
+            .org_consent_policies
+            .get(&(organization_id, client_id))
+            .cloned())
+    }
+
+    async fn list_org_consent_policies(
+        &self,
+        _realm: RealmId,
+        organization_id: OrganizationId,
+    ) -> Result<Vec<OrgConsentPolicy>, StorageError> {
+        Ok(self
+            .inner
+            .read()
+            .org_consent_policies
+            .values()
+            .filter(|p| p.organization_id == organization_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn delete_org_consent_policy(
+        &self,
+        _realm: RealmId,
+        organization_id: OrganizationId,
+        client_id: ClientId,
+    ) -> Result<(), StorageError> {
+        self.inner
+            .write()
+            .org_consent_policies
+            .remove(&(organization_id, client_id))
+            .ok_or(StorageError::NotFound)
+            .map(|_| ())
+    }
+
+    async fn upsert_org_idp_binding(
+        &self,
+        binding: OrgIdpBinding,
+    ) -> Result<(), StorageError> {
+        self.inner
+            .write()
+            .org_idp_bindings
+            .insert(
+                (binding.organization_id, binding.idp_alias.clone()),
+                binding,
+            );
+        Ok(())
+    }
+
+    async fn list_org_idp_bindings(
+        &self,
+        _realm: RealmId,
+        organization_id: OrganizationId,
+    ) -> Result<Vec<OrgIdpBinding>, StorageError> {
+        Ok(self
+            .inner
+            .read()
+            .org_idp_bindings
+            .values()
+            .filter(|b| b.organization_id == organization_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn delete_org_idp_binding(
+        &self,
+        _realm: RealmId,
+        organization_id: OrganizationId,
+        idp_alias: &str,
+    ) -> Result<(), StorageError> {
+        self.inner
+            .write()
+            .org_idp_bindings
+            .remove(&(organization_id, idp_alias.to_string()))
+            .ok_or(StorageError::NotFound)
+            .map(|_| ())
+    }
 }
+
 
 #[cfg(test)]
 mod tests {

@@ -21,6 +21,7 @@ pub mod session;
 pub mod subject;
 pub mod token;
 pub mod user;
+pub mod user_profile;
 
 pub use agent::{Agent, AgentAuthMethod, AgentCapability, AgentKind, AgentRateLimit};
 pub use attribute::{AttributeValue, RequiredAction};
@@ -40,7 +41,7 @@ pub use id::{
 };
 pub use organization::{
     MembershipState, OrgConsentMode, OrgConsentPolicy, OrgDomain, OrgInvitation, OrgMembership,
-    OrgPermission, OrgRole, Organization,
+    OrgPermission, OrgRole, Organization, OrganizationBranding, OrganizationPolicy,
 };
 pub use realm::{
     AcrLevel, AcrPolicy, AcrRequirement, BruteForcePolicy, EventConfig, LocalizationPolicy,
@@ -53,7 +54,11 @@ pub use secret::Secret;
 pub use session::{ClientSessionRef, Session};
 pub use subject::{ParentSubject, Subject};
 pub use token::{
-    AccessTokenClaims, CodeChallenge, CodeChallengeMethod, CodeGrant, IdTokenClaims, RealmAccess,
-    RefreshToken, ResourceAccess,
+    AccessTokenClaims, CodeChallenge, CodeChallengeMethod, CodeGrant, IdTokenClaims, OrgClaim,
+    RealmAccess, RefreshToken, ResourceAccess,
 };
 pub use user::{FederationLink, PersonName, User};
+pub use user_profile::{
+    AttributeActorSet, AttributePermissions, AttributeValidator, UnmanagedAttributePolicy,
+    UserAttributeDecl, UserAttributeGroup, UserProfile,
+};
