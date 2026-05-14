@@ -3,6 +3,8 @@
 use leptos::prelude::*;
 
 use crate::leptos_ui::app::{Page, PageContext};
+use crate::leptos_ui::components::list_table::{state_label, ListTable};
+use crate::leptos_ui::components::page_header::PageHeader;
 
 #[derive(Clone, Debug)]
 pub struct IdpRow {
@@ -21,24 +23,21 @@ pub fn IdpsPage(realm_slug: String, rows: Vec<IdpRow>) -> impl IntoView {
     let back = format!("/admin-next/realms/{realm_slug}");
     view! {
         <Page context=ctx>
-            <nav class="gn-breadcrumb"><a href=back>"← Realm"</a></nav>
-            <h1>"Identity providers"</h1>
-            <p class="gn-subtitle">"External OIDC + SAML IdPs the realm brokers against."</p>
-            <table class="gn-table">
-                <thead>
-                    <tr><th>"Alias"</th><th>"Name"</th><th>"Kind"</th><th>"State"</th></tr>
-                </thead>
-                <tbody>
-                    {rows.into_iter().map(|r| view! {
-                        <tr>
-                            <td><code>{r.alias}</code></td>
-                            <td>{r.display_name}</td>
-                            <td>{r.kind}</td>
-                            <td>{if r.enabled { "enabled" } else { "disabled" }}</td>
-                        </tr>
-                    }).collect_view()}
-                </tbody>
-            </table>
+            <PageHeader
+                title="Identity providers"
+                back_href=back
+                subtitle="External OIDC + SAML IdPs the realm brokers against."
+            />
+            <ListTable headers=vec!["Alias", "Name", "Kind", "State"]>
+                {rows.into_iter().map(|r| view! {
+                    <tr>
+                        <td><code>{r.alias}</code></td>
+                        <td>{r.display_name}</td>
+                        <td>{r.kind}</td>
+                        <td>{state_label(r.enabled)}</td>
+                    </tr>
+                }).collect_view()}
+            </ListTable>
         </Page>
     }
 }

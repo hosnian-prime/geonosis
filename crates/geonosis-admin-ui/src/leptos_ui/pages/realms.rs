@@ -1,15 +1,15 @@
-//! `/admin-next/realms` — proof-of-concept Leptos page.
+//! `/admin-next/realms` — realm list page.
 //!
-//! Lists every realm the storage backend knows about. Server-rendered;
-//! no hydration island. Mirrors the data shape of the existing Maud
-//! `page_realms_html` handler so the JSON `/admin/v1/realms` contract
-//! is reused.
+//! Server-rendered; no hydration island. Reuses the JSON
+//! `/admin/v1/realms` contract so the data shape is shared with
+//! the REST API surface.
 
 use leptos::prelude::*;
 
 use crate::leptos_ui::app::{Page, PageContext};
+use crate::leptos_ui::components::list_table::{state_label, ListTable};
+use crate::leptos_ui::components::page_header::PageHeader;
 
-/// Minimal projection of a realm into something easy to render.
 #[derive(Clone, Debug)]
 pub struct RealmRow {
     pub slug: String,
@@ -25,37 +25,25 @@ pub fn RealmsPage(realms: Vec<RealmRow>) -> impl IntoView {
     };
     view! {
         <Page context=ctx>
-            <h1>"Realms"</h1>
-            <p class="gn-subtitle">
-                "All identity universes hosted by this Geonosis instance."
-            </p>
-            <table class="gn-table">
-                <thead>
-                    <tr>
-                        <th>"Slug"</th>
-                        <th>"Display name"</th>
-                        <th>"State"</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {realms
-                        .into_iter()
-                        .map(|r| {
-                            let state = if r.enabled { "enabled" } else { "disabled" };
-                            let detail_href = format!("/admin-next/realms/{}", r.slug);
-                            view! {
-                                <tr>
-                                    <td>
-                                        <a href=detail_href>{r.slug}</a>
-                                    </td>
-                                    <td>{r.display_name}</td>
-                                    <td>{state}</td>
-                                </tr>
-                            }
-                        })
-                        .collect_view()}
-                </tbody>
-            </table>
+            <PageHeader
+                title="Realms"
+                subtitle="All identity universes hosted by this Geonosis instance."
+            />
+            <ListTable headers=vec!["Slug", "Display name", "State"]>
+                {realms
+                    .into_iter()
+                    .map(|r| {
+                        let detail_href = format!("/admin-next/realms/{}", r.slug);
+                        view! {
+                            <tr>
+                                <td><a href=detail_href>{r.slug}</a></td>
+                                <td>{r.display_name}</td>
+                                <td>{state_label(r.enabled)}</td>
+                            </tr>
+                        }
+                    })
+                    .collect_view()}
+            </ListTable>
         </Page>
     }
 }
