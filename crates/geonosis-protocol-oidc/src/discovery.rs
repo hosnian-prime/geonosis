@@ -29,6 +29,14 @@ pub struct DiscoveryDocument {
     pub claims_supported: Vec<String>,
     pub require_pushed_authorization_requests: bool,
     pub require_request_uri_registration: bool,
+    /// JAR (RFC 9101) `request` parameter support. v0.1 returns false
+    /// to surface the gap honestly; PAR (RFC 9126) is the supported
+    /// equivalent surface and is advertised separately above.
+    pub request_parameter_supported: bool,
+    /// JAR `request_uri` parameter. v0.1 only accepts `request_uri`
+    /// values minted by our own PAR endpoint; advertising support is
+    /// kept conservative to match.
+    pub request_uri_parameter_supported: bool,
     pub frontchannel_logout_supported: bool,
     pub backchannel_logout_supported: bool,
     pub end_session_endpoint_supported: bool,
@@ -104,6 +112,8 @@ pub fn discovery_document(issuer: Url) -> DiscoveryDocument {
         ],
         require_pushed_authorization_requests: false,
         require_request_uri_registration: false,
+        request_parameter_supported: false,
+        request_uri_parameter_supported: false,
         frontchannel_logout_supported: true,
         backchannel_logout_supported: true,
         end_session_endpoint_supported: true,
