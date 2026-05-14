@@ -318,7 +318,15 @@ async fn post_flow_save(
         });
     match validated {
         Ok(def) => {
+            let flow_id = def.id;
             state.storage.save_auth_flow(def).await?;
+            crate::audit_emit::emit(
+                &state,
+                realm.id,
+                "flow.updated",
+                Some(geonosis_audit::Target::Flow { id: flow_id }),
+                serde_json::json!({ "alias": alias }),
+            );
             let target = format!("/admin-next/realms/{slug}/flows/{alias}");
             Ok(Redirect::to(&target).into_response())
         }

@@ -11,8 +11,11 @@ use axum::extract::{Path, Query, State};
 use axum::Json;
 use serde::Deserialize;
 
+use geonosis_audit::Target;
 use geonosis_core::id::UserId;
 use geonosis_core::{PersonName, User};
+
+use crate::audit_emit;
 
 use crate::handlers_v1::extractors::realm_by_slug;
 use crate::state::{AdminError, AdminState};
@@ -98,6 +101,13 @@ pub async fn create(
         .create_user(user.clone())
         .await
         .map_err(AdminError::from)?;
+    audit_emit::emit(
+        &state,
+        user.realm_id,
+        "user.created",
+        Some(Target::User { id: user.id }),
+        serde_json::json!({ "username": user.username }),
+    );
     Ok(Json(user))
 }
 
@@ -138,6 +148,13 @@ pub async fn update(
         .update_user(user.clone())
         .await
         .map_err(AdminError::from)?;
+    audit_emit::emit(
+        &state,
+        user.realm_id,
+        "user.updated",
+        Some(Target::User { id: user.id }),
+        serde_json::json!({ "username": user.username }),
+    );
     Ok(Json(user))
 }
 
@@ -156,6 +173,13 @@ pub async fn delete_(
         .delete_user(realm.id, existing.id)
         .await
         .map_err(AdminError::from)?;
+    audit_emit::emit(
+        &state,
+        realm.id,
+        "user.deleted",
+        Some(Target::User { id: existing.id }),
+        serde_json::json!({ "username": existing.username }),
+    );
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
@@ -178,6 +202,13 @@ pub async fn verify_email(
         .update_user(user.clone())
         .await
         .map_err(AdminError::from)?;
+    audit_emit::emit(
+        &state,
+        user.realm_id,
+        "user.email_verified",
+        Some(Target::User { id: user.id }),
+        serde_json::json!({ "username": user.username }),
+    );
     Ok(Json(user))
 }
 
@@ -202,5 +233,12 @@ pub async fn set_password(
         .store_password_hash(realm.id, user.id, phc)
         .await
         .map_err(AdminError::from)?;
+    audit_emit::emit(
+        &state,
+        realm.id,
+        "user.password_set",
+        Some(Target::User { id: user.id }),
+        serde_json::json!({ "username": user.username }),
+    );
     Ok(axum::http::StatusCode::NO_CONTENT)
 }

@@ -7,8 +7,10 @@ use axum::extract::{Path, State};
 use axum::Json;
 use serde::Deserialize;
 
+use geonosis_audit::Target;
 use geonosis_core::{Role, RoleId, UserId};
 
+use crate::audit_emit;
 use crate::handlers_v1::extractors::realm_by_slug;
 use crate::state::{AdminError, AdminState};
 
@@ -144,6 +146,13 @@ pub async fn assign_user_role(
         .assign_user_role(realm.id, user_id, req.role_id)
         .await
         .map_err(AdminError::from)?;
+    audit_emit::emit(
+        &state,
+        realm.id,
+        "role.assigned_to_user",
+        Some(Target::User { id: user_id }),
+        serde_json::json!({ "role_id": req.role_id.to_string() }),
+    );
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
 
@@ -157,5 +166,12 @@ pub async fn unassign_user_role(
         .unassign_user_role(realm.id, user_id, role_id)
         .await
         .map_err(AdminError::from)?;
+    audit_emit::emit(
+        &state,
+        realm.id,
+        "role.unassigned_from_user",
+        Some(Target::User { id: user_id }),
+        serde_json::json!({ "role_id": role_id.to_string() }),
+    );
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
