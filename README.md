@@ -12,9 +12,24 @@ A full-featured Identity & Access Management server written in Rust.
   upgrades; Redis-backed cache in v0.1, replaced by an embedded
   distributed cache (Komino) in a future major release
 
-> **Status:** early architecture phase. Source code does not yet
-> exist in this repository. Technical documentation under
-> [`docs/`](./docs/) is the source of truth.
+> **Status:** v0.1 foundation landing. The cargo workspace, core
+> entity types, OIDC/OAuth grant engines (PKCE-S256, refresh-token
+> family rotation), flow DSL + executor, SPI provider registry, KMS
+> trait + software impl, in-memory storage, Moka-backed cache, audit
+> publisher, and axum server with `/.well-known/openid-configuration`
+> and JWKS endpoints all build, lint, and test. Postgres backend,
+> WASM runtime, and Leptos admin UI follow in subsequent v0.1 PRs.
+> Technical documentation under [`docs/`](./docs/) remains the source
+> of truth.
+
+## Building
+
+```sh
+cargo build --workspace
+cargo test --workspace
+cargo run --bin geonosis-server -- --help
+cargo run --bin geoctl -- version
+```
 
 ## Documentation
 
