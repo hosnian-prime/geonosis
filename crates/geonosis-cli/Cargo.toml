@@ -17,6 +17,7 @@ path = "src/main.rs"
 [dependencies]
 geonosis-core = { path = "../geonosis-core" }
 geonosis-flow = { path = "../geonosis-flow" }
+geonosis-migrate = { path = "../geonosis-migrate" }
 
 clap.workspace = true
 serde.workspace = true
@@ -24,3 +25,5 @@ serde_json.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 anyhow.workspace = true
+tokio.workspace = true
+sqlx.workspace = true

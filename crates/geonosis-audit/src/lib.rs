@@ -9,9 +9,10 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::sync::mpsc;
 
-use geonosis_core::id::{
-    ClientId, EventId, FlowId, KeyId, RealmId, SessionId, UserId,
-};
+use geonosis_core::id::{ClientId, EventId, FlowId, KeyId, RealmId, SessionId, UserId};
+
+#[cfg(feature = "postgres")]
+pub mod postgres;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditEvent {
@@ -49,6 +50,8 @@ pub enum Target {
 pub enum AuditError {
     #[error("sink dropped")]
     SinkDropped,
+    #[error("backend: {0}")]
+    Backend(String),
 }
 
 /// Pluggable sink. v0.1: `Postgres` (in-process trait method) + `Webhook`

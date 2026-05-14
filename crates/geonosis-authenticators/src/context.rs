@@ -6,6 +6,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 
+use geonosis_core::realm::BruteForcePolicy;
 use geonosis_core::{Amr, Client, RealmId, SessionId, UserId};
 use geonosis_storage::Storage;
 
@@ -29,6 +30,10 @@ pub struct AuthnContext {
     /// Server clock at step entry — authenticators that need "now"
     /// must use this so tests can pin it.
     pub now: DateTime<Utc>,
+    /// Realm's brute-force policy. Authenticators that consume
+    /// credentials wrap their verification with the runtime in
+    /// `crate::brute_force`.
+    pub brute_force: BruteForcePolicy,
 }
 
 impl AuthnContext {

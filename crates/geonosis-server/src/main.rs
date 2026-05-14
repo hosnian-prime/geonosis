@@ -8,7 +8,7 @@ use geonosis_cache::LocalCache;
 use geonosis_crypto::{MasterKey, SoftwareKms};
 use geonosis_server::{router, AppState};
 use geonosis_spi_host::ProviderRegistry;
-use geonosis_storage::MemoryStorage;
+use geonosis_storage::{MemoryStorage, PostgresStorage, Storage};
 
 #[derive(Debug, Parser)]
 #[command(name = "geonosis-server", about = "Geonosis IAM server (v0.1)")]
@@ -24,6 +24,18 @@ struct Args {
     /// 32-byte hex master key. Generated at random if unset (DEV ONLY).
     #[arg(long, env = "GEONOSIS_MASTER_KEY")]
     master_key_hex: Option<String>,
+
+    /// Postgres `postgres://user:pass@host/db` URL. When set, the
+    /// server uses `PostgresStorage`; otherwise it falls back to the
+    /// in-memory backend (the dev default).
+    #[arg(long, env = "GEONOSIS_DATABASE_URL")]
+    database_url: Option<String>,
+
+    /// If true, run pending migrations on boot (advisory-lock'd, so safe
+    /// on every pod). Off-by-default: `geoctl migrate up` is the
+    /// recommended deploy step.
+    #[arg(long, env = "GEONOSIS_MIGRATE_ON_BOOT", default_value_t = false)]
+    migrate_on_boot: bool,
 }
 
 #[tokio::main]
@@ -46,7 +58,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     };
 
-    let storage = Arc::new(MemoryStorage::new());
+    let storage: Arc<dyn Storage> = if let Some(url) = &args.database_url {
+        tracing::info!(database_url = %redact_url(url), "connecting to Postgres backend");
+        let pool = geonosis_storage::postgres::build_pool(url).await?;
+        if args.migrate_on_boot {
+            tracing::info!("running pending migrations under advisory lock");
+            geonosis_migrate::run_with_leader_lock(&pool).await?;
+        }
+        // Refuse to start if the live schema is outside our window.
+        geonosis_migrate::enforce_schema_compat(&pool, geonosis_migrate::V0_1_COMPAT).await?;
+        Arc::new(PostgresStorage::new(pool))
+    } else {
+        tracing::warn!("GEONOSIS_DATABASE_URL unset — using in-memory storage (DEV ONLY)");
+        Arc::new(MemoryStorage::new())
+    };
     // Derive deployment-wide hash keys from the master key. Per-realm
     // derivation lands in v0.1.x.
     let refresh_hash_key = derive_subkey(&master, b"geonosis-refresh-hash-v1");
@@ -82,6 +107,19 @@ fn derive_subkey(master: &MasterKey, label: &[u8]) -> [u8; 32] {
     hasher.update(&proof.nonce);
     hasher.update(&proof.ciphertext);
     *hasher.finalize().as_bytes()
+}
+
+/// Redact userinfo from a Postgres URL so we don't accidentally log
+/// the password.
+fn redact_url(url: &str) -> String {
+    match url::Url::parse(url) {
+        Ok(mut u) => {
+            let _ = u.set_username("");
+            let _ = u.set_password(None);
+            u.to_string()
+        }
+        Err(_) => "<unparseable url>".into(),
+    }
 }
 
 fn hex_decode_32(s: &str) -> Result<[u8; 32], String> {
