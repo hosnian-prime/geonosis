@@ -66,6 +66,8 @@ struct Tables {
     org_invitations_by_token: HashMap<String, OrgInvitationId>,
     org_consent_policies: HashMap<(OrganizationId, ClientId), OrgConsentPolicy>,
     org_idp_bindings: HashMap<(OrganizationId, String), OrgIdpBinding>,
+    saml_persistent_ids:
+        HashMap<(RealmId, UserId, String), crate::traits::SamlPersistentIdRow>,
 }
 
 pub struct MemoryStorage {
@@ -1750,6 +1752,28 @@ impl Storage for MemoryStorage {
         rows.sort_by(|a, b| b.last_seen_at.cmp(&a.last_seen_at));
         rows.truncate(limit);
         Ok(rows)
+    }
+
+    async fn get_saml_persistent_id(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+        sp_entity_id: &str,
+    ) -> Result<Option<crate::traits::SamlPersistentIdRow>, StorageError> {
+        let key = (realm, user_id, sp_entity_id.to_string());
+        Ok(self.inner.read().saml_persistent_ids.get(&key).cloned())
+    }
+
+    async fn save_saml_persistent_id(
+        &self,
+        row: crate::traits::SamlPersistentIdRow,
+    ) -> Result<(), StorageError> {
+        let mut t = self.inner.write();
+        let key = (row.realm_id, row.user_id, row.sp_entity_id.clone());
+        // Idempotent — first writer wins so a concurrent SSO
+        // request can't shift the downstream NameID.
+        t.saml_persistent_ids.entry(key).or_insert(row);
+        Ok(())
     }
 }
 

@@ -535,6 +535,44 @@ pub trait Storage: Send + Sync {
         realm: RealmId,
         limit: usize,
     ) -> Result<Vec<Session>, StorageError>;
+
+    // ---- SAML persistent NameID (per (realm, user, SP)) ----
+
+    /// Look up the persistent NameID we previously minted for this
+    /// `(realm, user, sp_entity_id)` tuple. Per
+    /// `docs/20-saml-idp.md` §"NameID strategies": same user +
+    /// same SP MUST resolve to the same NameID across sessions.
+    /// Returns `None` if no row exists yet — the caller mints one
+    /// and persists it via [`save_saml_persistent_id`].
+    async fn get_saml_persistent_id(
+        &self,
+        realm: RealmId,
+        user_id: UserId,
+        sp_entity_id: &str,
+    ) -> Result<Option<SamlPersistentIdRow>, StorageError>;
+
+    /// Persist a freshly-minted persistent NameID. Idempotent: if a
+    /// row already exists for the tuple it is left untouched so a
+    /// concurrent SSO request from the same SP can't shift the
+    /// downstream identity.
+    async fn save_saml_persistent_id(
+        &self,
+        row: SamlPersistentIdRow,
+    ) -> Result<(), StorageError>;
+}
+
+/// Per-(realm, user, SP) persistent SAML NameID row. The
+/// `name_id` is an opaque ULID-based identifier that never reveals
+/// the user_id to the SP. Schema matches the `saml_persistent_id`
+/// table in the v0.1.x migration; `created_at` is the audit handle
+/// for "when did Geonosis first identify this user to this SP".
+#[derive(Debug, Clone, PartialEq)]
+pub struct SamlPersistentIdRow {
+    pub realm_id: RealmId,
+    pub user_id: UserId,
+    pub sp_entity_id: String,
+    pub name_id: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
 }
 
 /// Filter inputs for `list_audit_events`. Every field is optional; an
