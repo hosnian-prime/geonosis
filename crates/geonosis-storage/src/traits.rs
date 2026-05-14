@@ -17,6 +17,12 @@ use crate::error::StorageError;
 /// in-memory backend; the Postgres backend lives behind the same trait.
 #[async_trait]
 pub trait Storage: Send + Sync {
+    /// Backend liveness probe. SHOULD complete in <100ms and never
+    /// retry; the readiness handler calls this on every `/-/ready`
+    /// poll. MemoryStorage returns Ok unconditionally; PostgresStorage
+    /// runs `SELECT 1` against the pool.
+    async fn ping(&self) -> Result<(), StorageError>;
+
     // ---- Realm ----
     async fn create_realm(&self, realm: Realm) -> Result<(), StorageError>;
     async fn get_realm(&self, id: RealmId) -> Result<Realm, StorageError>;

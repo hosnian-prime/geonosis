@@ -15,6 +15,7 @@ use crate::authenticators::BuiltinAuthenticators;
 use crate::broker::BrokerRuntime;
 use crate::ldap::LdapRuntime;
 use crate::metrics::SharedMetrics;
+use crate::rate_limit::SharedRateLimiter;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -45,4 +46,8 @@ pub struct AppState {
     pub ldap: Arc<LdapRuntime>,
     /// Prometheus counter registry mounted on `/metrics`.
     pub metrics: SharedMetrics,
+    /// Per-realm token-bucket rate limiter for the hot OIDC endpoints.
+    /// In-process for v0.1; cluster-wide enforcement via Redis lands
+    /// in v0.2.
+    pub rate_limiter: SharedRateLimiter,
 }

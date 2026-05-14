@@ -30,7 +30,7 @@ geonosis-federation-ldap = { path = "../geonosis-federation-ldap", features = ["
 geonosis-broker = { path = "../geonosis-broker", features = ["broker-runtime"] }
 geonosis-spi-host = { path = "../geonosis-spi-host" }
 geonosis-authenticators = { path = "../geonosis-authenticators" }
-geonosis-audit = { path = "../geonosis-audit", features = ["postgres"] }
+geonosis-audit = { path = "../geonosis-audit", features = ["postgres", "webhook"] }
 geonosis-migrate = { path = "../geonosis-migrate" }
 geonosis-admin-ui = { path = "../geonosis-admin-ui" }
 sqlx.workspace = true
@@ -48,6 +48,10 @@ serde_json.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+tracing-opentelemetry.workspace = true
+opentelemetry.workspace = true
+opentelemetry_sdk.workspace = true
+opentelemetry-otlp.workspace = true
 chrono.workspace = true
 url.workspace = true
 clap.workspace = true
