@@ -13,6 +13,7 @@
 //! - [`sign`] — XML-DSig signing of an assertion against the realm's
 //!   active RSA-SHA256 key via the `KeyManagementService` trait.
 
+pub mod front_channel_logout;
 pub mod logout;
 pub mod post_signature;
 pub mod redirect;
@@ -20,6 +21,7 @@ pub mod request;
 pub mod sign;
 pub mod xml;
 
+pub use front_channel_logout::{render_front_channel_logout_html, FrontChannelLogoutPeer};
 pub use logout::{
     parse_logout_request, serialize_logout_response, LogoutParseError, ParsedLogoutRequest,
 };
@@ -82,6 +84,15 @@ pub struct SamlSpClientConfig {
     /// the everyday case in v0.1.
     #[serde(default)]
     pub attribute_mappers: Vec<SamlAttributeMapping>,
+    /// Optional front-channel SLO endpoint per `docs/20-saml-idp.md`
+    /// §"Single Logout". When the IdP fans logout out to peer SPs
+    /// it renders an HTML page with one `<iframe>` per
+    /// participating SP whose `src` is this URL. Browser-driven
+    /// fan-out clears the SP's cookie state without needing the
+    /// SP to expose a back-channel POST endpoint. `None` keeps the
+    /// SP in back-channel-only mode (the v0.1 default).
+    #[serde(default)]
+    pub front_channel_logout_url: Option<Url>,
 }
 
 /// One operator-defined `<Attribute>` row to include in the
@@ -289,6 +300,7 @@ mod tests {
             session_index_strategy: SessionIndexStrategy::UseSessionId,
             authn_request_signing_certificates: vec![],
             attribute_mappers: vec![],
+            front_channel_logout_url: None,
         }
     }
 
@@ -328,6 +340,7 @@ mod tests {
             session_index_strategy: SessionIndexStrategy::UseSessionId,
             authn_request_signing_certificates: vec![],
             attribute_mappers: vec![],
+            front_channel_logout_url: None,
         };
         let a = build_assertion(
             "https://idp.example",
