@@ -15,10 +15,12 @@ use leptos::prelude::*;
 use crate::handlers_v1::extractors::realm_by_slug;
 use crate::leptos_ui::pages::agents::{AgentRow, AgentsPage};
 use crate::leptos_ui::pages::clients::{ClientRow, ClientsPage};
+use crate::leptos_ui::pages::groups::{GroupRow, GroupsPage};
 use crate::leptos_ui::pages::idps::{IdpRow, IdpsPage};
 use crate::leptos_ui::pages::orgs::{OrgRow, OrgsPage};
 use crate::leptos_ui::pages::realm_detail::{RealmDetailData, RealmDetailPage};
 use crate::leptos_ui::pages::realms::{RealmRow, RealmsPage};
+use crate::leptos_ui::pages::roles::{RoleRow, RolesPage};
 use crate::leptos_ui::pages::users::{UserRow, UsersPage};
 use crate::state::{AdminError, AdminState};
 
@@ -33,6 +35,8 @@ pub fn leptos_router(state: Arc<AdminState>) -> Router {
         .route("/admin-next/realms/:slug/orgs", get(page_orgs))
         .route("/admin-next/realms/:slug/agents", get(page_agents))
         .route("/admin-next/realms/:slug/idps", get(page_idps))
+        .route("/admin-next/realms/:slug/roles", get(page_roles))
+        .route("/admin-next/realms/:slug/groups", get(page_groups))
         .with_state(state)
 }
 
@@ -160,6 +164,42 @@ async fn page_idps(
         .collect();
     let s = realm.slug;
     Ok(render(move || view! { <IdpsPage realm_slug=s rows=rows/> }))
+}
+
+async fn page_roles(
+    State(state): State<Arc<AdminState>>,
+    Path(slug): Path<String>,
+) -> Result<Html<String>, AdminError> {
+    let realm = realm_by_slug(&state, &slug).await?;
+    let roles = state.storage.list_roles(realm.id, None).await?;
+    let rows: Vec<RoleRow> = roles
+        .into_iter()
+        .map(|r| RoleRow {
+            name: r.name,
+            description: r.description,
+            client_scope: r.client_id.map(|id| id.to_string()),
+        })
+        .collect();
+    let s = realm.slug;
+    Ok(render(move || view! { <RolesPage realm_slug=s rows=rows/> }))
+}
+
+async fn page_groups(
+    State(state): State<Arc<AdminState>>,
+    Path(slug): Path<String>,
+) -> Result<Html<String>, AdminError> {
+    let realm = realm_by_slug(&state, &slug).await?;
+    let groups = state.storage.list_groups(realm.id).await?;
+    let rows: Vec<GroupRow> = groups
+        .into_iter()
+        .map(|g| GroupRow {
+            path: g.path,
+            name: g.name,
+            realm_role_count: g.realm_role_ids.len(),
+        })
+        .collect();
+    let s = realm.slug;
+    Ok(render(move || view! { <GroupsPage realm_slug=s rows=rows/> }))
 }
 
 /// Render a Leptos view tree to a complete HTML document string.

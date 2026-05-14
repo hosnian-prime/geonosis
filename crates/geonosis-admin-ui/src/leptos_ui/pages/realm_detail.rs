@@ -35,6 +35,8 @@ pub fn RealmDetailPage(data: RealmDetailData) -> impl IntoView {
             <ul class="gn-section-links">
                 {link("clients", "Clients")}
                 {link("users", "Users")}
+                {link("roles", "Roles")}
+                {link("groups", "Groups")}
                 {link("orgs", "Organizations")}
                 {link("agents", "Agents")}
                 {link("idps", "Identity providers")}
