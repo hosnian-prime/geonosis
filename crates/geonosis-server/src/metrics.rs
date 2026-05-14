@@ -84,6 +84,25 @@ pub struct MetricsState {
     /// [`MetricsState::install_db_pool`]; in-memory deployments
     /// leave the slot empty and the gauges are omitted.
     pub db_pool: parking_lot::RwLock<Option<sqlx::PgPool>>,
+
+    /// `geonosis_cache_hits_total{cache}` / `geonosis_cache_misses_total{cache}`
+    /// — per-cache-layer hit/miss counters. Bumped by the cache
+    /// runtime; the `cache` label is `l1` / `redis` / `local` /
+    /// `noop` to split the hit-rate per backend in dashboards.
+    pub cache_hits: LabeledCounter,
+    pub cache_misses: LabeledCounter,
+
+    /// `geonosis_spi_quarantined_total{interface, urn, reason}` —
+    /// bumped by the SPI host when a plugin gets quarantined.
+    /// Feeds the `GeonosisSpiQuarantined` alert rule.
+    pub spi_quarantined: LabeledCounter,
+
+    /// `geonosis_listener_lag_seconds{channel}` — last observed
+    /// staleness of the Postgres LISTEN/NOTIFY cache-invalidation
+    /// listener (seconds since the most recent successful
+    /// notification). Feeds the `GeonosisListenerLag` alert.
+    /// Updated by [`MetricsState::record_listener_lag`].
+    pub listener_lag: parking_lot::Mutex<std::collections::HashMap<String, f64>>,
 }
 
 impl Default for MetricsState {
@@ -145,7 +164,32 @@ impl MetricsState {
                 &[0.001, 0.002, 0.004, 0.008, 0.016, 0.032, 0.064, 0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0, 16.0],
             ),
             db_pool: parking_lot::RwLock::new(None),
+            cache_hits: LabeledCounter::new(
+                "geonosis_cache_hits_total",
+                "Cache hits bucketed by backend layer.",
+                &["cache"],
+            ),
+            cache_misses: LabeledCounter::new(
+                "geonosis_cache_misses_total",
+                "Cache misses bucketed by backend layer.",
+                &["cache"],
+            ),
+            spi_quarantined: LabeledCounter::new(
+                "geonosis_spi_quarantined_total",
+                "SPI plugins quarantined by the host (fault threshold / timeout / signature failure).",
+                &["interface", "urn", "reason"],
+            ),
+            listener_lag: parking_lot::Mutex::new(std::collections::HashMap::new()),
         }
+    }
+
+    /// Record the current cache-invalidation listener lag for a
+    /// channel. v0.1 has one channel (`geonosis_invalidate`); the
+    /// label keeps cardinality bounded and extensible.
+    pub fn record_listener_lag(&self, channel: &str, seconds: f64) {
+        self.listener_lag
+            .lock()
+            .insert(channel.to_string(), seconds);
     }
 
     /// Hand the metrics layer a Postgres pool so `/metrics` can emit
@@ -448,6 +492,24 @@ fn render(m: &MetricsState) -> String {
     m.session_revoked.render(&mut out);
     m.token_reuse_detected.render(&mut out);
     m.http_latency.render(&mut out);
+    m.cache_hits.render(&mut out);
+    m.cache_misses.render(&mut out);
+    m.spi_quarantined.render(&mut out);
+
+    // Listener-lag gauge — emit once per channel currently tracked.
+    let lag = m.listener_lag.lock().clone();
+    if !lag.is_empty() {
+        out.push_str(
+            "# HELP geonosis_listener_lag_seconds Time since the last successful cache-invalidation notification, per channel.\n# TYPE geonosis_listener_lag_seconds gauge\n",
+        );
+        for (channel, secs) in lag.iter() {
+            out.push_str(&format!(
+                "geonosis_listener_lag_seconds{{channel=\"{}\"}} {}\n",
+                escape(channel),
+                secs
+            ));
+        }
+    }
 
     // DB pool gauges: read live from sqlx::Pool stats so a scrape
     // always sees the current depth. Skipped when the in-memory
@@ -555,5 +617,50 @@ mod tests {
         if cfg!(debug_assertions) {
             assert!(result.is_err());
         }
+    }
+
+    #[test]
+    fn cache_hit_miss_counters_render_with_cache_label() {
+        let m = MetricsState::new();
+        m.cache_hits.inc(&["l1"]);
+        m.cache_hits.inc(&["l1"]);
+        m.cache_misses.inc(&["l1"]);
+        m.cache_hits.inc(&["redis"]);
+        let body = render(&m);
+        assert!(body.contains("geonosis_cache_hits_total{cache=\"l1\"} 2"));
+        assert!(body.contains("geonosis_cache_misses_total{cache=\"l1\"} 1"));
+        assert!(body.contains("geonosis_cache_hits_total{cache=\"redis\"} 1"));
+    }
+
+    #[test]
+    fn spi_quarantined_carries_interface_urn_reason_labels() {
+        let m = MetricsState::new();
+        m.spi_quarantined
+            .inc(&["geonosis:authn@0.1.0", "wasm:custom:authn", "timeout"]);
+        let body = render(&m);
+        assert!(body.contains(
+            "geonosis_spi_quarantined_total{interface=\"geonosis:authn@0.1.0\",urn=\"wasm:custom:authn\",reason=\"timeout\"} 1"
+        ));
+    }
+
+    #[test]
+    fn listener_lag_renders_per_channel_when_set() {
+        let m = MetricsState::new();
+        m.record_listener_lag("geonosis_invalidate", 3.5);
+        let body = render(&m);
+        assert!(body.contains("# TYPE geonosis_listener_lag_seconds gauge"));
+        assert!(body.contains(
+            "geonosis_listener_lag_seconds{channel=\"geonosis_invalidate\"} 3.5"
+        ));
+    }
+
+    #[test]
+    fn listener_lag_omits_block_when_no_channels_tracked() {
+        // When the listener hasn't reported yet the body shouldn't
+        // carry a no-data preamble; alert rules tolerate no-data
+        // by design.
+        let m = MetricsState::new();
+        let body = render(&m);
+        assert!(!body.contains("geonosis_listener_lag_seconds"));
     }
 }
