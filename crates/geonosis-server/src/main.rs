@@ -42,6 +42,14 @@ struct Args {
     /// 5s per-attempt timeout). Empty disables webhook forwarding.
     #[arg(long, env = "GEONOSIS_AUDIT_WEBHOOK_URLS", default_value = "")]
     audit_webhook_urls: String,
+
+    /// One-shot quickstart bootstrap. Provisions realm `acme` + demo
+    /// users + the `acme-web` OIDC client per
+    /// `docs/21-dx-package.md`. Idempotent. **NEVER** set in
+    /// production — the production Helm chart in `deploy/helm/`
+    /// does not.
+    #[arg(long, env = "GEONOSIS_BOOTSTRAP_QUICKSTART", default_value_t = false)]
+    bootstrap_quickstart: bool,
 }
 
 #[tokio::main]
@@ -134,6 +142,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         ),
         draining: Arc::new(std::sync::atomic::AtomicBool::new(false)),
     };
+
+    if args.bootstrap_quickstart {
+        geonosis_server::bootstrap::run(state.storage.clone()).await?;
+    }
 
     // Spawn the cache invalidation listener + audit-retention runner
     // when Postgres is the backend. Both attach to the same pool.
