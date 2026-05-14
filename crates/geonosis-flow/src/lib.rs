@@ -19,7 +19,8 @@ pub mod state;
 pub use authenticator::{AuthnDispatcher, AuthnStepOutcome, NoopAuthnDispatcher};
 pub use compile::{compile, CompileError, CompiledFlow};
 pub use dsl::{
-    Edge, EdgeCondition, FlowDefinition, FlowNode, NodeKind, Requirement, StartNode, SuccessNode,
+    Edge, EdgeCondition, FlowDefinition, FlowNode, NodeKind, NodeLayout, Requirement, StartNode,
+    SuccessNode,
 };
 pub use executor::{FlowError, FlowExecutor, StepInput, StepOutput};
 pub use guard::eval_guard;
