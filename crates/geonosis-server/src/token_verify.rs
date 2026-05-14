@@ -33,10 +33,17 @@ pub async fn verify_access_token(
     token: &str,
 ) -> Result<AccessTokenClaims, VerifyError> {
     let mut parts = token.split('.');
-    let h_b64 = parts.next().ok_or_else(|| VerifyError::Malformed("no header".into()))?;
-    let _ = parts.next().ok_or_else(|| VerifyError::Malformed("no payload".into()))?;
-    let _ = parts.next().ok_or_else(|| VerifyError::Malformed("no sig".into()))?;
-    let header_bytes = base64url::decode(h_b64).map_err(|e| VerifyError::Malformed(e.to_string()))?;
+    let h_b64 = parts
+        .next()
+        .ok_or_else(|| VerifyError::Malformed("no header".into()))?;
+    let _ = parts
+        .next()
+        .ok_or_else(|| VerifyError::Malformed("no payload".into()))?;
+    let _ = parts
+        .next()
+        .ok_or_else(|| VerifyError::Malformed("no sig".into()))?;
+    let header_bytes =
+        base64url::decode(h_b64).map_err(|e| VerifyError::Malformed(e.to_string()))?;
     let header: JwsHeader =
         serde_json::from_slice(&header_bytes).map_err(|e| VerifyError::Malformed(e.to_string()))?;
 
@@ -57,8 +64,8 @@ pub async fn verify_access_token(
         .await
         .map_err(|e| VerifyError::Kms(e.to_string()))?;
 
-    let claims: AccessTokenClaims =
-        verify_jwt(token, alg, &header.kid, &public).map_err(|e| VerifyError::Signature(e.to_string()))?;
+    let claims: AccessTokenClaims = verify_jwt(token, alg, &header.kid, &public)
+        .map_err(|e| VerifyError::Signature(e.to_string()))?;
 
     let now = chrono::Utc::now().timestamp();
     if claims.exp < now {
@@ -67,10 +74,7 @@ pub async fn verify_access_token(
 
     let expected_iss = format!(
         "{}/realms/{}",
-        state
-            .public_base_url
-            .as_str()
-            .trim_end_matches('/'),
+        state.public_base_url.as_str().trim_end_matches('/'),
         realm.slug
     );
     if claims.iss != expected_iss {

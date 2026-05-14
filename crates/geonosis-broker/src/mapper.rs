@@ -120,11 +120,7 @@ pub struct DraftOrgAssignment {
 /// Apply every mapper to the assertion in priority order. The
 /// `DraftUser` is seeded with whatever the OIDC adapter already
 /// extracted (preferred_username, email, etc).
-pub fn apply_all(
-    bindings: &[MapperBinding],
-    assertion: &BrokerAssertion,
-    draft: &mut DraftUser,
-) {
+pub fn apply_all(bindings: &[MapperBinding], assertion: &BrokerAssertion, draft: &mut DraftUser) {
     let mut sorted: Vec<&MapperBinding> = bindings.iter().collect();
     sorted.sort_by(|a, b| a.priority.cmp(&b.priority));
     for binding in sorted {
@@ -151,10 +147,8 @@ fn apply_one(kind: &MapperKind, assertion: &BrokerAssertion, draft: &mut DraftUs
             match_any,
             role,
         } => {
-            if claim_matches(assertion, claim, values, *match_any) {
-                if !draft.roles.contains(role) {
-                    draft.roles.push(role.clone());
-                }
+            if claim_matches(assertion, claim, values, *match_any) && !draft.roles.contains(role) {
+                draft.roles.push(role.clone());
             }
         }
         MapperKind::ClaimToOrg {
@@ -191,7 +185,12 @@ fn apply_one(kind: &MapperKind, assertion: &BrokerAssertion, draft: &mut DraftUs
     }
 }
 
-fn claim_matches(assertion: &BrokerAssertion, claim: &str, values: &[String], match_any: bool) -> bool {
+fn claim_matches(
+    assertion: &BrokerAssertion,
+    claim: &str,
+    values: &[String],
+    match_any: bool,
+) -> bool {
     match assertion.claims.get(claim) {
         Some(AttributeValue::String(s)) => values.iter().any(|v| v == s),
         Some(AttributeValue::Strings(arr)) => {
@@ -273,7 +272,9 @@ mod tests {
             &a,
             &mut draft,
         );
-        assert!(matches!(draft.attributes.get("dept"), Some(AttributeValue::String(s)) if s == "eng"));
+        assert!(
+            matches!(draft.attributes.get("dept"), Some(AttributeValue::String(s)) if s == "eng")
+        );
     }
 
     #[test]

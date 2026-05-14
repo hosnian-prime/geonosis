@@ -108,7 +108,10 @@ pub async fn record_failure(
             .unwrap_or_else(|_| ChronoDuration::seconds(60));
         let max_wait = ChronoDuration::from_std(policy.max_wait)
             .unwrap_or_else(|_| ChronoDuration::seconds(15 * 60));
-        let attempts_over = user.failed_attempts.saturating_sub(policy.max_login_failures) + 1;
+        let attempts_over = user
+            .failed_attempts
+            .saturating_sub(policy.max_login_failures)
+            + 1;
         let raw = increment * (attempts_over as i32);
         let wait = if raw > max_wait { max_wait } else { raw };
         user.locked_until = if policy.permanent_lockout {
@@ -164,7 +167,9 @@ mod tests {
     async fn first_failure_increments_counter_no_lock() {
         let (s, realm, uid) = fixture().await;
         let p = policy();
-        let u = record_failure(&*s, realm, uid, &p, Utc::now()).await.unwrap();
+        let u = record_failure(&*s, realm, uid, &p, Utc::now())
+            .await
+            .unwrap();
         assert_eq!(u.failed_attempts, 1);
         assert!(u.locked_until.is_none());
     }

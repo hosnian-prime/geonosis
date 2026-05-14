@@ -54,7 +54,10 @@ impl IntrospectionResponse {
 }
 
 /// Construct an `IntrospectionResponse` from validated access-token claims.
-pub fn build_introspection(claims: &AccessTokenClaims, username: Option<String>) -> IntrospectionResponse {
+pub fn build_introspection(
+    claims: &AccessTokenClaims,
+    username: Option<String>,
+) -> IntrospectionResponse {
     IntrospectionResponse {
         active: true,
         scope: Some(claims.scope.clone()),

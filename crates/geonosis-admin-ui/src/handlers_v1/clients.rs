@@ -89,9 +89,9 @@ pub async fn create(
             ClientKind::Public | ClientKind::SamlServiceProvider | ClientKind::BearerOnly => {
                 ClientAuthMethod::None
             }
-            ClientKind::Confidential
-            | ClientKind::ServiceAccount
-            | ClientKind::ScimClient => ClientAuthMethod::ClientSecretBasic,
+            ClientKind::Confidential | ClientKind::ServiceAccount | ClientKind::ScimClient => {
+                ClientAuthMethod::ClientSecretBasic
+            }
         }),
         flow_binding: FlowBinding::default(),
         default_scopes: req.default_scopes,

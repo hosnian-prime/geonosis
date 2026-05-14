@@ -135,17 +135,16 @@ impl SoftwareKms {
     }
 
     /// Register a key by wrapping its PKCS#8 PEM-encoded private bytes.
-    pub fn register(
-        &self,
-        material: KeyMaterial,
-        private_pem: &[u8],
-    ) -> Result<(), KmsError> {
+    pub fn register(&self, material: KeyMaterial, private_pem: &[u8]) -> Result<(), KmsError> {
         let _wrapped = self.master.wrap(private_pem)?;
         let stored = StoredKey {
             material,
             private_pem: Zeroizing::new(private_pem.to_vec()),
         };
-        self.store.write().unwrap().insert(stored.material.id, stored);
+        self.store
+            .write()
+            .unwrap()
+            .insert(stored.material.id, stored);
         Ok(())
     }
 
@@ -217,7 +216,12 @@ impl KeyManagementService for SoftwareKms {
         let keys = guard
             .values()
             .filter(|s| s.material.realm_id == realm)
-            .filter(|s| matches!(s.material.state, KeyState::Active | KeyState::PreviousActive))
+            .filter(|s| {
+                matches!(
+                    s.material.state,
+                    KeyState::Active | KeyState::PreviousActive
+                )
+            })
             .map(|s| s.material.public_jwk.clone())
             .collect();
         Ok(JwkSet { keys })
@@ -270,7 +274,9 @@ fn pem_to_private(pem: &[u8], alg: JwsAlgorithm) -> Result<PrivateMaterial, KmsE
                 .map_err(|e| KmsError::Internal(e.to_string()))?;
             Ok(PrivateMaterial::Rs256(Box::new(sk)))
         }
-        other => Err(KmsError::Internal(format!("alg not supported in v0.1 soft KMS: {other:?}"))),
+        other => Err(KmsError::Internal(format!(
+            "alg not supported in v0.1 soft KMS: {other:?}"
+        ))),
     }
 }
 
@@ -357,7 +363,10 @@ mod tests {
             rotated_at: None,
         };
         kms.register(material, &ed25519_pem()).unwrap();
-        let found = kms.active_signing_kid(realm, JwsAlgorithm::EdDSA).await.unwrap();
+        let found = kms
+            .active_signing_kid(realm, JwsAlgorithm::EdDSA)
+            .await
+            .unwrap();
         assert_eq!(found, kid);
     }
 
@@ -365,7 +374,11 @@ mod tests {
     async fn jwks_excludes_disabled() {
         let kms = SoftwareKms::new(MasterKey::generate());
         let realm = RealmId::new();
-        for state in [KeyState::Active, KeyState::PreviousActive, KeyState::Disabled] {
+        for state in [
+            KeyState::Active,
+            KeyState::PreviousActive,
+            KeyState::Disabled,
+        ] {
             let kid = KeyId::new();
             let material = KeyMaterial {
                 id: kid,

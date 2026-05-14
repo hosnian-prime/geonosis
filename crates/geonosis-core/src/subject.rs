@@ -13,9 +13,7 @@ use crate::scope::ScopeName;
 #[serde(tag = "kind")]
 pub enum Subject {
     /// A local user (resolved via storage).
-    Local {
-        user_id: UserId,
-    },
+    Local { user_id: UserId },
     /// A brokered external identity. `candidate_user` is `Some` once the
     /// first-broker-login step links to a local row.
     External {
@@ -24,9 +22,7 @@ pub enum Subject {
         candidate_user: Option<UserId>,
     },
     /// A confidential client acting as itself (client_credentials grant).
-    ServiceAccount {
-        client_id: ClientId,
-    },
+    ServiceAccount { client_id: ClientId },
     /// An Agent (M2M / AI) delegated by a parent subject.
     Agent {
         agent_id: AgentId,
@@ -42,9 +38,15 @@ pub enum Subject {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum ParentSubject {
-    User { user_id: UserId },
-    ServiceAccount { client_id: ClientId },
-    Organization { organization_id: crate::id::OrganizationId },
+    User {
+        user_id: UserId,
+    },
+    ServiceAccount {
+        client_id: ClientId,
+    },
+    Organization {
+        organization_id: crate::id::OrganizationId,
+    },
 }
 
 impl Subject {

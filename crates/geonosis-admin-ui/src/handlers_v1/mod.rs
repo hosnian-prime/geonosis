@@ -45,10 +45,7 @@ pub mod users;
 pub fn router(state: Arc<AdminState>) -> Router {
     Router::new()
         // ---- Realms (top-level — no realm slug in path) ----
-        .route(
-            "/admin/v1/realms",
-            get(realms::list).post(realms::create),
-        )
+        .route("/admin/v1/realms", get(realms::list).post(realms::create))
         .route(
             "/admin/v1/realms/:slug",
             get(realms::get).put(realms::update).delete(realms::delete_),
@@ -60,7 +57,9 @@ pub fn router(state: Arc<AdminState>) -> Router {
         )
         .route(
             "/admin/v1/realms/:slug/clients/:client_id",
-            get(clients::get).put(clients::update).delete(clients::delete_),
+            get(clients::get)
+                .put(clients::update)
+                .delete(clients::delete_),
         )
         // ---- Users ----
         .route(

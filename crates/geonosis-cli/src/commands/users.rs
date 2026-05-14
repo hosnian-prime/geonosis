@@ -110,8 +110,8 @@ pub async fn run(client: &AdminClient, cmd: UserCmd) -> anyhow::Result<()> {
             let path = format!("/admin/v1/realms/{realm}/users?limit={limit}");
             let rows: Vec<UserRow> = client.get(&path).await?;
             println!(
-                "{:<24} {:<32} {:<10} {}",
-                "USERNAME", "EMAIL", "VERIFIED", "ENABLED"
+                "{:<24} {:<32} {:<10} ENABLED",
+                "USERNAME", "EMAIL", "VERIFIED",
             );
             for r in rows {
                 println!(
@@ -140,7 +140,12 @@ pub async fn run(client: &AdminClient, cmd: UserCmd) -> anyhow::Result<()> {
         } => {
             let path = format!("/admin/v1/realms/{realm}/users/{username}/password");
             client
-                .put_no_response(&path, &SetPasswordBody { password: &password })
+                .put_no_response(
+                    &path,
+                    &SetPasswordBody {
+                        password: &password,
+                    },
+                )
                 .await?;
             println!("password set realm={realm} username={username}");
         }

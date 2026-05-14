@@ -73,7 +73,7 @@ pub struct MetricsState {
     pub token_reuse_detected: LabeledCounter,
 
     /// `geonosis_http_request_duration_seconds_bucket{method, path, le}`
-    /// + `_sum` + `_count` — Prometheus-style histogram for request
+    /// (plus `_sum` and `_count`) — Prometheus-style histogram for request
     /// latencies. Powers the `p99_authorize_latency` alert rule
     /// (`histogram_quantile(0.99, ...)` over the 10m window).
     pub http_latency: LabeledHistogram,
@@ -437,7 +437,10 @@ pub async fn count_requests(
 pub async fn metrics_handler(State(metrics): State<SharedMetrics>) -> Response {
     let body = render(&metrics);
     (
-        [(header::CONTENT_TYPE, "text/plain; version=0.0.4; charset=utf-8")],
+        [(
+            header::CONTENT_TYPE,
+            "text/plain; version=0.0.4; charset=utf-8",
+        )],
         body,
     )
         .into_response()
@@ -561,9 +564,15 @@ mod tests {
         m.oidc_authorize.inc(&["other", "success"]);
 
         let body = render(&m);
-        assert!(body.contains("geonosis_oidc_authorize_total{realm=\"acme\",outcome=\"success\"} 2"));
-        assert!(body.contains("geonosis_oidc_authorize_total{realm=\"acme\",outcome=\"invalid_client\"} 1"));
-        assert!(body.contains("geonosis_oidc_authorize_total{realm=\"other\",outcome=\"success\"} 1"));
+        assert!(
+            body.contains("geonosis_oidc_authorize_total{realm=\"acme\",outcome=\"success\"} 2")
+        );
+        assert!(body.contains(
+            "geonosis_oidc_authorize_total{realm=\"acme\",outcome=\"invalid_client\"} 1"
+        ));
+        assert!(
+            body.contains("geonosis_oidc_authorize_total{realm=\"other\",outcome=\"success\"} 1")
+        );
     }
 
     #[test]
@@ -649,9 +658,7 @@ mod tests {
         m.record_listener_lag("geonosis_invalidate", 3.5);
         let body = render(&m);
         assert!(body.contains("# TYPE geonosis_listener_lag_seconds gauge"));
-        assert!(body.contains(
-            "geonosis_listener_lag_seconds{channel=\"geonosis_invalidate\"} 3.5"
-        ));
+        assert!(body.contains("geonosis_listener_lag_seconds{channel=\"geonosis_invalidate\"} 3.5"));
     }
 
     #[test]

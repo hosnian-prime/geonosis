@@ -18,8 +18,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 /// `events` claim value mandated by OIDC Back-Channel Logout §2.4.
-pub const BACKCHANNEL_LOGOUT_EVENT: &str =
-    "http://schemas.openid.net/event/backchannel-logout";
+pub const BACKCHANNEL_LOGOUT_EVENT: &str = "http://schemas.openid.net/event/backchannel-logout";
 
 /// JOSE header `typ` per spec §2.5.
 pub const LOGOUT_TOKEN_TYP: &str = "logout+jwt";
@@ -103,14 +102,7 @@ mod tests {
 
     #[test]
     fn omits_optional_when_none() {
-        let c = LogoutTokenClaims::new(
-            "iss",
-            "rp",
-            1,
-            "jti",
-            None,
-            Some("sid".into()),
-        );
+        let c = LogoutTokenClaims::new("iss", "rp", 1, "jti", None, Some("sid".into()));
         let j = serde_json::to_value(&c).unwrap();
         assert!(j.get("sub").is_none(), "sub omitted when None: {j}");
         assert!(j.get("sid").is_some());
@@ -118,16 +110,12 @@ mod tests {
 
     #[test]
     fn aud_is_array() {
-        let c = LogoutTokenClaims::new(
-            "iss",
-            "rp",
-            1,
-            "jti",
-            Some("u".into()),
-            None,
-        );
+        let c = LogoutTokenClaims::new("iss", "rp", 1, "jti", Some("u".into()), None);
         let j = serde_json::to_value(&c).unwrap();
-        assert!(j["aud"].is_array(), "aud must serialise as JSON array per spec: {j}");
+        assert!(
+            j["aud"].is_array(),
+            "aud must serialise as JSON array per spec: {j}"
+        );
         assert_eq!(j["aud"][0], "rp");
     }
 

@@ -25,23 +25,16 @@ use geonosis_core::{Amr, CredentialKind};
 
 use crate::context::AuthnContext;
 use crate::traits::{
-    AuthnError, AuthnInput, AuthnOutput, Authenticator, FailureKind, RenderInstruction,
+    Authenticator, AuthnError, AuthnInput, AuthnOutput, FailureKind, RenderInstruction,
 };
 
+#[derive(Default)]
 pub struct WebauthnAuthenticator {
     /// If `true`, the authenticator returns `Success` once it sees the
     /// submitted assertion blob (for end-to-end test scaffolding only).
     /// Production deployments leave this `false` until the
     /// signature-verification module lands.
     pub trust_unverified_assertions: bool,
-}
-
-impl Default for WebauthnAuthenticator {
-    fn default() -> Self {
-        Self {
-            trust_unverified_assertions: false,
-        }
-    }
 }
 
 #[async_trait]
@@ -73,10 +66,7 @@ impl Authenticator for WebauthnAuthenticator {
                     .get_user(ctx.realm_id, user_id)
                     .await
                     .map_err(|e| AuthnError::Storage(e.to_string()))?;
-                let has_credential = user
-                    .attributes
-                    .get("webauthn:credentials")
-                    .is_some();
+                let has_credential = user.attributes.contains_key("webauthn:credentials");
                 if !has_credential {
                     return Ok(AuthnOutput::Failure(FailureKind::RequiresEnrollment));
                 }
@@ -211,7 +201,10 @@ mod tests {
             .process(&mut ctx, AuthnInput::Submit(form))
             .await
             .unwrap();
-        assert!(matches!(out, AuthnOutput::Failure(FailureKind::RequiresEnrollment)));
+        assert!(matches!(
+            out,
+            AuthnOutput::Failure(FailureKind::RequiresEnrollment)
+        ));
     }
 
     #[tokio::test]
@@ -238,10 +231,12 @@ mod tests {
         let (mut ctx, _) = fixture(true).await;
         let mut form = std::collections::BTreeMap::new();
         form.insert("assertion".into(), "blob".into());
-        let out = WebauthnAuthenticator { trust_unverified_assertions: true }
-            .process(&mut ctx, AuthnInput::Submit(form))
-            .await
-            .unwrap();
+        let out = WebauthnAuthenticator {
+            trust_unverified_assertions: true,
+        }
+        .process(&mut ctx, AuthnInput::Submit(form))
+        .await
+        .unwrap();
         assert!(matches!(out, AuthnOutput::Success { .. }));
         assert!(ctx.amr.contains(&Amr::Wbn));
     }

@@ -17,7 +17,7 @@ use geonosis_storage::ConsentGrant;
 
 use crate::context::AuthnContext;
 use crate::traits::{
-    AuthnError, AuthnInput, AuthnOutput, Authenticator, FailureKind, RenderInstruction,
+    Authenticator, AuthnError, AuthnInput, AuthnOutput, FailureKind, RenderInstruction,
 };
 
 pub struct ConsentAuthenticator;
@@ -94,7 +94,10 @@ impl Authenticator for ConsentAuthenticator {
                     .collect();
                 let now = ctx.now;
                 let grant = ConsentGrant {
-                    id: existing.as_ref().map(|g| g.id).unwrap_or_else(ConsentGrantId::new),
+                    id: existing
+                        .as_ref()
+                        .map(|g| g.id)
+                        .unwrap_or_else(ConsentGrantId::new),
                     realm_id: ctx.realm_id,
                     user_id,
                     client_id: ctx.client.id,
@@ -223,8 +226,12 @@ mod tests {
     #[tokio::test]
     async fn first_visit_renders_consent_screen() {
         let (mut ctx, _) = fixture(None).await;
-        ctx.locals.insert("requested_scopes".into(), json!("openid profile email"));
-        let out = ConsentAuthenticator.process(&mut ctx, AuthnInput::Init).await.unwrap();
+        ctx.locals
+            .insert("requested_scopes".into(), json!("openid profile email"));
+        let out = ConsentAuthenticator
+            .process(&mut ctx, AuthnInput::Init)
+            .await
+            .unwrap();
         match out {
             AuthnOutput::Continue { render } => {
                 assert_eq!(render.template, "login/consent.html");
@@ -239,7 +246,8 @@ mod tests {
     #[tokio::test]
     async fn approve_persists_grant_and_returns_success() {
         let (mut ctx, uid) = fixture(None).await;
-        ctx.locals.insert("requested_scopes".into(), json!("openid profile"));
+        ctx.locals
+            .insert("requested_scopes".into(), json!("openid profile"));
         let mut form = std::collections::BTreeMap::new();
         form.insert("action".into(), "approve".into());
         let out = ConsentAuthenticator
@@ -260,21 +268,29 @@ mod tests {
     #[tokio::test]
     async fn deny_returns_consent_denied() {
         let (mut ctx, _) = fixture(None).await;
-        ctx.locals.insert("requested_scopes".into(), json!("openid"));
+        ctx.locals
+            .insert("requested_scopes".into(), json!("openid"));
         let mut form = std::collections::BTreeMap::new();
         form.insert("action".into(), "deny".into());
         let out = ConsentAuthenticator
             .process(&mut ctx, AuthnInput::Submit(form))
             .await
             .unwrap();
-        assert!(matches!(out, AuthnOutput::Failure(FailureKind::ConsentDenied)));
+        assert!(matches!(
+            out,
+            AuthnOutput::Failure(FailureKind::ConsentDenied)
+        ));
     }
 
     #[tokio::test]
     async fn existing_grant_covering_request_skips_screen() {
         let (mut ctx, _) = fixture(Some(vec!["openid", "profile", "email"])).await;
-        ctx.locals.insert("requested_scopes".into(), json!("openid profile"));
-        let out = ConsentAuthenticator.process(&mut ctx, AuthnInput::Init).await.unwrap();
+        ctx.locals
+            .insert("requested_scopes".into(), json!("openid profile"));
+        let out = ConsentAuthenticator
+            .process(&mut ctx, AuthnInput::Init)
+            .await
+            .unwrap();
         assert!(matches!(out, AuthnOutput::Skip));
     }
 }

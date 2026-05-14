@@ -195,22 +195,42 @@ impl Default for PasswordPolicy {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum PasswordRule {
-    Length { min: u32 },
-    SpecialChars { min: u32 },
-    UpperCase { min: u32 },
-    LowerCase { min: u32 },
-    Digits { min: u32 },
-    HashIterations { iterations: u32 },
-    HashAlgorithm { algorithm: String },
+    Length {
+        min: u32,
+    },
+    SpecialChars {
+        min: u32,
+    },
+    UpperCase {
+        min: u32,
+    },
+    LowerCase {
+        min: u32,
+    },
+    Digits {
+        min: u32,
+    },
+    HashIterations {
+        iterations: u32,
+    },
+    HashAlgorithm {
+        algorithm: String,
+    },
     NotUsername,
     NotEmail,
-    PasswordHistory { count: u32 },
+    PasswordHistory {
+        count: u32,
+    },
     /// Reject passwords found in the haveibeenpwned list (offline corpus).
     Pwned,
     /// Maximum age in days before forced reset.
-    Expire { days: u32 },
+    Expire {
+        days: u32,
+    },
     /// Disallow passwords matching this regex (admin policy).
-    BlacklistRegex { pattern: String },
+    BlacklistRegex {
+        pattern: String,
+    },
 }
 
 /// Outcome of running [`PasswordPolicy::validate`].
@@ -282,9 +302,7 @@ impl PasswordPolicy {
                     }
                 }
                 PasswordRule::NotUsername => {
-                    if !username.is_empty()
-                        && password.eq_ignore_ascii_case(username)
-                    {
+                    if !username.is_empty() && password.eq_ignore_ascii_case(username) {
                         violations.push("not-username".into());
                     }
                 }
@@ -508,7 +526,10 @@ mod tests {
         let j = serde_json::to_string(&r).unwrap();
         let back: Realm = serde_json::from_str(&j).unwrap();
         assert_eq!(back.slug, "acme");
-        assert_eq!(back.token_policy.auth_code_lifespan, Duration::from_secs(60));
+        assert_eq!(
+            back.token_policy.auth_code_lifespan,
+            Duration::from_secs(60)
+        );
     }
 
     #[test]
@@ -558,7 +579,11 @@ mod tests {
         // rule order, which lets clients render a deterministic list.
         assert_eq!(
             r.violations,
-            vec!["length".to_string(), "upper-case".to_string(), "digits".to_string()]
+            vec![
+                "length".to_string(),
+                "upper-case".to_string(),
+                "digits".to_string()
+            ]
         );
     }
 }

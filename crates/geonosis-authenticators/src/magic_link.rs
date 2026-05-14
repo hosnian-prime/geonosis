@@ -24,7 +24,7 @@ use geonosis_crypto::random::random_token;
 
 use crate::context::AuthnContext;
 use crate::traits::{
-    AuthnError, AuthnInput, AuthnOutput, Authenticator, FailureKind, RenderInstruction,
+    Authenticator, AuthnError, AuthnInput, AuthnOutput, FailureKind, RenderInstruction,
 };
 
 /// Default TTL for an issued magic-link.
@@ -80,11 +80,7 @@ impl Authenticator for MagicLinkAuthenticator {
 }
 
 impl MagicLinkAuthenticator {
-    async fn issue(
-        &self,
-        ctx: &mut AuthnContext,
-        email: &str,
-    ) -> Result<AuthnOutput, AuthnError> {
+    async fn issue(&self, ctx: &mut AuthnContext, email: &str) -> Result<AuthnOutput, AuthnError> {
         let mut user = match ctx.storage.get_user_by_email(ctx.realm_id, email).await {
             Ok(u) if u.enabled => u,
             _ => {
@@ -128,11 +124,7 @@ impl MagicLinkAuthenticator {
         })
     }
 
-    async fn verify(
-        &self,
-        ctx: &mut AuthnContext,
-        token: &str,
-    ) -> Result<AuthnOutput, AuthnError> {
+    async fn verify(&self, ctx: &mut AuthnContext, token: &str) -> Result<AuthnOutput, AuthnError> {
         // Linear scan via the email index would leak info; v0.1 keeps the
         // hash on the user record and requires the caller to supply
         // `user_id` via the resolved-user path (the email step). Tests
@@ -227,7 +219,9 @@ mod tests {
         };
         let uid = u.id;
         storage.create_user(u).await.unwrap();
-        let recorder = Arc::new(Recorder { sent: Mutex::new(vec![]) });
+        let recorder = Arc::new(Recorder {
+            sent: Mutex::new(vec![]),
+        });
         let ctx = AuthnContext {
             realm_id: realm,
             client: Arc::new(geonosis_core::Client {
@@ -321,11 +315,7 @@ mod tests {
         a.process(&mut ctx, AuthnInput::Submit(form)).await.unwrap();
         // Pull the issued token out of the recorded link.
         let link = rec.sent.lock().unwrap()[0].1.clone();
-        let token = link
-            .split_once("token=")
-            .unwrap()
-            .1
-            .to_string();
+        let token = link.split_once("token=").unwrap().1.to_string();
 
         ctx.user_id = Some(uid);
         let mut form = std::collections::BTreeMap::new();
@@ -337,7 +327,10 @@ mod tests {
         let mut form = std::collections::BTreeMap::new();
         form.insert("token".into(), token);
         let out = a.process(&mut ctx, AuthnInput::Submit(form)).await.unwrap();
-        assert!(matches!(out, AuthnOutput::Failure(FailureKind::InvalidCredential)));
+        assert!(matches!(
+            out,
+            AuthnOutput::Failure(FailureKind::InvalidCredential)
+        ));
     }
 
     #[tokio::test]
@@ -351,11 +344,14 @@ mod tests {
         let token = link.split_once("token=").unwrap().1.to_string();
 
         // Fast-forward beyond expiry.
-        ctx.now = ctx.now + Duration::minutes(MAGIC_LINK_TTL_MINUTES + 1);
+        ctx.now += Duration::minutes(MAGIC_LINK_TTL_MINUTES + 1);
         ctx.user_id = Some(uid);
         let mut form = std::collections::BTreeMap::new();
         form.insert("token".into(), token);
         let out = a.process(&mut ctx, AuthnInput::Submit(form)).await.unwrap();
-        assert!(matches!(out, AuthnOutput::Failure(FailureKind::InvalidCredential)));
+        assert!(matches!(
+            out,
+            AuthnOutput::Failure(FailureKind::InvalidCredential)
+        ));
     }
 }

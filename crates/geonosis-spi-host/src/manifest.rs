@@ -60,8 +60,8 @@ pub enum ManifestError {
 
 impl PluginManifest {
     pub fn from_toml(bytes: &[u8]) -> Result<Self, ManifestError> {
-        let s = std::str::from_utf8(bytes)
-            .map_err(|e| ManifestError::Toml(format!("utf-8: {e}")))?;
+        let s =
+            std::str::from_utf8(bytes).map_err(|e| ManifestError::Toml(format!("utf-8: {e}")))?;
         toml::from_str(s).map_err(|e| ManifestError::Toml(e.to_string()))
     }
 
@@ -95,8 +95,8 @@ pub fn verify_signature(
     }
     let mut pk_arr = [0u8; 32];
     pk_arr.copy_from_slice(&pubkey_bytes);
-    let verifying_key = VerifyingKey::from_bytes(&pk_arr)
-        .map_err(|e| ManifestError::BadPubkey(e.to_string()))?;
+    let verifying_key =
+        VerifyingKey::from_bytes(&pk_arr).map_err(|e| ManifestError::BadPubkey(e.to_string()))?;
 
     let sig_bytes = general_purpose::STANDARD
         .decode(signature_b64.trim())
@@ -140,10 +140,7 @@ pub fn verify_bytecode_sha256(
 /// Confirm the manifest's signer is in the operator's allow-list.
 /// Empty `trusted` means "any signer accepted" — used for dev/test;
 /// production deployments MUST seed this list via `geoctl spi trust`.
-pub fn check_trusted(
-    manifest: &PluginManifest,
-    trusted: &[String],
-) -> Result<(), ManifestError> {
+pub fn check_trusted(manifest: &PluginManifest, trusted: &[String]) -> Result<(), ManifestError> {
     if trusted.is_empty() {
         return Ok(());
     }
@@ -223,8 +220,7 @@ mod tests {
     fn wrong_pubkey_fails_verification() {
         let signing = SigningKey::generate(&mut rand_core::OsRng);
         let wrong = SigningKey::generate(&mut rand_core::OsRng);
-        let wrong_pk_b64 =
-            general_purpose::STANDARD.encode(wrong.verifying_key().to_bytes());
+        let wrong_pk_b64 = general_purpose::STANDARD.encode(wrong.verifying_key().to_bytes());
         let manifest = fixture_manifest(wrong_pk_b64);
         let bytes = manifest.to_toml().unwrap();
         // Sign with the OTHER (real) key, but pubkey in manifest is wrong.

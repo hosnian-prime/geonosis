@@ -38,7 +38,14 @@ impl InflightRegistry {
     /// exists. Returns:
     /// - `(true, sender, receiver)` if this caller is the leader
     /// - `(false, sender, receiver)` if this caller is a waiter
-    fn enter(&self, key: &str) -> (bool, LoaderBroadcast, broadcast::Receiver<Result<Vec<u8>, String>>) {
+    fn enter(
+        &self,
+        key: &str,
+    ) -> (
+        bool,
+        LoaderBroadcast,
+        broadcast::Receiver<Result<Vec<u8>, String>>,
+    ) {
         let mut guard = self.inner.lock();
         if let Some(tx) = guard.get(key).cloned() {
             let rx = tx.subscribe();
@@ -117,8 +124,8 @@ impl<C: Cache + 'static> RequestCoalescer<C> {
         // Waiter path: block on the broadcast channel.
         match rx.recv().await {
             Ok(Ok(bytes)) => {
-                let v: T = serde_json::from_slice(&bytes)
-                    .map_err(|e| CacheError::Serde(e.to_string()))?;
+                let v: T =
+                    serde_json::from_slice(&bytes).map_err(|e| CacheError::Serde(e.to_string()))?;
                 Ok(Cached::new(v, ttl))
             }
             Ok(Err(e)) => Err(CacheError::Loader(e)),

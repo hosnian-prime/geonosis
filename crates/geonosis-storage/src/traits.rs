@@ -3,12 +3,12 @@
 use async_trait::async_trait;
 
 use geonosis_broker::{BrokerAuthnState, BrokerLink, IdentityProvider};
+use geonosis_core::id::{AgentId, OrgInvitationId, OrgRoleId};
 use geonosis_core::{
     Agent, Client, ClientId, CodeGrant, CodeId, Group, GroupId, OrgConsentPolicy, OrgInvitation,
     OrgMembership, OrgRole, Organization, OrganizationId, Realm, RealmId, RefreshToken,
     RefreshTokenId, Role, RoleId, Session, SessionId, TokenFamilyId, User, UserId, UserProfile,
 };
-use geonosis_core::id::{AgentId, OrgInvitationId, OrgRoleId};
 use geonosis_federation_ldap::LdapFederationConfig;
 
 use crate::error::StorageError;
@@ -46,11 +46,7 @@ pub trait Storage: Send + Sync {
     /// first `limit` rows in insertion order; pagination lands in
     /// v0.1.x once an explicit `(offset, limit, sort)` cursor type is
     /// added to the trait.
-    async fn list_users(
-        &self,
-        realm: RealmId,
-        limit: usize,
-    ) -> Result<Vec<User>, StorageError>;
+    async fn list_users(&self, realm: RealmId, limit: usize) -> Result<Vec<User>, StorageError>;
 
     /// Credentials carry secrets — separate accessor so we can audit access.
     async fn store_password_hash(
@@ -106,10 +102,7 @@ pub trait Storage: Send + Sync {
 
     // ---- Refresh token (rotation + family) ----
     async fn save_refresh_token(&self, token: RefreshToken) -> Result<(), StorageError>;
-    async fn get_refresh_token(
-        &self,
-        id: &RefreshTokenId,
-    ) -> Result<RefreshToken, StorageError>;
+    async fn get_refresh_token(&self, id: &RefreshTokenId) -> Result<RefreshToken, StorageError>;
     async fn mark_refresh_used(&self, id: &RefreshTokenId) -> Result<(), StorageError>;
     /// Invalidate every token in a family — invoked when a previously-used
     /// refresh token is presented again (reuse detection).
@@ -134,14 +127,15 @@ pub trait Storage: Send + Sync {
 
     // ---- Flow state ----
     async fn save_flow_state(&self, state: FlowStateRow) -> Result<(), StorageError>;
-    async fn get_flow_state(&self, id: &geonosis_core::FlowStateId) -> Result<FlowStateRow, StorageError>;
+    async fn get_flow_state(
+        &self,
+        id: &geonosis_core::FlowStateId,
+    ) -> Result<FlowStateRow, StorageError>;
     async fn delete_flow_state(&self, id: &geonosis_core::FlowStateId) -> Result<(), StorageError>;
 
     // ---- Auth flow definitions (per (realm, alias, version)) ----
-    async fn save_auth_flow(
-        &self,
-        flow: geonosis_flow::FlowDefinition,
-    ) -> Result<(), StorageError>;
+    async fn save_auth_flow(&self, flow: geonosis_flow::FlowDefinition)
+        -> Result<(), StorageError>;
     /// Return the highest-version flow row for `(realm, alias)`. The
     /// older versions stay in the table so in-flight `FlowState`
     /// objects can resolve against the version they were started on.
@@ -177,8 +171,11 @@ pub trait Storage: Send + Sync {
 
     // ---- Identity provider (broker) ----
     async fn create_idp(&self, idp: IdentityProvider) -> Result<(), StorageError>;
-    async fn get_idp_by_alias(&self, realm: RealmId, alias: &str)
-        -> Result<IdentityProvider, StorageError>;
+    async fn get_idp_by_alias(
+        &self,
+        realm: RealmId,
+        alias: &str,
+    ) -> Result<IdentityProvider, StorageError>;
     async fn list_idps(&self, realm: RealmId) -> Result<Vec<IdentityProvider>, StorageError>;
     async fn delete_idp(&self, realm: RealmId, alias: &str) -> Result<(), StorageError>;
 
@@ -208,8 +205,7 @@ pub trait Storage: Send + Sync {
     ) -> Result<Vec<BrokerLink>, StorageError>;
 
     // ---- LDAP federation source ----
-    async fn upsert_ldap_source(&self, source: LdapFederationConfig)
-        -> Result<(), StorageError>;
+    async fn upsert_ldap_source(&self, source: LdapFederationConfig) -> Result<(), StorageError>;
     async fn get_ldap_source(
         &self,
         realm: RealmId,
@@ -219,11 +215,7 @@ pub trait Storage: Send + Sync {
         &self,
         realm: RealmId,
     ) -> Result<Vec<LdapFederationConfig>, StorageError>;
-    async fn delete_ldap_source(
-        &self,
-        realm: RealmId,
-        alias: &str,
-    ) -> Result<(), StorageError>;
+    async fn delete_ldap_source(&self, realm: RealmId, alias: &str) -> Result<(), StorageError>;
 
     // ---- WASM SPI modules ----
     async fn upload_wasm_module(&self, module: WasmModule) -> Result<(), StorageError>;
@@ -236,19 +228,16 @@ pub trait Storage: Send + Sync {
         &self,
         realm: RealmId,
     ) -> Result<Vec<WasmModuleHeader>, StorageError>;
-    async fn delete_wasm_module(&self, realm: RealmId, alias: &str)
-        -> Result<(), StorageError>;
+    async fn delete_wasm_module(&self, realm: RealmId, alias: &str) -> Result<(), StorageError>;
 
     // ---- SPI bindings ----
-    async fn create_spi_binding(&self, binding: SpiBindingRow)
-        -> Result<(), StorageError>;
+    async fn create_spi_binding(&self, binding: SpiBindingRow) -> Result<(), StorageError>;
     async fn list_spi_bindings(
         &self,
         realm: RealmId,
         interface: &str,
     ) -> Result<Vec<SpiBindingRow>, StorageError>;
-    async fn update_spi_binding(&self, binding: SpiBindingRow)
-        -> Result<(), StorageError>;
+    async fn update_spi_binding(&self, binding: SpiBindingRow) -> Result<(), StorageError>;
     async fn delete_spi_binding(
         &self,
         realm: RealmId,
@@ -293,11 +282,7 @@ pub trait Storage: Send + Sync {
     // ---- Group (hierarchical) ----
     async fn create_group(&self, group: Group) -> Result<(), StorageError>;
     async fn get_group(&self, realm: RealmId, id: GroupId) -> Result<Group, StorageError>;
-    async fn get_group_by_path(
-        &self,
-        realm: RealmId,
-        path: &str,
-    ) -> Result<Group, StorageError>;
+    async fn get_group_by_path(&self, realm: RealmId, path: &str) -> Result<Group, StorageError>;
     async fn list_groups(&self, realm: RealmId) -> Result<Vec<Group>, StorageError>;
     async fn update_group(&self, group: Group) -> Result<(), StorageError>;
     async fn delete_group(&self, realm: RealmId, id: GroupId) -> Result<(), StorageError>;
@@ -339,23 +324,13 @@ pub trait Storage: Send + Sync {
     ) -> Result<Vec<Role>, StorageError>;
 
     // ---- User Profile schema (per realm) ----
-    async fn get_user_profile_schema(
-        &self,
-        realm: RealmId,
-    ) -> Result<UserProfile, StorageError>;
-    async fn save_user_profile_schema(
-        &self,
-        profile: UserProfile,
-    ) -> Result<(), StorageError>;
+    async fn get_user_profile_schema(&self, realm: RealmId) -> Result<UserProfile, StorageError>;
+    async fn save_user_profile_schema(&self, profile: UserProfile) -> Result<(), StorageError>;
 
     // ---- Agent identity ----
     async fn create_agent(&self, agent: Agent) -> Result<(), StorageError>;
     async fn get_agent(&self, realm: RealmId, id: AgentId) -> Result<Agent, StorageError>;
-    async fn get_agent_by_alias(
-        &self,
-        realm: RealmId,
-        alias: &str,
-    ) -> Result<Agent, StorageError>;
+    async fn get_agent_by_alias(&self, realm: RealmId, alias: &str) -> Result<Agent, StorageError>;
     async fn list_agents(&self, realm: RealmId) -> Result<Vec<Agent>, StorageError>;
     async fn update_agent(&self, agent: Agent) -> Result<(), StorageError>;
     async fn revoke_agent(&self, realm: RealmId, id: AgentId) -> Result<(), StorageError>;
@@ -372,10 +347,7 @@ pub trait Storage: Send + Sync {
         realm: RealmId,
         alias: &str,
     ) -> Result<Organization, StorageError>;
-    async fn list_organizations(
-        &self,
-        realm: RealmId,
-    ) -> Result<Vec<Organization>, StorageError>;
+    async fn list_organizations(&self, realm: RealmId) -> Result<Vec<Organization>, StorageError>;
     async fn update_organization(&self, org: Organization) -> Result<(), StorageError>;
     async fn delete_organization(
         &self,
@@ -383,10 +355,8 @@ pub trait Storage: Send + Sync {
         id: OrganizationId,
     ) -> Result<(), StorageError>;
 
-    async fn upsert_org_domain(
-        &self,
-        domain: geonosis_core::OrgDomain,
-    ) -> Result<(), StorageError>;
+    async fn upsert_org_domain(&self, domain: geonosis_core::OrgDomain)
+        -> Result<(), StorageError>;
     async fn list_org_domains(
         &self,
         realm: RealmId,
@@ -404,10 +374,7 @@ pub trait Storage: Send + Sync {
         domain: &str,
     ) -> Result<Option<Organization>, StorageError>;
 
-    async fn upsert_org_membership(
-        &self,
-        membership: OrgMembership,
-    ) -> Result<(), StorageError>;
+    async fn upsert_org_membership(&self, membership: OrgMembership) -> Result<(), StorageError>;
     async fn get_org_membership(
         &self,
         realm: RealmId,
@@ -432,49 +399,28 @@ pub trait Storage: Send + Sync {
     ) -> Result<(), StorageError>;
 
     async fn create_org_role(&self, role: OrgRole) -> Result<(), StorageError>;
-    async fn get_org_role(
-        &self,
-        realm: RealmId,
-        id: OrgRoleId,
-    ) -> Result<OrgRole, StorageError>;
+    async fn get_org_role(&self, realm: RealmId, id: OrgRoleId) -> Result<OrgRole, StorageError>;
     async fn list_org_roles(
         &self,
         realm: RealmId,
         organization_id: OrganizationId,
     ) -> Result<Vec<OrgRole>, StorageError>;
     async fn update_org_role(&self, role: OrgRole) -> Result<(), StorageError>;
-    async fn delete_org_role(
-        &self,
-        realm: RealmId,
-        id: OrgRoleId,
-    ) -> Result<(), StorageError>;
+    async fn delete_org_role(&self, realm: RealmId, id: OrgRoleId) -> Result<(), StorageError>;
 
-    async fn create_org_invitation(
-        &self,
-        invitation: OrgInvitation,
-    ) -> Result<(), StorageError>;
-    async fn get_org_invitation_by_token(
-        &self,
-        token: &str,
-    ) -> Result<OrgInvitation, StorageError>;
+    async fn create_org_invitation(&self, invitation: OrgInvitation) -> Result<(), StorageError>;
+    async fn get_org_invitation_by_token(&self, token: &str)
+        -> Result<OrgInvitation, StorageError>;
     async fn list_org_invitations(
         &self,
         realm: RealmId,
         organization_id: OrganizationId,
     ) -> Result<Vec<OrgInvitation>, StorageError>;
-    async fn mark_org_invitation_accepted(
-        &self,
-        id: OrgInvitationId,
-    ) -> Result<(), StorageError>;
-    async fn delete_org_invitation(
-        &self,
-        id: OrgInvitationId,
-    ) -> Result<(), StorageError>;
+    async fn mark_org_invitation_accepted(&self, id: OrgInvitationId) -> Result<(), StorageError>;
+    async fn delete_org_invitation(&self, id: OrgInvitationId) -> Result<(), StorageError>;
 
-    async fn upsert_org_consent_policy(
-        &self,
-        policy: OrgConsentPolicy,
-    ) -> Result<(), StorageError>;
+    async fn upsert_org_consent_policy(&self, policy: OrgConsentPolicy)
+        -> Result<(), StorageError>;
     async fn get_org_consent_policy(
         &self,
         realm: RealmId,
@@ -493,10 +439,7 @@ pub trait Storage: Send + Sync {
         client_id: ClientId,
     ) -> Result<(), StorageError>;
 
-    async fn upsert_org_idp_binding(
-        &self,
-        binding: OrgIdpBinding,
-    ) -> Result<(), StorageError>;
+    async fn upsert_org_idp_binding(&self, binding: OrgIdpBinding) -> Result<(), StorageError>;
     async fn list_org_idp_bindings(
         &self,
         realm: RealmId,
@@ -555,10 +498,7 @@ pub trait Storage: Send + Sync {
     /// row already exists for the tuple it is left untouched so a
     /// concurrent SSO request from the same SP can't shift the
     /// downstream identity.
-    async fn save_saml_persistent_id(
-        &self,
-        row: SamlPersistentIdRow,
-    ) -> Result<(), StorageError>;
+    async fn save_saml_persistent_id(&self, row: SamlPersistentIdRow) -> Result<(), StorageError>;
 }
 
 /// Per-(realm, user, SP) persistent SAML NameID row. The

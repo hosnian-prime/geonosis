@@ -7,10 +7,10 @@ use axum::Json;
 use serde::Deserialize;
 
 use geonosis_audit::Target;
+use geonosis_core::id::AgentId;
 use geonosis_core::{
     Agent, AgentAuthMethod, AgentCapability, AgentKind, AgentRateLimit, ParentSubject, ScopeName,
 };
-use geonosis_core::id::AgentId;
 
 use crate::audit_emit;
 use crate::handlers_v1::extractors::realm_by_slug;

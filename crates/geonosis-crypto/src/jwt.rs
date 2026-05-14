@@ -110,14 +110,12 @@ pub fn sign_jwt<T: Serialize>(
             s.to_bytes().to_vec()
         }
         (alg, _) => {
-            return Err(JwtError::Unsupported(
-                match alg {
-                    "RS256" => JwsAlgorithm::RS256,
-                    "ES256" => JwsAlgorithm::ES256,
-                    "EdDSA" => JwsAlgorithm::EdDSA,
-                    _ => JwsAlgorithm::HS256,
-                },
-            ));
+            return Err(JwtError::Unsupported(match alg {
+                "RS256" => JwsAlgorithm::RS256,
+                "ES256" => JwsAlgorithm::ES256,
+                "EdDSA" => JwsAlgorithm::EdDSA,
+                _ => JwsAlgorithm::HS256,
+            }));
         }
     };
 
@@ -148,10 +146,9 @@ pub fn verify_jwt<C: for<'de> Deserialize<'de>>(
         return Err(JwtVerifyError::Malformed("extra segment".into()));
     }
 
-    let h_bytes =
-        base64url::decode(h_b64).map_err(|e| JwtVerifyError::Base64(e.to_string()))?;
-    let header: JwsHeader = serde_json::from_slice(&h_bytes)
-        .map_err(|e| JwtVerifyError::Malformed(e.to_string()))?;
+    let h_bytes = base64url::decode(h_b64).map_err(|e| JwtVerifyError::Base64(e.to_string()))?;
+    let header: JwsHeader =
+        serde_json::from_slice(&h_bytes).map_err(|e| JwtVerifyError::Malformed(e.to_string()))?;
     if header.alg != expected_alg.as_str() {
         return Err(JwtVerifyError::AlgMismatch {
             header: header.alg,
@@ -166,8 +163,7 @@ pub fn verify_jwt<C: for<'de> Deserialize<'de>>(
     }
 
     let signing_input = format!("{h_b64}.{p_b64}");
-    let sig_bytes =
-        base64url::decode(s_b64).map_err(|e| JwtVerifyError::Base64(e.to_string()))?;
+    let sig_bytes = base64url::decode(s_b64).map_err(|e| JwtVerifyError::Base64(e.to_string()))?;
 
     let ok = match (expected_alg, key) {
         (JwsAlgorithm::RS256, PublicMaterial::Rs256(pk)) => {
@@ -193,10 +189,9 @@ pub fn verify_jwt<C: for<'de> Deserialize<'de>>(
         return Err(JwtVerifyError::InvalidSignature);
     }
 
-    let p_bytes =
-        base64url::decode(p_b64).map_err(|e| JwtVerifyError::Base64(e.to_string()))?;
-    let claims: C = serde_json::from_slice(&p_bytes)
-        .map_err(|e| JwtVerifyError::Malformed(e.to_string()))?;
+    let p_bytes = base64url::decode(p_b64).map_err(|e| JwtVerifyError::Base64(e.to_string()))?;
+    let claims: C =
+        serde_json::from_slice(&p_bytes).map_err(|e| JwtVerifyError::Malformed(e.to_string()))?;
     Ok(claims)
 }
 
@@ -252,8 +247,13 @@ mod tests {
             n: 7,
         };
         let token = sign_jwt(&header, &claims, &PrivateMaterial::EdDsa(sk)).unwrap();
-        let err = verify_jwt::<Claims>(&token, JwsAlgorithm::RS256, "k1", &PublicMaterial::EdDsa(vk))
-            .unwrap_err();
+        let err = verify_jwt::<Claims>(
+            &token,
+            JwsAlgorithm::RS256,
+            "k1",
+            &PublicMaterial::EdDsa(vk),
+        )
+        .unwrap_err();
         match err {
             JwtVerifyError::AlgMismatch { .. } => {}
             other => panic!("wrong error: {other:?}"),
@@ -294,9 +294,13 @@ mod tests {
             n: 7,
         };
         let token = sign_jwt(&header, &claims, &PrivateMaterial::EdDsa(sk)).unwrap();
-        let err =
-            verify_jwt::<Claims>(&token, JwsAlgorithm::EdDSA, "k2", &PublicMaterial::EdDsa(vk))
-                .unwrap_err();
+        let err = verify_jwt::<Claims>(
+            &token,
+            JwsAlgorithm::EdDSA,
+            "k2",
+            &PublicMaterial::EdDsa(vk),
+        )
+        .unwrap_err();
         assert!(matches!(err, JwtVerifyError::KidMismatch { .. }));
     }
 }

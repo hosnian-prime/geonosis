@@ -16,10 +16,7 @@ use crate::state::{AdminError, AdminState};
 /// Look up a realm by URL-path slug. Returns `AdminError::NotFound`
 /// (→ HTTP 404) when missing; the storage layer's `StorageError`
 /// already maps cleanly via the `From` impl on `AdminError`.
-pub async fn realm_by_slug(
-    state: &Arc<AdminState>,
-    slug: &str,
-) -> Result<Realm, AdminError> {
+pub async fn realm_by_slug(state: &Arc<AdminState>, slug: &str) -> Result<Realm, AdminError> {
     state
         .storage
         .get_realm_by_slug(slug)

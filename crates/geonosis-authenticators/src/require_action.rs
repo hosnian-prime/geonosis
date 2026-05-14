@@ -14,7 +14,7 @@ use geonosis_core::{Amr, CredentialKind, RequiredAction};
 
 use crate::context::AuthnContext;
 use crate::traits::{
-    AuthnError, AuthnInput, AuthnOutput, Authenticator, FailureKind, RenderInstruction,
+    Authenticator, AuthnError, AuthnInput, AuthnOutput, FailureKind, RenderInstruction,
 };
 
 pub struct RequireActionAuthenticator;
@@ -205,7 +205,11 @@ mod tests {
 
     #[tokio::test]
     async fn ack_removes_pending_action() {
-        let (mut ctx, uid) = fixture(vec![RequiredAction::UpdatePassword, RequiredAction::VerifyEmail]).await;
+        let (mut ctx, uid) = fixture(vec![
+            RequiredAction::UpdatePassword,
+            RequiredAction::VerifyEmail,
+        ])
+        .await;
         let mut form = std::collections::BTreeMap::new();
         form.insert("action".into(), "ack".into());
         let out = RequireActionAuthenticator
