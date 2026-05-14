@@ -6,8 +6,10 @@ use axum::extract::{Path, Query, State};
 use axum::Json;
 use serde::{Deserialize, Serialize};
 
+use geonosis_audit::Target;
 use geonosis_core::SessionId;
 
+use crate::audit_emit;
 use crate::handlers_v1::extractors::realm_by_slug;
 use crate::state::{AdminError, AdminState};
 
@@ -67,11 +69,19 @@ pub async fn revoke(
     // supports per-realm session indexing. v0.1 sessions table is
     // globally addressable by id, so a successful realm lookup is
     // sufficient to authorize the call.
-    let _realm = realm_by_slug(&state, &slug).await?;
+    let realm = realm_by_slug(&state, &slug).await?;
+    let sid = SessionId(session_id);
     state
         .storage
-        .delete_session(&SessionId(session_id))
+        .delete_session(&sid)
         .await
         .map_err(AdminError::from)?;
+    audit_emit::emit(
+        &state,
+        realm.id,
+        "session.revoked",
+        Some(Target::Session { id: sid.clone() }),
+        serde_json::json!({ "reason": "admin" }),
+    );
     Ok(axum::http::StatusCode::NO_CONTENT)
 }
