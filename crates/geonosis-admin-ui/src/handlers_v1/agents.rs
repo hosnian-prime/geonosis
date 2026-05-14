@@ -6,11 +6,13 @@ use axum::extract::{Path, State};
 use axum::Json;
 use serde::Deserialize;
 
+use geonosis_audit::Target;
 use geonosis_core::{
     Agent, AgentAuthMethod, AgentCapability, AgentKind, AgentRateLimit, ParentSubject, ScopeName,
 };
 use geonosis_core::id::AgentId;
 
+use crate::audit_emit;
 use crate::handlers_v1::extractors::realm_by_slug;
 use crate::state::{AdminError, AdminState};
 
@@ -86,6 +88,16 @@ pub async fn create(
         .create_agent(agent.clone())
         .await
         .map_err(AdminError::from)?;
+    audit_emit::emit(
+        &state,
+        agent.realm_id,
+        "agent.created",
+        Some(Target::Other {
+            entity: "agent".into(),
+            id: agent.id.to_string(),
+        }),
+        serde_json::json!({ "alias": agent.alias, "kind": format!("{:?}", agent.kind) }),
+    );
     Ok(Json(agent))
 }
 
@@ -125,6 +137,16 @@ pub async fn update(
         .update_agent(agent.clone())
         .await
         .map_err(AdminError::from)?;
+    audit_emit::emit(
+        &state,
+        agent.realm_id,
+        "agent.updated",
+        Some(Target::Other {
+            entity: "agent".into(),
+            id: agent.id.to_string(),
+        }),
+        serde_json::json!({ "alias": agent.alias }),
+    );
     Ok(Json(agent))
 }
 
@@ -143,5 +165,15 @@ pub async fn revoke(
         .revoke_agent(realm.id, existing.id)
         .await
         .map_err(AdminError::from)?;
+    audit_emit::emit(
+        &state,
+        realm.id,
+        "agent.revoked",
+        Some(Target::Other {
+            entity: "agent".into(),
+            id: existing.id.to_string(),
+        }),
+        serde_json::json!({ "alias": existing.alias }),
+    );
     Ok(axum::http::StatusCode::NO_CONTENT)
 }

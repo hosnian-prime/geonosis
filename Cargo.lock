@@ -1724,6 +1724,7 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "geonosis-audit",
  "geonosis-broker",
  "geonosis-core",
  "geonosis-crypto",

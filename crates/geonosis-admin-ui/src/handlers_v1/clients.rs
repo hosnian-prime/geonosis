@@ -10,11 +10,14 @@ use axum::extract::{Path, State};
 use axum::Json;
 use serde::Deserialize;
 
+use geonosis_audit::Target;
 use geonosis_core::id::ClientId;
 use geonosis_core::{
     AccessTokenType, Client, ClientAuthMethod, ClientKind, ConsentPolicy, FlowBinding, GrantPolicy,
     RedirectUri,
 };
+
+use crate::audit_emit;
 
 use crate::handlers_v1::extractors::realm_by_slug;
 use crate::state::{AdminError, AdminState};
@@ -113,6 +116,13 @@ pub async fn create(
         .create_client(client.clone())
         .await
         .map_err(AdminError::from)?;
+    audit_emit::emit(
+        &state,
+        client.realm_id,
+        "client.created",
+        Some(Target::Client { id: client.id }),
+        serde_json::json!({ "client_id": client.client_id, "kind": format!("{:?}", client.kind) }),
+    );
     Ok(Json(client))
 }
 
@@ -153,6 +163,13 @@ pub async fn update(
         .update_client(client.clone())
         .await
         .map_err(AdminError::from)?;
+    audit_emit::emit(
+        &state,
+        client.realm_id,
+        "client.updated",
+        Some(Target::Client { id: client.id }),
+        serde_json::json!({ "client_id": client.client_id }),
+    );
     Ok(Json(client))
 }
 
@@ -171,5 +188,12 @@ pub async fn delete_(
         .delete_client(realm.id, existing.id)
         .await
         .map_err(AdminError::from)?;
+    audit_emit::emit(
+        &state,
+        realm.id,
+        "client.deleted",
+        Some(Target::Client { id: existing.id }),
+        serde_json::json!({ "client_id": existing.client_id }),
+    );
     Ok(axum::http::StatusCode::NO_CONTENT)
 }

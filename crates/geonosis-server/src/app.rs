@@ -10,8 +10,11 @@ use crate::security_headers;
 use crate::state::AppState;
 
 pub fn router(state: AppState) -> Router {
-    let admin = geonosis_admin_ui::AdminState::new(state.storage.clone())
-        .expect("admin state");
+    let admin = geonosis_admin_ui::AdminState::with_audit(
+        state.storage.clone(),
+        state.audit.clone(),
+    )
+    .expect("admin state");
     let admin_router = geonosis_admin_ui::router(admin);
     let metrics_state = state.metrics.clone();
     Router::new()
