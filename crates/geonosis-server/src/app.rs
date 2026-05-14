@@ -36,7 +36,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/realms/:slug/protocol/saml/slo",
-            post(handlers::saml_slo_post),
+            get(handlers::saml_slo_get).post(handlers::saml_slo_post),
         )
         // Prometheus exposition endpoint — `docs/13-observability.md`.
         .route(
@@ -669,9 +669,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn saml_sso_get_redirects_binding_lands_in_v0_1_x() {
-        // GET still 501 — HTTP-Redirect binding's DEFLATE decode
-        // path is v0.1.x; SPs using POST binding hit `sso_post` above.
+    async fn saml_sso_get_redirect_binding_rejects_missing_saml_request() {
+        // The Redirect binding is wired (G1) — a GET with no
+        // SAMLRequest query parameter rejects with 400, not 501.
         let r = router(fixture_state().await);
         let resp = r
             .oneshot(
@@ -682,7 +682,49 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(resp.status(), StatusCode::NOT_IMPLEMENTED);
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = axum::body::to_bytes(resp.into_body(), 16 * 1024).await.unwrap();
+        let text = std::str::from_utf8(&body).unwrap();
+        assert!(text.contains("missing SAMLRequest"));
+    }
+
+    #[tokio::test]
+    async fn saml_sso_get_decodes_deflate_then_dispatches() {
+        // A valid deflate-encoded AuthnRequest from an unknown SP
+        // round-trips through the decoder and hits the same SP
+        // resolution path POST uses — outcome: 400 "unknown SP".
+        use base64::engine::general_purpose::STANDARD as B64;
+        use base64::Engine;
+        use flate2::write::DeflateEncoder;
+        use flate2::Compression;
+        use std::io::Write as _;
+
+        let xml = r#"<samlp:AuthnRequest xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="_x" Version="2.0" IssueInstant="2026-05-14T12:00:00Z"><saml:Issuer>https://unknown.sp</saml:Issuer></samlp:AuthnRequest>"#;
+        let mut enc = DeflateEncoder::new(Vec::new(), Compression::default());
+        enc.write_all(xml.as_bytes()).unwrap();
+        let b64 = B64.encode(&enc.finish().unwrap());
+        let encoded = percent_encoding::utf8_percent_encode(
+            &b64,
+            percent_encoding::NON_ALPHANUMERIC,
+        )
+        .to_string();
+
+        let r = router(fixture_state().await);
+        let resp = r
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/realms/acme/protocol/saml/sso?SAMLRequest={encoded}"
+                    ))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = axum::body::to_bytes(resp.into_body(), 16 * 1024).await.unwrap();
+        let text = std::str::from_utf8(&body).unwrap();
+        assert!(text.contains("unknown SP"), "got: {text}");
     }
 
     #[tokio::test]

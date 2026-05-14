@@ -35,8 +35,8 @@ pub use broker::{broker_endpoint_get, broker_endpoint_post, broker_login, broker
 pub use device::{device_authorize, device_token};
 pub use health::{drain, healthy, ready, started};
 pub use saml::{
-    acs_auto_post_form as saml_acs_form, metadata as saml_metadata, slo_post as saml_slo_post,
-    sso_get as saml_sso_get, sso_post as saml_sso_post,
+    acs_auto_post_form as saml_acs_form, metadata as saml_metadata, slo_get as saml_slo_get,
+    slo_post as saml_slo_post, sso_get as saml_sso_get, sso_post as saml_sso_post,
 };
 pub use introspect::introspect;
 pub use login_actions::authenticate_post;
