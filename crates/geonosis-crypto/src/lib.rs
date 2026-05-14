@@ -1,6 +1,7 @@
 //! Cryptographic primitives for Geonosis.
 //!
 //! - JWT signing (RS256, ES256, EdDSA)
+//! - JWE compact encryption (RSA-OAEP-256 / dir + A256GCM, allowlisted)
 //! - JWKS rendering
 //! - Argon2id password hashing
 //! - AES-256-GCM secret wrapping (master-key-derived)
@@ -10,6 +11,7 @@
 pub mod base64url;
 pub mod cert;
 pub mod hash;
+pub mod jwe;
 pub mod jwk;
 pub mod jwt;
 pub mod kms;
@@ -19,6 +21,10 @@ pub mod refresh_token;
 pub mod wrap;
 
 pub use hash::token_hash;
+pub use jwe::{
+    decrypt as jwe_decrypt, encrypt as jwe_encrypt, JweAlg, JweEnc, JweError, JweRecipientKey,
+    JweRecipientPrivateKey,
+};
 pub use jwk::{Jwk, JwkSet, PublicJwk};
 pub use jwt::{sign_jwt, verify_jwt, JwsHeader, JwtError, JwtVerifyError};
 pub use kms::{
