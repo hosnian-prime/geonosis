@@ -45,8 +45,8 @@ pub use organization::{
 };
 pub use realm::{
     AcrLevel, AcrPolicy, AcrRequirement, BruteForcePolicy, EventConfig, LocalizationPolicy,
-    LoginSettings, OtpPolicy, PasswordPolicy, PasswordRule, Realm, RegistrationPolicy,
-    SessionPolicy, ThemeBinding, TokenPolicy, WebauthnPolicy,
+    LoginSettings, OtpPolicy, PasswordPolicy, PasswordPolicyReport, PasswordRule, Realm,
+    RegistrationPolicy, SessionPolicy, ThemeBinding, TokenPolicy, WebauthnPolicy,
 };
 pub use role::{CompositeRoles, Role};
 pub use scope::{Scope, ScopeName};
