@@ -23,6 +23,17 @@ pub fn router(state: AppState) -> Router {
         .route("/-/ready", get(handlers::ready))
         .route("/-/healthy", get(handlers::healthy))
         .route("/-/drain", post(handlers::drain))
+        // SAML 2.0 IdP — `docs/20-saml-idp.md` §URL surface.
+        // SSO (POST + Redirect bindings) + metadata land in v0.1;
+        // SLO + IdP-initiated entry follow in v0.1.x.
+        .route(
+            "/realms/:slug/protocol/saml/descriptor",
+            get(handlers::saml_metadata),
+        )
+        .route(
+            "/realms/:slug/protocol/saml/sso",
+            get(handlers::saml_sso).post(handlers::saml_sso),
+        )
         // Prometheus exposition endpoint — `docs/13-observability.md`.
         .route(
             "/metrics",
@@ -504,6 +515,155 @@ mod tests {
         let body = axum::body::to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["error"], "unsupported_grant_type");
+    }
+
+    #[tokio::test]
+    async fn metrics_endpoint_surfaces_labeled_authorize_counter() {
+        // Hitting /authorize bumps `geonosis_oidc_authorize_total`;
+        // the realm's slug + the `started` outcome should land in
+        // the next `/metrics` scrape.
+        let state = fixture_state().await;
+        let r = router(state);
+        let _ = r
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/realms/acme/protocol/openid-connect/auth?response_type=code&client_id=demo")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let resp = r
+            .oneshot(
+                Request::builder()
+                    .uri("/metrics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 32 * 1024).await.unwrap();
+        let text = std::str::from_utf8(&body).unwrap();
+        assert!(
+            text.contains("geonosis_oidc_authorize_total{realm=\"acme\""),
+            "expected per-realm authorize counter line; body was:\n{text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn metrics_endpoint_surfaces_token_counter_on_unknown_grant() {
+        // A bad grant_type lands in `oidc_token_total` as
+        // `(realm, unknown, error)` — the dispatcher rejects before
+        // resolving the grant, so the counter records the path.
+        let state = fixture_state().await;
+        let r = router(state);
+        let _ = r
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/realms/acme/protocol/openid-connect/token")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("grant_type=banana"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let resp = r
+            .oneshot(
+                Request::builder()
+                    .uri("/metrics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 32 * 1024).await.unwrap();
+        let text = std::str::from_utf8(&body).unwrap();
+        // The handler rejects before the grant-type label is bound,
+        // so the response counter we get back is the 4xx class one.
+        // The OIDC token counter only emits once a grant is resolved
+        // (intentional — unknown grant types should not pollute
+        // grant-typed series).
+        assert!(text.contains("geonosis_http_responses_total{class=\"4xx\"}"));
+        // Token counter remains absent for this path, matching the
+        // bounded-cardinality contract.
+        assert!(!text.contains("geonosis_oidc_token_total{realm=\"acme\",grant_type=\"banana\""));
+    }
+
+    #[tokio::test]
+    async fn saml_metadata_endpoint_serves_idp_descriptor() {
+        // GET /realms/acme/protocol/saml/descriptor returns the
+        // metadata XML with entityID, SSO/SLO endpoints, and the
+        // realm's supported NameIDFormats.
+        let r = router(fixture_state().await);
+        let resp = r
+            .oneshot(
+                Request::builder()
+                    .uri("/realms/acme/protocol/saml/descriptor")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let ct = resp
+            .headers()
+            .get(axum::http::header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(ct.starts_with("application/samlmetadata+xml"));
+        let body = axum::body::to_bytes(resp.into_body(), 32 * 1024).await.unwrap();
+        let xml = std::str::from_utf8(&body).unwrap();
+        assert!(xml.starts_with("<?xml"));
+        assert!(xml.contains("md:IDPSSODescriptor"));
+        assert!(xml.contains("entityID=\"https://g.example/realms/acme\""));
+        assert!(xml.contains("HTTP-POST"));
+        assert!(xml.contains("HTTP-Redirect"));
+        // The realm publishes the four canonical NameIDFormats.
+        assert!(xml.contains("nameid-format:emailAddress"));
+        assert!(xml.contains("nameid-format:persistent"));
+        assert!(xml.contains("nameid-format:transient"));
+    }
+
+    #[tokio::test]
+    async fn saml_metadata_404s_on_unknown_realm() {
+        let r = router(fixture_state().await);
+        let resp = r
+            .oneshot(
+                Request::builder()
+                    .uri("/realms/nope/protocol/saml/descriptor")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn saml_sso_returns_not_implemented_in_v0_1() {
+        // The SSO endpoint is scaffolded but the SP-config table +
+        // browser-flow integration land in v0.1.x. The handler must
+        // surface the contract honestly — 501 with a v0.1.x marker
+        // — not a 500 or a confusing 200.
+        let r = router(fixture_state().await);
+        let resp = r
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/realms/acme/protocol/saml/sso")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::NOT_IMPLEMENTED);
+        let body = axum::body::to_bytes(resp.into_body(), 16 * 1024).await.unwrap();
+        let text = std::str::from_utf8(&body).unwrap();
+        assert!(text.contains("v0.1.x"));
     }
 
     #[tokio::test]

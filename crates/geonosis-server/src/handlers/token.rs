@@ -118,13 +118,53 @@ pub async fn token(
         }
     };
 
+    let grant_label = grant_type_label(grant_type);
     match result {
         Ok(tokens) => {
+            state
+                .metrics
+                .oidc_token
+                .inc(&[&realm.slug, grant_label, "success"]);
             let body: TokenResponseBody = tokens.into();
             (axum::http::StatusCode::OK, Json(body)).into_response()
         }
-        Err(e) => oauth_error_response(&e),
+        Err(e) => {
+            state
+                .metrics
+                .oidc_token
+                .inc(&[&realm.slug, grant_label, "error"]);
+            // Password (direct-grant) failures are the canonical
+            // "login failure" signal in v0.1 — the browser flow
+            // never reaches the token endpoint on a failed login.
+            // Once login_actions instruments its own outcomes the
+            // browser-flow failures land here too.
+            if matches!(grant_type, GrantType::Password) {
+                state
+                    .metrics
+                    .oidc_login_failures
+                    .inc(&[&realm.slug, error_reason_label(&e)]);
+            }
+            oauth_error_response(&e)
+        }
     }
+}
+
+fn grant_type_label(g: GrantType) -> &'static str {
+    match g {
+        GrantType::AuthorizationCode => "authorization_code",
+        GrantType::RefreshToken => "refresh_token",
+        GrantType::ClientCredentials => "client_credentials",
+        GrantType::Password => "password",
+        GrantType::DeviceCode => "device_code",
+        GrantType::TokenExchange => "token_exchange",
+    }
+}
+
+fn error_reason_label(e: &OAuthError) -> &'static str {
+    // The OAuthErrorCode enum's `as_str()` is the stable RFC string
+    // — feeding it back into the label keeps cardinality bounded to
+    // the spec-defined set.
+    e.code.as_str()
 }
 
 fn into_oauth_err(e: geonosis_protocol_oauth::grants::GrantError) -> OAuthError {
@@ -200,6 +240,15 @@ async fn handle_refresh(
                     OAuthError::invalid_grant("refresh token expired")
                 }
                 geonosis_protocol_oauth::RefreshRotateError::Reuse => {
+                    // Critical security signal — refresh-token reuse
+                    // means a token leaked or was replayed. Bump the
+                    // counter feeding the `GeonosisTokenReuse` alert
+                    // (severity=critical in
+                    // `deploy/prometheus-rules/geonosis-alerts.yaml`).
+                    state
+                        .metrics
+                        .token_reuse_detected
+                        .inc(&[&realm.slug]);
                     OAuthError::invalid_grant("refresh token reuse — family burned")
                 }
                 geonosis_protocol_oauth::RefreshRotateError::Storage(s) => server_err(s),

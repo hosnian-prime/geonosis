@@ -53,8 +53,19 @@ async fn handle_authorize(
 ) -> Response {
     let realm = match state.storage.get_realm_by_slug(&slug).await {
         Ok(r) => r,
-        Err(_) => return (StatusCode::NOT_FOUND, "realm not found").into_response(),
+        Err(_) => {
+            state
+                .metrics
+                .oidc_authorize
+                .inc(&[&slug, "unknown_realm"]);
+            return (StatusCode::NOT_FOUND, "realm not found").into_response();
+        }
     };
+    // Every successful realm resolution that reaches the OIDC
+    // negotiation path bumps the authorize counter once. The fine-
+    // grained per-error breakdown lands when login_actions
+    // instruments its own outcomes.
+    state.metrics.oidc_authorize.inc(&[&realm.slug, "started"]);
 
     // JAR (RFC 9101) signed `request` parameter is not yet wired —
     // surface as `request_not_supported` per OIDC 1.0 §6.1 instead of
