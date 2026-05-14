@@ -3,21 +3,16 @@
 use serde::{Deserialize, Serialize};
 
 /// TLS posture for a realm.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum SslRequirement {
     /// HTTPS not required (development only).
     None,
     /// HTTPS required for non-loopback requests (default).
+    #[default]
     ExternalRequests,
     /// HTTPS required for every request.
     All,
-}
-
-impl Default for SslRequirement {
-    fn default() -> Self {
-        Self::ExternalRequests
-    }
 }
 
 /// JOSE signing algorithm names. Values match the `alg` JWS header.
@@ -70,18 +65,13 @@ impl JwsAlgorithm {
 ///
 /// `Dpop` and `Mtls` are accepted on the public surface but only enforced in
 /// v0.2; v0.1 records the realm preference for compatibility forward.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum SenderConstraint {
+    #[default]
     None,
     Dpop,
     Mtls,
-}
-
-impl Default for SenderConstraint {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 /// Authentication strength achieved by a session.
@@ -141,7 +131,12 @@ mod tests {
             JwsAlgorithm::ES256,
             JwsAlgorithm::EdDSA,
         ] {
-            assert_eq!(alg.as_str(), serde_json::from_str::<JwsAlgorithm>(&format!("\"{}\"", alg.as_str())).unwrap().as_str());
+            assert_eq!(
+                alg.as_str(),
+                serde_json::from_str::<JwsAlgorithm>(&format!("\"{}\"", alg.as_str()))
+                    .unwrap()
+                    .as_str()
+            );
         }
     }
 

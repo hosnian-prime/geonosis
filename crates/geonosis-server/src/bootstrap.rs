@@ -204,7 +204,6 @@ async fn provision_client(
 fn relaxed_password_policy() -> geonosis_core::PasswordPolicy {
     geonosis_core::PasswordPolicy {
         rules: vec![PasswordRule::Length { min: 4 }],
-        ..Default::default()
     }
 }
 

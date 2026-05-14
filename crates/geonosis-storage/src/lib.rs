@@ -19,9 +19,9 @@
 pub mod error;
 pub mod memory;
 pub mod seed;
-pub mod traits;
 #[cfg(test)]
 mod tests_saml;
+pub mod traits;
 
 pub use error::StorageError;
 pub use memory::MemoryStorage;

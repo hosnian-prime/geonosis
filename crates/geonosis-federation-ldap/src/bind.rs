@@ -35,7 +35,9 @@ pub async fn bind_as_user(
     let timeout = cfg.search_timeout();
     let (rs, _res) = tokio::time::timeout(
         timeout,
-        probe.ldap.search(&cfg.base_dn, Scope::Subtree, &filter, vec!["dn"]),
+        probe
+            .ldap
+            .search(&cfg.base_dn, Scope::Subtree, &filter, vec!["dn"]),
     )
     .await
     .map_err(|_| LdapError::Timeout {
@@ -55,13 +57,12 @@ pub async fn bind_as_user(
     // Phase 2: bind as that DN to verify the password.
     let mut user_conn = pool.acquire().await?;
     let bind_timeout = cfg.bind_timeout();
-    let bind_res =
-        tokio::time::timeout(bind_timeout, user_conn.ldap.simple_bind(&dn, password))
-            .await
-            .map_err(|_| LdapError::Timeout {
-                ms: cfg.bind_timeout_ms,
-            })?
-            .map_err(LdapError::from)?;
+    let bind_res = tokio::time::timeout(bind_timeout, user_conn.ldap.simple_bind(&dn, password))
+        .await
+        .map_err(|_| LdapError::Timeout {
+            ms: cfg.bind_timeout_ms,
+        })?
+        .map_err(LdapError::from)?;
     let _ = user_conn.ldap.unbind().await;
 
     match bind_res.rc {

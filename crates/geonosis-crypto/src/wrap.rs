@@ -52,8 +52,8 @@ impl MasterKey {
     }
 
     pub fn wrap(&self, plaintext: &[u8]) -> Result<WrappedSecret, WrapError> {
-        let cipher = Aes256Gcm::new_from_slice(&self.0)
-            .map_err(|e| WrapError::Encrypt(e.to_string()))?;
+        let cipher =
+            Aes256Gcm::new_from_slice(&self.0).map_err(|e| WrapError::Encrypt(e.to_string()))?;
         let mut nonce = [0u8; 12];
         OsRng.fill_bytes(&mut nonce);
         let ct = cipher
@@ -65,9 +65,12 @@ impl MasterKey {
         })
     }
 
-    pub fn unwrap(&self, wrapped: &WrappedSecret) -> Result<zeroize::Zeroizing<Vec<u8>>, WrapError> {
-        let cipher = Aes256Gcm::new_from_slice(&self.0)
-            .map_err(|e| WrapError::Decrypt(e.to_string()))?;
+    pub fn unwrap(
+        &self,
+        wrapped: &WrappedSecret,
+    ) -> Result<zeroize::Zeroizing<Vec<u8>>, WrapError> {
+        let cipher =
+            Aes256Gcm::new_from_slice(&self.0).map_err(|e| WrapError::Decrypt(e.to_string()))?;
         let pt = cipher
             .decrypt(
                 GenericArray::from_slice(&wrapped.nonce),

@@ -87,16 +87,12 @@ impl IntoResponse for ProbeOutcome {
                 format!("storage=down detail={msg}\n"),
             )
                 .into_response(),
-            ProbeOutcome::Timeout => (
-                StatusCode::SERVICE_UNAVAILABLE,
-                "storage=timeout\n",
-            )
-                .into_response(),
-            ProbeOutcome::Draining => (
-                StatusCode::SERVICE_UNAVAILABLE,
-                "draining\n",
-            )
-                .into_response(),
+            ProbeOutcome::Timeout => {
+                (StatusCode::SERVICE_UNAVAILABLE, "storage=timeout\n").into_response()
+            }
+            ProbeOutcome::Draining => {
+                (StatusCode::SERVICE_UNAVAILABLE, "draining\n").into_response()
+            }
         }
     }
 }

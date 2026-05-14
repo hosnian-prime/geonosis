@@ -87,7 +87,9 @@ pub async fn broker_login(
                 .discovery(&alias, cfg)
                 .await
                 .map_err(broker_err_to_problem)?;
-            let redirect_uri = state.broker.redirect_uri(&state.public_base_url, &realm, &alias);
+            let redirect_uri = state
+                .broker
+                .redirect_uri(&state.public_base_url, &realm, &alias);
             let pkce = if cfg.pkce {
                 Some(PkcePair::generate())
             } else {
@@ -116,10 +118,8 @@ pub async fn broker_login(
             if let Some(m) = cfg.response_mode.as_deref() {
                 extra_owned.push(("response_mode", m.into()));
             }
-            let extra: Vec<(&str, &str)> = extra_owned
-                .iter()
-                .map(|(k, v)| (*k, v.as_str()))
-                .collect();
+            let extra: Vec<(&str, &str)> =
+                extra_owned.iter().map(|(k, v)| (*k, v.as_str())).collect();
             let url = oidc::authorization_url(
                 &discovery,
                 cfg,
@@ -137,7 +137,9 @@ pub async fn broker_login(
                 state.public_base_url.as_str().trim_end_matches('/'),
                 realm.slug,
             );
-            let acs = state.broker.redirect_uri(&state.public_base_url, &realm, &alias);
+            let acs = state
+                .broker
+                .redirect_uri(&state.public_base_url, &realm, &alias);
             let br_state = BrokerAuthnState::new(realm.id, alias.clone(), flow_state_id);
             let state_value = br_state.state.clone();
             state
@@ -159,8 +161,10 @@ pub async fn broker_login(
                     rs = html_escape(&form.relay_state),
                 );
                 let mut resp = (StatusCode::OK, html).into_response();
-                resp.headers_mut()
-                    .insert(header::CONTENT_TYPE, "text/html; charset=utf-8".parse().unwrap());
+                resp.headers_mut().insert(
+                    header::CONTENT_TYPE,
+                    "text/html; charset=utf-8".parse().unwrap(),
+                );
                 Ok(resp)
             } else {
                 Err(JsonProblem::internal("saml binding produced no output"))
@@ -193,9 +197,7 @@ pub async fn broker_endpoint_get(
         .map_err(|_| JsonProblem::not_found("unknown idp"))?;
     let cfg = match &idp.config {
         IdpConfig::Oidc(c) => c.clone(),
-        IdpConfig::Saml(_) => {
-            return Err(JsonProblem::bad_request("GET callback is OIDC-only"))
-        }
+        IdpConfig::Saml(_) => return Err(JsonProblem::bad_request("GET callback is OIDC-only")),
     };
     let br_state = state
         .storage
@@ -233,12 +235,9 @@ pub async fn broker_endpoint_post(
         .map_err(|_| JsonProblem::not_found("unknown idp"))?;
     let cfg = match &idp.config {
         IdpConfig::Saml(c) => c.clone(),
-        IdpConfig::Oidc(_) => {
-            return Err(JsonProblem::bad_request("POST callback is SAML-only"))
-        }
+        IdpConfig::Oidc(_) => return Err(JsonProblem::bad_request("POST callback is SAML-only")),
     };
-    let response =
-        saml::parse_response(&form.saml_response).map_err(broker_err_to_problem)?;
+    let response = saml::parse_response(&form.saml_response).map_err(broker_err_to_problem)?;
     if cfg.want_responses_signed || cfg.want_assertions_signed {
         saml::verify_response_signature(&response, &cfg.signing_cert_pems)
             .map_err(broker_err_to_problem)?;
@@ -257,8 +256,8 @@ pub async fn broker_endpoint_post(
         state.public_base_url.as_str().trim_end_matches('/'),
         realm.slug,
     );
-    let assertion =
-        saml::assertion_to_broker(&alias, &sp_entity, None, &response).map_err(broker_err_to_problem)?;
+    let assertion = saml::assertion_to_broker(&alias, &sp_entity, None, &response)
+        .map_err(broker_err_to_problem)?;
     persist_or_link(&state, &realm.id, &assertion).await?;
     Ok(Json(assertion))
 }
@@ -290,7 +289,10 @@ pub async fn broker_metadata(
     Ok(Json(SamlMetadata {
         entity_id: format!("{base}/realms/{}", realm.slug),
         acs_url: format!("{base}/realms/{}/broker/{}/endpoint", realm.slug, alias),
-        slo_url: format!("{base}/realms/{}/protocol/openid-connect/logout", realm.slug),
+        slo_url: format!(
+            "{base}/realms/{}/protocol/openid-connect/logout",
+            realm.slug
+        ),
     }))
 }
 
@@ -303,9 +305,10 @@ async fn exchange_and_verify(
     adapter_urn_override: &Option<String>,
 ) -> Result<BrokerAssertion, BrokerError> {
     let discovery = state.broker.discovery.discovery(alias, cfg).await?;
-    let redirect_uri = state
-        .broker
-        .redirect_uri(&state.public_base_url, &fake_realm_for(alias)?, alias);
+    let redirect_uri =
+        state
+            .broker
+            .redirect_uri(&state.public_base_url, &fake_realm_for(alias)?, alias);
     let _ = redirect_uri; // computed below per real realm
 
     let realm = state
@@ -316,10 +319,7 @@ async fn exchange_and_verify(
     let redirect_uri = state
         .broker
         .redirect_uri(&state.public_base_url, &realm, alias);
-    let verifier = br_state
-        .pkce_verifier
-        .as_ref()
-        .map(|s| s.expose().clone());
+    let verifier = br_state.pkce_verifier.as_ref().map(|s| s.expose().clone());
     let token = oidc::exchange_code(
         state.broker.discovery.http(),
         &discovery,
@@ -358,9 +358,7 @@ async fn exchange_and_verify(
     let mut assertion = oidc::assertion_from_claims(
         alias,
         &claims,
-        token
-            .expires_in
-            .map(|s| Utc::now() + Duration::seconds(s)),
+        token.expires_in.map(|s| Utc::now() + Duration::seconds(s)),
     );
     adapter.enrich_assertion(&claims, &mut assertion);
     if let Some(extra) = adapter

@@ -23,7 +23,10 @@ impl HostAllowlist {
 
     /// Construct from a list of URL strings. Entries that fail to parse
     /// are silently dropped — operators see a warning at install time.
-    pub fn from_iter<I: IntoIterator<Item = String>>(iter: I) -> Self {
+    /// Named `from_strings` rather than `from_iter` so the method does
+    /// not shadow the standard `FromIterator::from_iter` trait method
+    /// (clippy::should_implement_trait would fire otherwise).
+    pub fn from_strings<I: IntoIterator<Item = String>>(iter: I) -> Self {
         let mut s = Self::default();
         for v in iter {
             s.allow(&v);
