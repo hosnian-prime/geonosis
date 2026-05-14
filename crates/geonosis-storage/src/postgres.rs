@@ -149,6 +149,19 @@ fn user_from_row(row: &sqlx::postgres::PgRow) -> Result<User, StorageError> {
 
 #[async_trait]
 impl Storage for PostgresStorage {
+    async fn ping(&self) -> Result<(), StorageError> {
+        // Cheapest possible round-trip — the planner caches `SELECT 1`
+        // and the pool keeps the connection warm. We rely on
+        // sqlx::Pool's `test_before_acquire` (set in build_pool) to
+        // also exercise the socket, so a transient network failure
+        // surfaces here before any real query runs.
+        sqlx::query("SELECT 1")
+            .execute(&self.pool)
+            .await
+            .map_err(sqlx_err)?;
+        Ok(())
+    }
+
     // ---- Realm (no RLS — realm IS the tenant) ----
     async fn create_realm(&self, realm: Realm) -> Result<(), StorageError> {
         let config = serde_json::to_value(&realm).map_err(json_err)?;

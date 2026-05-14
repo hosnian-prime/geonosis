@@ -87,6 +87,14 @@ impl MemoryStorage {
 
 #[async_trait]
 impl Storage for MemoryStorage {
+    async fn ping(&self) -> Result<(), StorageError> {
+        // In-process backend — health is implicit in the process being
+        // alive. Returning Ok lets the readiness handler differentiate
+        // "backend reachable" from "backend reachable BUT degraded";
+        // the dev quickstart relies on this never erroring.
+        Ok(())
+    }
+
     // ---- Realm ----
     async fn create_realm(&self, realm: Realm) -> Result<(), StorageError> {
         let mut t = self.inner.write();
