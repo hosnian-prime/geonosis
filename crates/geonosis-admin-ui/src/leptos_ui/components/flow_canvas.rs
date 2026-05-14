@@ -18,7 +18,7 @@
 //!   coordinates (deterministic grid fallback if absent); render edges
 //!   as Bezier curves between nodes; drag nodes to reposition; "Save"
 //!   button persists the mutated graph (JSON form-POST to the existing
-//!   `/admin-next/realms/:slug/flows/:alias` handler); Canvas/JSON view
+//!   `/admin/realms/:slug/flows/:alias` handler); Canvas/JSON view
 //!   toggle so the JSON textarea remains the fallback for power users.
 //! - **Deliberately left for v0.1.x**: node creation/deletion (operators
 //!   can still author new nodes in JSON view), edge creation by drag,
@@ -176,7 +176,7 @@ pub fn FlowCanvas(
     flow_json: String,
 ) -> impl IntoView {
     let view_box = format!("0 0 {VIEW_W} {VIEW_H}");
-    let save_action = format!("/admin-next/realms/{realm_slug}/flows/{alias}");
+    let save_action = format!("/admin/realms/{realm_slug}/flows/{alias}");
 
     let nodes = state.nodes.clone();
     let edges = state.edges.clone();
