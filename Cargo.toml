@@ -6,6 +6,7 @@ members = [
     "crates/geonosis-cache",
     "crates/geonosis-storage",
     "crates/geonosis-flow",
+    "crates/geonosis-authenticators",
     "crates/geonosis-protocol-oauth",
     "crates/geonosis-protocol-oidc",
     "crates/geonosis-saml-types",
