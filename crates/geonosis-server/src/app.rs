@@ -201,6 +201,10 @@ mod tests {
             ldap: Arc::new(crate::ldap::LdapRuntime::new()),
             metrics: Arc::new(crate::metrics::MetricsState::new()),
             rate_limiter: Arc::new(crate::rate_limit::PerRealmRateLimiter::default_v0_1()),
+            wasm_engine: geonosis_spi_host::runtime::WasmEngine::new(
+                geonosis_spi_host::runtime::SandboxConfig::default(),
+            )
+            .expect("wasm engine bootstrap"),
         }
     }
 
