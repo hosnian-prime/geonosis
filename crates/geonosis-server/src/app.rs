@@ -5,17 +5,25 @@ use axum::Router;
 use tower_http::trace::TraceLayer;
 
 use crate::handlers;
+use crate::metrics::{count_requests, metrics_handler};
+use crate::security_headers;
 use crate::state::AppState;
 
 pub fn router(state: AppState) -> Router {
     let admin = geonosis_admin_ui::AdminState::new(state.storage.clone())
         .expect("admin state");
     let admin_router = geonosis_admin_ui::router(admin);
+    let metrics_state = state.metrics.clone();
     Router::new()
         // Health probes
         .route("/-/started", get(handlers::started))
         .route("/-/ready", get(handlers::ready))
         .route("/-/healthy", get(handlers::healthy))
+        // Prometheus exposition endpoint — `docs/13-observability.md`.
+        .route(
+            "/metrics",
+            get(metrics_handler).with_state(metrics_state.clone()),
+        )
         // OIDC discovery + JWKS
         .route(
             "/realms/:slug/.well-known/openid-configuration",
@@ -97,6 +105,12 @@ pub fn router(state: AppState) -> Router {
         .layer(TraceLayer::new_for_http())
         .with_state(state)
         .merge(admin_router)
+        // Mount last so they wrap every route, including admin + metrics.
+        .layer(axum::middleware::from_fn_with_state(
+            metrics_state,
+            count_requests,
+        ))
+        .layer(axum::middleware::from_fn(security_headers::apply))
 }
 
 #[cfg(test)]
@@ -169,6 +183,7 @@ mod tests {
             broker_adapters: Arc::new(geonosis_broker::BuiltinAdapters::default()),
             broker: Arc::new(crate::broker::BrokerRuntime::new()),
             ldap: Arc::new(crate::ldap::LdapRuntime::new()),
+            metrics: Arc::new(crate::metrics::MetricsState::new()),
         }
     }
 
@@ -256,6 +271,65 @@ mod tests {
         let text = std::str::from_utf8(&body).unwrap();
         assert!(text.contains("Alanlar"));
         assert!(text.contains("lang=\"tr\""));
+    }
+
+    #[tokio::test]
+    async fn metrics_endpoint_exposes_prometheus_text() {
+        let r = router(fixture_state().await);
+        // Burn through one request first so the counter has something to report.
+        let _ = r
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri("/-/started")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let resp = r
+            .oneshot(
+                Request::builder()
+                    .uri("/metrics")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let ct = resp
+            .headers()
+            .get(axum::http::header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(ct.starts_with("text/plain"));
+        let body = axum::body::to_bytes(resp.into_body(), 16 * 1024).await.unwrap();
+        let text = std::str::from_utf8(&body).unwrap();
+        assert!(text.contains("geonosis_build_info"));
+        assert!(text.contains("geonosis_http_requests_total"));
+    }
+
+    #[tokio::test]
+    async fn responses_carry_default_security_headers() {
+        let r = router(fixture_state().await);
+        let resp = r
+            .oneshot(
+                Request::builder()
+                    .uri("/-/started")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let h = resp.headers();
+        let csp = h.get("content-security-policy").unwrap().to_str().unwrap();
+        assert!(csp.contains("default-src 'self'"));
+        assert!(csp.contains("frame-ancestors 'none'"));
+        assert_eq!(h.get("x-content-type-options").unwrap(), "nosniff");
+        assert_eq!(h.get("x-frame-options").unwrap(), "DENY");
+        assert_eq!(h.get("referrer-policy").unwrap(), "no-referrer");
     }
 
     #[tokio::test]
