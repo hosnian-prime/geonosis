@@ -530,12 +530,22 @@ async fn try_complete_saml(
     let issuer_base = state.public_base_url.as_str().trim_end_matches('/');
     let idp_issuer = format!("{issuer_base}/realms/{}", realm.slug);
 
+    // Per `docs/20-saml-idp.md` §"Attribute mapping": operator-
+    // configured `attribute_mappers` drive the `<AttributeStatement>`
+    // when present; an empty mapper list falls back to the hardcoded
+    // defaults so SPs without explicit configuration still receive
+    // username/email/given_name/family_name.
+    let attrs = if sp_config.attribute_mappers.is_empty() {
+        default_user_attributes(user)
+    } else {
+        geonosis_protocol_saml_idp::apply_attribute_mappers(user, &sp_config.attribute_mappers)
+    };
     let assertion = geonosis_protocol_saml_idp::build_assertion(
         &idp_issuer,
         &sp_config,
         &name_id,
         &session_index_value,
-        default_user_attributes(user),
+        attrs,
         Some("urn:oasis:names:tc:SAML:2.0:ac:classes:Password".into()),
         5,
     );

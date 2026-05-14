@@ -885,7 +885,15 @@ pub async fn unsolicited(
     let issuer_base = state.public_base_url.as_str().trim_end_matches('/');
     let idp_issuer = format!("{issuer_base}/realms/{}", realm.slug);
 
-    let attrs = crate::handlers::login_actions::default_user_attributes(&user);
+    // Same mapper-driven logic as the SP-initiated SSO path in
+    // `login_actions::try_complete_saml`: operator-supplied
+    // `attribute_mappers` drive the AttributeStatement, with the
+    // baseline defaults applied when none are configured.
+    let attrs = if sp_config.attribute_mappers.is_empty() {
+        crate::handlers::login_actions::default_user_attributes(&user)
+    } else {
+        geonosis_protocol_saml_idp::apply_attribute_mappers(&user, &sp_config.attribute_mappers)
+    };
     let assertion = geonosis_protocol_saml_idp::build_assertion(
         &idp_issuer,
         &sp_config,
