@@ -10,6 +10,8 @@ use geonosis_crypto::SoftwareKms;
 use geonosis_spi_host::ProviderRegistry;
 use geonosis_storage::Storage;
 
+use crate::authenticators::BuiltinAuthenticators;
+
 #[derive(Clone)]
 pub struct AppState {
     pub storage: Arc<dyn Storage>,
@@ -25,4 +27,7 @@ pub struct AppState {
     /// BLAKE3-keyed hash key for client_secret storage (separate domain
     /// from refresh tokens).
     pub client_secret_hash_key: [u8; 32],
+    /// Built-in authenticator runtimes (singletons; per-realm config is
+    /// passed through `AuthnContext` at dispatch time).
+    pub authenticators: Arc<BuiltinAuthenticators>,
 }

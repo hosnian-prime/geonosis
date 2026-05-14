@@ -60,6 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         public_base_url: url::Url::parse(&args.public_url)?,
         refresh_hash_key,
         client_secret_hash_key,
+        authenticators: Arc::new(geonosis_server::authenticators::BuiltinAuthenticators::default()),
     };
 
     let listener = tokio::net::TcpListener::bind(&args.listen).await?;
