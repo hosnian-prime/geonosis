@@ -5,6 +5,22 @@
 //!   caching tolerance.
 //! - Per-(user, SP) persistent NameID stored in `SamlPersistentId`.
 //! - Assertions signed mandatorily; encryption optional per SP config.
+//!
+//! Module layout:
+//! - [`xml`] — canonical XML serialisation of assertions, responses,
+//!   and IdP metadata. Sign-time + verify-time canonicalisation
+//!   discipline documented inline.
+//! - [`sign`] — XML-DSig signing of an assertion against the realm's
+//!   active RSA-SHA256 key via the `KeyManagementService` trait.
+
+pub mod sign;
+pub mod xml;
+
+pub use sign::{sign_assertion, KeyInfoMaterial, SignError};
+pub use xml::{
+    embed_signature, render_signature_block, render_signed_info, serialize_assertion,
+    serialize_idp_metadata, serialize_response, IdpMetadataInput,
+};
 
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
