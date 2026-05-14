@@ -180,10 +180,8 @@ pub fn FlowCanvas(
 
     let nodes = state.nodes.clone();
     let edges = state.edges.clone();
-    let node_index: std::collections::HashMap<String, FlowCanvasNode> = nodes
-        .iter()
-        .map(|n| (n.id.clone(), n.clone()))
-        .collect();
+    let node_index: std::collections::HashMap<String, FlowCanvasNode> =
+        nodes.iter().map(|n| (n.id.clone(), n.clone())).collect();
 
     view! {
         <div
@@ -345,10 +343,7 @@ pub fn FlowCanvas(
 /// is missing from the layout — this only happens for malformed
 /// graphs that wouldn't have compiled, but the canvas still has to
 /// render *something* so the operator can find the bad edge.
-fn edge_path_for(
-    from: Option<&FlowCanvasNode>,
-    to: Option<&FlowCanvasNode>,
-) -> (String, f32, f32) {
+fn edge_path_for(from: Option<&FlowCanvasNode>, to: Option<&FlowCanvasNode>) -> (String, f32, f32) {
     let (fx, fy) = match from {
         Some(n) => (n.x + BOX_W / 2.0, n.y + BOX_H),
         None => (VIEW_W / 2.0, VIEW_H * 0.25),
@@ -374,7 +369,9 @@ fn edge_path_for(
 mod tests {
     use super::*;
     use geonosis_core::id::{FlowId, NodeId, RealmId};
-    use geonosis_flow::{Edge, EdgeCondition, FlowNode, NodeKind, Requirement, StartNode, SuccessNode};
+    use geonosis_flow::{
+        Edge, EdgeCondition, FlowNode, NodeKind, Requirement, StartNode, SuccessNode,
+    };
 
     fn sample_definition() -> FlowDefinition {
         let start_id = NodeId::new();
@@ -496,7 +493,10 @@ mod tests {
             layout: None,
         };
         let j = serde_json::to_value(&n).unwrap();
-        assert!(j.get("layout").is_none(), "absent layout should not serialize");
+        assert!(
+            j.get("layout").is_none(),
+            "absent layout should not serialize"
+        );
     }
 
     #[test]

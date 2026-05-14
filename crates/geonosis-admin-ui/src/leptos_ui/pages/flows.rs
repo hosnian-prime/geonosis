@@ -194,11 +194,23 @@ mod tests {
             }
         });
         // Canvas mount root + interactive scaffolding.
-        assert!(html.contains("id=\"gn-flow-canvas\""), "canvas mount missing");
+        assert!(
+            html.contains("id=\"gn-flow-canvas\""),
+            "canvas mount missing"
+        );
         assert!(html.contains("data-save-action=\"/admin-next/realms/acme/flows/browser\""));
-        assert!(html.contains("data-flow-node=\"true\""), "node group missing");
-        assert!(html.contains("data-flow-edge=\"true\""), "edge group missing");
-        assert!(html.contains("data-flow-action=\"save\""), "save button missing");
+        assert!(
+            html.contains("data-flow-node=\"true\""),
+            "node group missing"
+        );
+        assert!(
+            html.contains("data-flow-edge=\"true\""),
+            "edge group missing"
+        );
+        assert!(
+            html.contains("data-flow-action=\"save\""),
+            "save button missing"
+        );
         // SVG payload rendered server-side.
         assert!(html.contains("<svg"));
         assert!(html.contains("viewBox=\"0 0 960 560\""));
@@ -225,7 +237,10 @@ mod tests {
                 />
             }
         });
-        assert!(html.contains("data-flow-initial=\"true\""), "initial state script missing");
+        assert!(
+            html.contains("data-flow-initial=\"true\""),
+            "initial state script missing"
+        );
         // Embedded JSON should appear inside the page (escaped is fine —
         // the hydrator reads textContent, not innerHTML).
         assert!(html.contains("\"alias\""));
