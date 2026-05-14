@@ -14,6 +14,7 @@ pub mod authenticators;
 pub mod broker;
 pub mod handlers;
 pub mod ldap;
+pub mod flow_runtime;
 pub mod metrics;
 pub mod rate_limit;
 pub mod security_headers;

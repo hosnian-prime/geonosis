@@ -31,6 +31,11 @@ pub struct FlowContext {
     pub username: Option<String>,
     /// The user_id when found (string form for round-trip simplicity).
     pub user_id: Option<String>,
+    /// Client this flow runs under. Populated by the OAuth /authorize
+    /// handler when constructing the FlowState; authenticators need
+    /// this to build their `AuthnContext`. String form so the JSON
+    /// shape round-trips without typed dependencies on the flow side.
+    pub client_id: Option<String>,
     /// AMR collected so far (e.g. `["pwd"]`, then `["pwd","otp"]` after MFA).
     pub amr: Vec<String>,
     /// Authentication-strength bumps (when each step asserts a level).

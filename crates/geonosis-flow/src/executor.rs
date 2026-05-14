@@ -83,9 +83,38 @@ pub trait FlowExecutor: Send + Sync {
 }
 
 /// Default executor — knows how to walk Start/Render/Success/Failure
-/// nodes. Authenticator nodes delegate to the SPI host (which the OAuth
-/// layer injects).
-pub struct DefaultExecutor;
+/// nodes. Authenticator nodes delegate to an injected
+/// `AuthnDispatcher`; the noop default keeps the pre-B5 stub-render
+/// behavior so existing tests and the server boot path stay valid
+/// until the real dispatcher lands at runtime.
+pub struct DefaultExecutor {
+    authn: std::sync::Arc<dyn crate::authenticator::AuthnDispatcher>,
+}
+
+impl Default for DefaultExecutor {
+    fn default() -> Self {
+        Self::with_noop_authenticator()
+    }
+}
+
+impl DefaultExecutor {
+    /// Construct an executor with a concrete `AuthnDispatcher`. The
+    /// server bootstrap calls this with the
+    /// `BuiltinAuthenticators`-backed dispatcher; tests call
+    /// `with_noop_authenticator()`.
+    pub fn new(
+        authn: std::sync::Arc<dyn crate::authenticator::AuthnDispatcher>,
+    ) -> Self {
+        Self { authn }
+    }
+
+    /// Convenience for tests + flow-only code paths.
+    pub fn with_noop_authenticator() -> Self {
+        Self {
+            authn: std::sync::Arc::new(crate::authenticator::NoopAuthnDispatcher),
+        }
+    }
+}
 
 #[async_trait]
 impl FlowExecutor for DefaultExecutor {
@@ -110,7 +139,7 @@ impl FlowExecutor for DefaultExecutor {
                         outcome: "advance".into(),
                     });
                     let next = flow
-                        .next(node.id, &EdgeCondition::Otherwise)
+                        .next_with_guard(node.id, &EdgeCondition::Otherwise, &state.context)
                         .ok_or_else(|| FlowError::DeadEnd(node.id.to_string()))?;
                     state.current_node = next;
                     // Continue executing the next node in this same step
@@ -133,22 +162,98 @@ impl FlowExecutor for DefaultExecutor {
                         outcome: "submit".into(),
                     });
                     let next = flow
-                        .next(node.id, &EdgeCondition::Success)
-                        .or_else(|| flow.next(node.id, &EdgeCondition::Otherwise))
+                        .next_with_guard(node.id, &EdgeCondition::Success, &state.context)
+                        .or_else(|| flow.next_with_guard(node.id, &EdgeCondition::Otherwise, &state.context))
                         .ok_or_else(|| FlowError::DeadEnd(node.id.to_string()))?;
                     state.current_node = next;
                     continue;
                 }
                 (NodeKind::Authenticator { provider_urn }, _) => {
-                    // The default executor doesn't know how to actually run
-                    // authenticators — the OAuth layer wraps this with a
-                    // ProviderRegistry-aware extension. For the in-tree
-                    // unit-test path we just return a Render that names the
-                    // expected provider.
-                    return Ok(StepOutput::Render(RenderInstruction {
-                        template: format!("authenticate::{provider_urn}"),
-                        locals: state.context.locals.clone(),
-                    }));
+                    let outcome = self
+                        .authn
+                        .dispatch(provider_urn, state, &input)
+                        .await?;
+                    use crate::authenticator::AuthnStepOutcome::*;
+                    match outcome {
+                        Render(r) => {
+                            return Ok(StepOutput::Render(r));
+                        }
+                        Success {
+                            amr,
+                            authn_level_delta,
+                            user_id,
+                            locals,
+                        } => {
+                            for a in amr {
+                                if !state.context.amr.contains(&a) {
+                                    state.context.amr.push(a);
+                                }
+                            }
+                            state.context.authn_level += authn_level_delta;
+                            if let Some(uid) = user_id {
+                                state.context.user_id = Some(uid);
+                            }
+                            state.context.locals.extend(locals);
+                            state.history.push(FlowHistoryEntry {
+                                node: node.id,
+                                at: Utc::now(),
+                                outcome: "success".into(),
+                            });
+                            let next = flow
+                                .next_with_guard(
+                                    node.id,
+                                    &EdgeCondition::Success,
+                                    &state.context,
+                                )
+                                .or_else(|| {
+                                    flow.next_with_guard(
+                                        node.id,
+                                        &EdgeCondition::Otherwise,
+                                        &state.context,
+                                    )
+                                })
+                                .ok_or_else(|| {
+                                    FlowError::DeadEnd(node.id.to_string())
+                                })?;
+                            state.current_node = next;
+                            continue;
+                        }
+                        Skip => {
+                            state.history.push(FlowHistoryEntry {
+                                node: node.id,
+                                at: Utc::now(),
+                                outcome: "skip".into(),
+                            });
+                            let next = flow
+                                .next_with_guard(
+                                    node.id,
+                                    &EdgeCondition::Otherwise,
+                                    &state.context,
+                                )
+                                .ok_or_else(|| {
+                                    FlowError::DeadEnd(node.id.to_string())
+                                })?;
+                            state.current_node = next;
+                            continue;
+                        }
+                        Failure(reason) => {
+                            state.history.push(FlowHistoryEntry {
+                                node: node.id,
+                                at: Utc::now(),
+                                outcome: "failure".into(),
+                            });
+                            let next = flow.next_with_guard(
+                                node.id,
+                                &EdgeCondition::Failure,
+                                &state.context,
+                            );
+                            if let Some(n) = next {
+                                state.current_node = n;
+                                continue;
+                            }
+                            return Ok(StepOutput::Failed(reason));
+                        }
+                    }
                 }
                 (NodeKind::Broker { idp_alias }, _) => {
                     return Ok(StepOutput::Render(RenderInstruction {
@@ -160,8 +265,12 @@ impl FlowExecutor for DefaultExecutor {
                     // Switch nodes are pure routing; v0.1 supports literal
                     // condition labels which match `EdgeCondition::Status`.
                     let next = flow
-                        .next(node.id, &EdgeCondition::Status(condition.clone()))
-                        .or_else(|| flow.next(node.id, &EdgeCondition::Otherwise))
+                        .next_with_guard(
+                            node.id,
+                            &EdgeCondition::Status(condition.clone()),
+                            &state.context,
+                        )
+                        .or_else(|| flow.next_with_guard(node.id, &EdgeCondition::Otherwise, &state.context))
                         .ok_or_else(|| FlowError::DeadEnd(node.id.to_string()))?;
                     state.current_node = next;
                     continue;
@@ -169,7 +278,7 @@ impl FlowExecutor for DefaultExecutor {
                 (NodeKind::Action { .. }, _) | (NodeKind::SubFlow { .. }, _) => {
                     // v0.1: Action / SubFlow advance via Otherwise edge.
                     let next = flow
-                        .next(node.id, &EdgeCondition::Otherwise)
+                        .next_with_guard(node.id, &EdgeCondition::Otherwise, &state.context)
                         .ok_or_else(|| FlowError::DeadEnd(node.id.to_string()))?;
                     state.current_node = next;
                     continue;
@@ -233,6 +342,7 @@ mod tests {
         let start = node(NodeKind::Start(StartNode::default()));
         let success = node(NodeKind::Success(SuccessNode::default()));
         let def = FlowDefinition {
+            realm_id: geonosis_core::id::RealmId::new(),
             id: FlowId::new(),
             alias: "x".into(),
             display_name: "X".into(),
@@ -254,7 +364,7 @@ mod tests {
             start.id,
             Duration::from_secs(300),
         );
-        let out = DefaultExecutor.step(&compiled, &mut state, StepInput::Start).await.unwrap();
+        let out = DefaultExecutor::default().step(&compiled, &mut state, StepInput::Start).await.unwrap();
         assert!(matches!(out, StepOutput::Done(_)));
     }
 
@@ -266,6 +376,7 @@ mod tests {
         });
         let success = node(NodeKind::Success(SuccessNode::default()));
         let def = FlowDefinition {
+            realm_id: geonosis_core::id::RealmId::new(),
             id: FlowId::new(),
             alias: "x".into(),
             display_name: "X".into(),
@@ -295,13 +406,13 @@ mod tests {
             start.id,
             Duration::from_secs(300),
         );
-        let out = DefaultExecutor.step(&compiled, &mut state, StepInput::Start).await.unwrap();
+        let out = DefaultExecutor::default().step(&compiled, &mut state, StepInput::Start).await.unwrap();
         match out {
             StepOutput::Render(r) => assert_eq!(r.template, "login"),
             other => panic!("expected render, got {other:?}"),
         }
         // After submit, we proceed to success.
-        let out = DefaultExecutor
+        let out = DefaultExecutor::default()
             .step(&compiled, &mut state, StepInput::Submit(Default::default()))
             .await
             .unwrap();
@@ -313,6 +424,7 @@ mod tests {
         let start = node(NodeKind::Start(StartNode::default()));
         let success = node(NodeKind::Success(SuccessNode::default()));
         let def = FlowDefinition {
+            realm_id: geonosis_core::id::RealmId::new(),
             id: FlowId::new(),
             alias: "x".into(),
             display_name: "X".into(),
@@ -336,7 +448,7 @@ mod tests {
         );
         // Force expiry.
         state.expires_at = Utc::now() - chrono::Duration::seconds(1);
-        let err = DefaultExecutor
+        let err = DefaultExecutor::default()
             .step(&compiled, &mut state, StepInput::Start)
             .await
             .unwrap_err();

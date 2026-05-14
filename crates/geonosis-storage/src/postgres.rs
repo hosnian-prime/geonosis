@@ -956,6 +956,99 @@ impl Storage for PostgresStorage {
         Ok(())
     }
 
+    // ---- Auth flow definitions ----
+    async fn save_auth_flow(
+        &self,
+        flow: geonosis_flow::FlowDefinition,
+    ) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, flow.realm_id).await?;
+        let graph = serde_json::to_value(&flow).map_err(json_err)?;
+        sqlx::query(
+            "INSERT INTO auth_flow (id, realm_id, alias, display_name, version, graph, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, now())",
+        )
+        .bind(flow.id.to_string())
+        .bind(flow.realm_id.to_string())
+        .bind(&flow.alias)
+        .bind(&flow.display_name)
+        .bind(flow.version)
+        .bind(&graph)
+        .execute(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
+    }
+
+    async fn get_auth_flow_by_alias(
+        &self,
+        realm: RealmId,
+        alias: &str,
+    ) -> Result<geonosis_flow::FlowDefinition, StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let row = sqlx::query(
+            "SELECT graph FROM auth_flow
+             WHERE realm_id = $1 AND alias = $2
+             ORDER BY version DESC LIMIT 1",
+        )
+        .bind(realm.to_string())
+        .bind(alias)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(sqlx_err)?
+        .ok_or(StorageError::NotFound)?;
+        let graph: serde_json::Value = row.try_get("graph").map_err(sqlx_err)?;
+        let flow: geonosis_flow::FlowDefinition =
+            serde_json::from_value(graph).map_err(json_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(flow)
+    }
+
+    async fn list_auth_flows(
+        &self,
+        realm: RealmId,
+    ) -> Result<Vec<geonosis_flow::FlowDefinition>, StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        // DISTINCT ON keeps only the highest-version row per alias —
+        // the latest revision the admin UI should render.
+        let rows = sqlx::query(
+            "SELECT DISTINCT ON (alias) graph FROM auth_flow
+             WHERE realm_id = $1
+             ORDER BY alias, version DESC",
+        )
+        .bind(realm.to_string())
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(sqlx_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        rows.iter()
+            .map(|r| {
+                let g: serde_json::Value = r.try_get("graph").map_err(sqlx_err)?;
+                serde_json::from_value(g).map_err(json_err)
+            })
+            .collect()
+    }
+
+    async fn delete_auth_flow(
+        &self,
+        realm: RealmId,
+        id: geonosis_core::FlowId,
+    ) -> Result<(), StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let n = sqlx::query("DELETE FROM auth_flow WHERE id = $1 AND realm_id = $2")
+            .bind(id.to_string())
+            .bind(realm.to_string())
+            .execute(&mut *tx)
+            .await
+            .map_err(sqlx_err)?
+            .rows_affected();
+        if n == 0 {
+            return Err(StorageError::NotFound);
+        }
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(())
+    }
+
     // ---- Consent ----
     async fn save_consent_grant(&self, grant: ConsentGrant) -> Result<(), StorageError> {
         let mut tx = begin_realm(&self.pool, grant.realm_id).await?;

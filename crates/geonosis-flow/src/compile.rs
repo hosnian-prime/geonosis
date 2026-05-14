@@ -61,6 +61,36 @@ impl CompiledFlow {
             .find(|e| matches!(e.on, EdgeCondition::Otherwise))
             .map(|e| e.to)
     }
+
+    /// Guard-aware variant of `next()`. Iterates candidate edges in
+    /// declaration order, returns the first whose `guard` map passes
+    /// `eval_guard(&edge.guard, ctx)`. Falls back to an `Otherwise`
+    /// edge (also guard-checked) when no condition-match passes.
+    ///
+    /// `next()` stays available for call sites that do not yet have a
+    /// `FlowContext` to evaluate against (compile-time validators,
+    /// tests). The executor calls this variant.
+    pub fn next_with_guard(
+        &self,
+        from: NodeId,
+        on: &EdgeCondition,
+        ctx: &crate::state::FlowContext,
+    ) -> Option<NodeId> {
+        let edges = self.outbound.get(&from)?;
+        if let Some(e) = edges
+            .iter()
+            .find(|e| &e.on == on && crate::guard::eval_guard(&e.guard, ctx))
+        {
+            return Some(e.to);
+        }
+        edges
+            .iter()
+            .find(|e| {
+                matches!(e.on, EdgeCondition::Otherwise)
+                    && crate::guard::eval_guard(&e.guard, ctx)
+            })
+            .map(|e| e.to)
+    }
 }
 
 pub fn compile(def: FlowDefinition) -> Result<CompiledFlow, CompileError> {
@@ -150,6 +180,7 @@ mod tests {
         let start = n(NodeKind::Start(StartNode::default()));
         let success = n(NodeKind::Success(SuccessNode::default()));
         let def = FlowDefinition {
+            realm_id: geonosis_core::id::RealmId::new(),
             id: FlowId::new(),
             alias: "x".into(),
             display_name: "X".into(),
@@ -170,6 +201,7 @@ mod tests {
     fn missing_success_is_rejected() {
         let start = n(NodeKind::Start(StartNode::default()));
         let def = FlowDefinition {
+            realm_id: geonosis_core::id::RealmId::new(),
             id: FlowId::new(),
             alias: "x".into(),
             display_name: "X".into(),
@@ -190,6 +222,7 @@ mod tests {
             template: "x".into(),
         });
         let def = FlowDefinition {
+            realm_id: geonosis_core::id::RealmId::new(),
             id: FlowId::new(),
             alias: "x".into(),
             display_name: "X".into(),

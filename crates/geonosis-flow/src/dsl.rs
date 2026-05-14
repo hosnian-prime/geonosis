@@ -4,12 +4,13 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use geonosis_core::id::{FlowId, NodeId};
+use geonosis_core::id::{FlowId, NodeId, RealmId};
 
 /// The persisted, version-snapshotted form of a flow.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowDefinition {
     pub id: FlowId,
+    pub realm_id: RealmId,
     pub alias: String,
     pub display_name: String,
     pub version: i32,
@@ -104,6 +105,7 @@ mod tests {
     #[test]
     fn flow_definition_roundtrips_through_json() {
         let f = FlowDefinition {
+            realm_id: geonosis_core::id::RealmId::new(),
             id: FlowId::new(),
             alias: "browser".into(),
             display_name: "Browser".into(),
