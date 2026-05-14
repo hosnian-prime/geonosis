@@ -23,8 +23,8 @@ pub mod traits;
 pub use error::StorageError;
 pub use memory::MemoryStorage;
 pub use traits::{
-    ConsentGrant, DeviceGrant, DeviceGrantStatus, FlowStateRow, OrgIdpBinding, ParRequest,
-    SpiBindingRow, Storage, WasmModule, WasmModuleHeader,
+    AuditEventFilter, AuditEventRow, ConsentGrant, DeviceGrant, DeviceGrantStatus, FlowStateRow,
+    OrgIdpBinding, ParRequest, SpiBindingRow, Storage, WasmModule, WasmModuleHeader,
 };
 
 #[cfg(feature = "postgres")]

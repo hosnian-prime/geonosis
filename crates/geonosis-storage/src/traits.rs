@@ -508,6 +508,50 @@ pub trait Storage: Send + Sync {
         organization_id: OrganizationId,
         idp_alias: &str,
     ) -> Result<(), StorageError>;
+
+    // ---- Audit event query ----
+
+    /// List audit events for a realm with optional filters. Ordered
+    /// by `occurred_at DESC`. Per docs/13-observability.md the table
+    /// is partitioned by month + indexed on `(realm_id, occurred_at)`
+    /// + `(realm_id, action, occurred_at)`, so this query stays
+    /// bounded under heavy ingest.
+    ///
+    /// The actor filter does a substring match against the JSONB
+    /// `actor::text` so callers can filter by kind (`user`, `client`,
+    /// `system`) or by ULID without needing a structured query.
+    async fn list_audit_events(
+        &self,
+        realm: RealmId,
+        filter: &AuditEventFilter<'_>,
+        limit: usize,
+    ) -> Result<Vec<AuditEventRow>, StorageError>;
+}
+
+/// Filter inputs for `list_audit_events`. Every field is optional; an
+/// empty filter returns the most recent N rows.
+#[derive(Debug, Clone, Default)]
+pub struct AuditEventFilter<'a> {
+    pub action: Option<&'a str>,
+    pub actor: Option<&'a str>,
+    pub from: Option<chrono::DateTime<chrono::Utc>>,
+    pub until: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+/// Storage-shaped projection of one `audit_event` row. Mirrors the
+/// REST response shape under `/admin/v1/realms/:slug/events`. We
+/// keep `actor` + `target` as raw JSON values so the schema stays in
+/// sync with the audit-sink writer without a typed Actor/Target
+/// dependency from `geonosis-storage` onto `geonosis-audit`.
+#[derive(Debug, Clone)]
+pub struct AuditEventRow {
+    pub id: String,
+    pub realm_id: String,
+    pub occurred_at: chrono::DateTime<chrono::Utc>,
+    pub actor: serde_json::Value,
+    pub action: String,
+    pub target: Option<serde_json::Value>,
+    pub detail: serde_json::Value,
 }
 
 /// Per-org binding to one of the realm's identity providers.
