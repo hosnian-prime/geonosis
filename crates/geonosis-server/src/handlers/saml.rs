@@ -543,6 +543,37 @@ async fn handle_sso(state: AppState, slug: String, form: SamlSsoForm) -> Respons
         ),
     };
 
+    // POST-binding XML-DSig verification per `docs/20-saml-idp.md`
+    // §"Signed AuthnRequest". The Redirect path verifies the query-
+    // string signature in `sso_get` before we get here. POST
+    // signatures land inside the XML and must be verified against
+    // the SP's pinned `authn_request_signing_certificates`. We try
+    // verification unconditionally: if the SP didn't sign and didn't
+    // ask to be required-to-sign, `NoSignature` is treated as OK;
+    // if `want_authnrequest_signed=true` but no signature element is
+    // present, we reject explicitly.
+    let xml_str = std::str::from_utf8(&xml_bytes).unwrap_or("");
+    match geonosis_protocol_saml_idp::verify_post_authn_request_signature(
+        xml_str,
+        &sp_config.authn_request_signing_certificates,
+    ) {
+        Ok(()) => {}
+        Err(geonosis_protocol_saml_idp::PostSigError::NoSignature) => {
+            if sp_config.want_authnrequest_signed {
+                return reject(
+                    "AuthnRequest must be signed for this SP but no <Signature> element found",
+                    StatusCode::BAD_REQUEST,
+                );
+            }
+        }
+        Err(e) => {
+            return reject(
+                &format!("AuthnRequest signature verification failed: {e}"),
+                StatusCode::BAD_REQUEST,
+            );
+        }
+    }
+
     // ACS validation: the AuthnRequest's AssertionConsumerServiceURL
     // (if supplied) MUST be in the SP's whitelist. If absent, fall
     // back to the first registered ACS URL.
@@ -885,7 +916,15 @@ pub async fn unsolicited(
     let issuer_base = state.public_base_url.as_str().trim_end_matches('/');
     let idp_issuer = format!("{issuer_base}/realms/{}", realm.slug);
 
-    let attrs = crate::handlers::login_actions::default_user_attributes(&user);
+    // Same mapper-driven logic as the SP-initiated SSO path in
+    // `login_actions::try_complete_saml`: operator-supplied
+    // `attribute_mappers` drive the AttributeStatement, with the
+    // baseline defaults applied when none are configured.
+    let attrs = if sp_config.attribute_mappers.is_empty() {
+        crate::handlers::login_actions::default_user_attributes(&user)
+    } else {
+        geonosis_protocol_saml_idp::apply_attribute_mappers(&user, &sp_config.attribute_mappers)
+    };
     let assertion = geonosis_protocol_saml_idp::build_assertion(
         &idp_issuer,
         &sp_config,

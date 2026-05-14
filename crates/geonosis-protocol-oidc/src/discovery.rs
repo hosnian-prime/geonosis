@@ -78,6 +78,7 @@ pub fn discovery_document(issuer: Url) -> DiscoveryDocument {
             "authorization_code".into(),
             "refresh_token".into(),
             "client_credentials".into(),
+            "password".into(),
             "urn:ietf:params:oauth:grant-type:device_code".into(),
             "urn:ietf:params:oauth:grant-type:token-exchange".into(),
         ],
@@ -153,5 +154,18 @@ mod tests {
             .grant_types_supported
             .iter()
             .any(|g| g.contains("token-exchange")));
+    }
+
+    #[test]
+    fn discovery_advertises_password_grant() {
+        // `password` (Direct Access Grant) is part of the v0.1 surface per
+        // docs/03 §"Path 4" and docs/06 §`direct-grant` → `grant_type=password`.
+        // RFC 6749 §3.3 requires the OP to advertise every grant it supports.
+        let d = discovery_document(Url::parse("https://g.example/realms/r").unwrap());
+        assert!(
+            d.grant_types_supported.iter().any(|g| g == "password"),
+            "discovery must advertise `password` grant: {:?}",
+            d.grant_types_supported,
+        );
     }
 }

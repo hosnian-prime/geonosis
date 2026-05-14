@@ -1812,6 +1812,7 @@ mod tests {
             default_groups: vec![],
             default_roles: geonosis_core::realm::DefaultRoles::default(),
             organizations_enabled: true,
+            organization_policy: Default::default(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }

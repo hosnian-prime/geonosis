@@ -27,7 +27,7 @@ pub use agent::{Agent, AgentAuthMethod, AgentCapability, AgentKind, AgentRateLim
 pub use attribute::{AttributeValue, RequiredAction};
 pub use client::{
     AccessTokenType, Client, ClientAuthMethod, ClientKind, ConsentPolicy, FlowBinding,
-    GrantPolicy, GrantType, PkceMode, RedirectUri,
+    GrantPolicy, GrantType, PkceMode, RedirectUri, RedirectUriError,
 };
 pub use common::{Amr, AuthnLevel, JwsAlgorithm, SenderConstraint, SslRequirement};
 pub use credential::{Credential, CredentialKind, CredentialRef};
