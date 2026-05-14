@@ -100,6 +100,7 @@ pub async fn run(storage: Arc<dyn Storage>) -> Result<(), BootstrapError> {
         updated_at: now,
     };
     storage.create_realm(realm).await?;
+    geonosis_storage::seed_default_flows(storage.as_ref(), realm_id).await?;
 
     provision_user(&storage, realm_id, END_USER, END_USER_PW, now).await?;
     provision_user(&storage, realm_id, ADMIN_USER, ADMIN_PW, now).await?;
@@ -208,6 +209,36 @@ fn relaxed_password_policy() -> geonosis_core::PasswordPolicy {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn quickstart_bootstrap_seeds_built_in_flows() {
+        // Without the flow seed an /authorize against the bootstrapped
+        // realm 500s with "realm has no browser flow" — assert all 7
+        // canonical aliases land so the recipe is reproducible.
+        let storage: Arc<dyn Storage> = Arc::new(geonosis_storage::MemoryStorage::new());
+        run(storage.clone()).await.unwrap();
+        let realm = storage.get_realm_by_slug(REALM_SLUG).await.unwrap();
+        let mut aliases: Vec<String> = storage
+            .list_auth_flows(realm.id)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|f| f.alias)
+            .collect();
+        aliases.sort();
+        assert_eq!(
+            aliases,
+            vec![
+                "browser",
+                "client-authentication",
+                "direct-grant",
+                "first-broker-login",
+                "registration",
+                "reset-credentials",
+                "step-up",
+            ]
+        );
+    }
 
     #[tokio::test]
     async fn quickstart_bootstrap_creates_realm_and_users() {
