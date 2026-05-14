@@ -1670,6 +1670,7 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "geonosis-broker",
  "geonosis-core",
  "geonosis-flow",
  "geonosis-i18n",
