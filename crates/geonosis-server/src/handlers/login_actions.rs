@@ -244,6 +244,29 @@ async fn mint_code_and_redirect(
         };
         match try_complete_saml(state, realm, &client, &user, p, &session_id).await {
             Some(resp) => {
+                // Track per-SP session participation so /saml/slo
+                // can fan out to every SP the user signed into.
+                // Per docs/20-saml-idp.md §SLO: `Session.clients`
+                // is the source of truth for the multi-SP logout
+                // dispatch.
+                if let Ok(mut session) = state.storage.get_session(&session_id).await {
+                    let raw_config = client.saml_sp_config.as_ref();
+                    let backchannel = raw_config
+                        .and_then(|v| {
+                            geonosis_protocol_saml_idp::SamlSpClientConfig::try_from_value(v)
+                                .ok()
+                        })
+                        .map(|c| c.slo_url.is_some())
+                        .unwrap_or(false);
+                    session.clients.push(geonosis_core::ClientSessionRef {
+                        client_id: client.id,
+                        last_seen_at: chrono::Utc::now(),
+                        frontchannel_logout: false,
+                        backchannel_logout: backchannel,
+                    });
+                    session.last_seen_at = chrono::Utc::now();
+                    let _ = state.storage.update_session(session).await;
+                }
                 let _ = state.storage.delete_flow_state(&row.state.id).await;
                 return resp;
             }
