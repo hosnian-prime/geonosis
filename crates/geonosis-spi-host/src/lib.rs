@@ -20,6 +20,15 @@ pub mod dispatch;
 pub mod error;
 pub mod registry;
 
+#[cfg(feature = "wasm-runtime")]
+pub mod runtime;
+
 pub use dispatch::{DispatchMode, WitInterfaceName};
 pub use error::{ProviderError, ProviderResult};
 pub use registry::{LookupOutcome, ProviderBinding, ProviderCapabilities, ProviderRegistry};
+
+#[cfg(feature = "wasm-runtime")]
+pub use runtime::{
+    HostAllowlist, HostState, ModuleStore, ResourceLimits, RuntimeError, SandboxConfig,
+    WasmEngine, WasmMapperRuntime,
+};
