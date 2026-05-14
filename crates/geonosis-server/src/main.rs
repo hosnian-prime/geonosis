@@ -89,6 +89,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         broker_adapters: Arc::new(geonosis_broker::BuiltinAdapters::default()),
         broker: Arc::new(geonosis_server::broker::BrokerRuntime::new()),
         ldap: Arc::new(geonosis_server::ldap::LdapRuntime::new()),
+        metrics: Arc::new(geonosis_server::metrics::MetricsState::new()),
     };
 
     let listener = tokio::net::TcpListener::bind(&args.listen).await?;

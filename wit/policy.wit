@@ -1,0 +1,43 @@
+// `geonosis:policy@0.1.0` — decision-point interface used by the
+// authorization pipeline to gate scope grants, agent capability
+// reductions, and other policy questions the server consults.
+// Dispatch mode: FirstDecision.
+
+package geonosis:policy@0.1.0;
+
+interface policy {
+    use geonosis:types/types@0.1.0.{provider-info, plugin-error};
+
+    /// Permit, deny, or skip the current decision point. `skip`
+    /// lets the next policy in the chain answer; the host treats
+    /// the absence of any permit/deny as `deny` (closed-by-default).
+    variant decision {
+        permit(list<u8>),       // bincode-encoded optional reasons / obligations
+        deny(string),           // human-readable reason
+        skip,
+    }
+
+    /// `decision-point` is a stable kebab-case identifier such as
+    /// `client.scope.grant` or `agent.capability.reduce`. The ctx
+    /// payload is a bincode-encoded `serde_json::Value` shaped per
+    /// decision point; plugins SHOULD be tolerant of unknown fields.
+    record policy-context {
+        realm: string,
+        decision-point: string,
+        subject: option<string>,
+        ctx-bytes: list<u8>,
+    }
+
+    describe: func() -> provider-info;
+
+    evaluate: func(
+        ctx: policy-context,
+        config: list<u8>,
+    ) -> result<decision, plugin-error>;
+}
+
+world policy-provider {
+    import geonosis:host/logging@0.1.0;
+    import geonosis:host/secrets@0.1.0;
+    export policy;
+}

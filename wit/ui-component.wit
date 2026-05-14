@@ -1,0 +1,51 @@
+// `geonosis:ui-component@0.1.0` — server-side admin / login UI
+// component overrides. Themes bind these per slot at install time;
+// the renderer asks the registry for the current slot impl and
+// appends the returned HTML at the slot's anchor with CSP nonces
+// injected. The host pre-sanitizes `locals` before handing it to the
+// plugin so the trust boundary stays at the host.
+// Dispatch mode: NamedSelect.
+
+package geonosis:ui-component@0.1.0;
+
+interface ui-component {
+    use geonosis:types/types@0.1.0.{provider-info, plugin-error};
+
+    record component-info {
+        provider: provider-info,
+        /// Slot identifiers this component is willing to render
+        /// (e.g. `login.password-form`, `admin.user-detail-tabs`).
+        slots: list<string>,
+    }
+
+    record component-context {
+        realm: string,
+        slot: string,
+        locale: string,
+        /// CSP nonce the host will require on any `<script>` tags
+        /// the plugin emits. Plugins MUST echo this nonce; the host
+        /// strips/rejects others.
+        csp-nonce: string,
+    }
+
+    record rendered-html {
+        html: string,
+        /// Optional additional CSP directives the host MAY merge into
+        /// the page header for this render (e.g. extra `connect-src`
+        /// for a charting widget). The host audits these at theme
+        /// install time and may refuse incompatible values.
+        csp-extra: list<tuple<string, string>>,
+    }
+
+    describe: func() -> component-info;
+
+    render: func(
+        ctx: component-context,
+        locals: list<u8>,
+    ) -> result<rendered-html, plugin-error>;
+}
+
+world ui-component-provider {
+    import geonosis:host/logging@0.1.0;
+    export ui-component;
+}

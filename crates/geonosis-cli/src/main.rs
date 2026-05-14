@@ -103,6 +103,35 @@ enum RealmCmd {
 enum FlowsCmd {
     /// Validate a flow JSON file offline.
     Validate { path: String },
+    /// Download the flow under `--realm` / `--alias` from the admin
+    /// API and write it to stdout (or `--out` if given). The server
+    /// returns the canonical `FlowDefinition` JSON so a round-trip
+    /// through `import` is byte-stable.
+    Export {
+        /// Realm slug.
+        #[arg(long)]
+        realm: String,
+        /// Flow alias (e.g. `browser`, `direct-grant`).
+        #[arg(long)]
+        alias: String,
+        /// Output path; defaults to stdout.
+        #[arg(long)]
+        out: Option<String>,
+    },
+    /// Upload a flow JSON file to the admin API. The file is
+    /// validated offline first so a malformed flow never reaches the
+    /// server (the admin endpoint validates again as defense in depth).
+    Import {
+        /// Realm slug.
+        #[arg(long)]
+        realm: String,
+        /// Flow alias to install or replace.
+        #[arg(long)]
+        alias: String,
+        /// Path to a `FlowDefinition` JSON file.
+        #[arg(long)]
+        file: String,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -167,6 +196,18 @@ fn main() -> anyhow::Result<()> {
         }
         Cmd::Flows { cmd } => match cmd {
             FlowsCmd::Validate { path } => validate_flow(&path),
+            FlowsCmd::Export { realm, alias, out } => {
+                let server = cli.server.clone().ok_or_else(|| {
+                    anyhow::anyhow!("flows export requires --server or GEONOSIS_URL")
+                })?;
+                rt.block_on(export_flow(&server, &realm, &alias, out.as_deref()))
+            }
+            FlowsCmd::Import { realm, alias, file } => {
+                let server = cli.server.clone().ok_or_else(|| {
+                    anyhow::anyhow!("flows import requires --server or GEONOSIS_URL")
+                })?;
+                rt.block_on(import_flow(&server, &realm, &alias, &file))
+            }
         },
         Cmd::Realm { cmd } => match cmd {
             RealmCmd::Create { slug } => anyhow::bail!(
@@ -354,5 +395,73 @@ fn validate_flow(path: &str) -> anyhow::Result<()> {
     let def: geonosis_flow::FlowDefinition = serde_json::from_slice(&bytes)?;
     geonosis_flow::compile(def)?;
     println!("flow OK");
+    Ok(())
+}
+
+async fn export_flow(
+    server: &str,
+    realm: &str,
+    alias: &str,
+    out: Option<&str>,
+) -> anyhow::Result<()> {
+    let url = format!(
+        "{}/admin/v1/realms/{}/flows/{}",
+        server.trim_end_matches('/'),
+        realm,
+        alias
+    );
+    let resp = reqwest::Client::new().get(&url).send().await?;
+    let status = resp.status();
+    let body = resp.bytes().await?;
+    if !status.is_success() {
+        anyhow::bail!(
+            "export failed ({}): {}",
+            status,
+            String::from_utf8_lossy(&body)
+        );
+    }
+    // Round-trip through `FlowDefinition` so we surface JSON errors
+    // here instead of writing garbage to disk.
+    let def: geonosis_flow::FlowDefinition = serde_json::from_slice(&body)?;
+    let pretty = serde_json::to_vec_pretty(&def)?;
+    match out {
+        None => {
+            use std::io::Write as _;
+            std::io::stdout().write_all(&pretty)?;
+            std::io::stdout().write_all(b"\n")?;
+        }
+        Some(path) => std::fs::write(path, pretty)?,
+    }
+    Ok(())
+}
+
+async fn import_flow(
+    server: &str,
+    realm: &str,
+    alias: &str,
+    file: &str,
+) -> anyhow::Result<()> {
+    let bytes = std::fs::read(file)?;
+    // Validate locally first; bad input never hits the server.
+    let def: geonosis_flow::FlowDefinition = serde_json::from_slice(&bytes)?;
+    geonosis_flow::compile(def.clone())?;
+    let url = format!(
+        "{}/admin/v1/realms/{}/flows/{}",
+        server.trim_end_matches('/'),
+        realm,
+        alias
+    );
+    let resp = reqwest::Client::new()
+        .put(&url)
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body(serde_json::to_vec(&def)?)
+        .send()
+        .await?;
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    if !status.is_success() {
+        anyhow::bail!("import failed ({}): {}", status, body);
+    }
+    println!("flow {alias} imported into realm {realm}");
     Ok(())
 }
