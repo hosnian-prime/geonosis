@@ -15,6 +15,7 @@ pub mod broker;
 pub mod handlers;
 pub mod ldap;
 pub mod metrics;
+pub mod rate_limit;
 pub mod security_headers;
 pub mod state;
 pub mod token_verify;

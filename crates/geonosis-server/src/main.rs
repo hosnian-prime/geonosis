@@ -125,6 +125,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         broker: Arc::new(geonosis_server::broker::BrokerRuntime::new()),
         ldap: Arc::new(geonosis_server::ldap::LdapRuntime::new()),
         metrics: Arc::new(geonosis_server::metrics::MetricsState::new()),
+        rate_limiter: Arc::new(
+            geonosis_server::rate_limit::PerRealmRateLimiter::default_v0_1(),
+        ),
     };
 
     // Spawn the audit-retention runner when Postgres is the backend.
