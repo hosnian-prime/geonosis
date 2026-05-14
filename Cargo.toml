@@ -103,6 +103,8 @@ p384 = { version = "0.13", features = ["ecdsa"] }
 spki = "0.7"
 pkcs8 = { version = "0.10", features = ["pem"] }
 x509-parser = "0.16"
+rcgen = { version = "0.13", default-features = false, features = ["pem", "crypto", "ring"] }
+rustls-pki-types = "1"
 
 # Postgres
 sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "chrono", "uuid", "json", "macros"] }

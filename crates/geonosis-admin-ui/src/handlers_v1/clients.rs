@@ -38,6 +38,14 @@ pub struct CreateClientRequest {
     pub default_scopes: Vec<geonosis_core::ScopeName>,
     #[serde(default)]
     pub optional_scopes: Vec<geonosis_core::ScopeName>,
+    /// Optional SAML 2.0 SP config — required when
+    /// `kind = SamlServiceProvider` if the SP is to participate in
+    /// the SAML SSO endpoints. Validated against
+    /// `geonosis_protocol_saml_idp::SamlSpClientConfig` schema on
+    /// the way in (round-trip parse-then-serialise) so a bad blob
+    /// fails fast with a 400.
+    #[serde(default)]
+    pub saml_sp_config: Option<serde_json::Value>,
 }
 
 pub async fn list(
@@ -107,6 +115,7 @@ pub async fn create(
         backchannel_logout_url: None,
         client_authentication_keys: vec![],
         pairwise_sub_algorithm: None,
+        saml_sp_config: validate_saml_sp_config(&kind, req.saml_sp_config)?,
         enabled: true,
         created_at: now,
         updated_at: now,
@@ -196,4 +205,27 @@ pub async fn delete_(
         serde_json::json!({ "client_id": existing.client_id }),
     );
     Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+/// Round-trip the operator-supplied SAML config through the typed
+/// schema to validate it. `None` is always accepted (an OIDC client
+/// has no SAML config). When `Some` is supplied with a non-SAML
+/// client kind we reject — config must match kind.
+fn validate_saml_sp_config(
+    kind: &ClientKind,
+    raw: Option<serde_json::Value>,
+) -> Result<Option<serde_json::Value>, AdminError> {
+    let Some(raw) = raw else {
+        return Ok(None);
+    };
+    if !matches!(kind, ClientKind::SamlServiceProvider) {
+        return Err(AdminError::Storage(
+            "saml_sp_config supplied for a non-SAML client kind".into(),
+        ));
+    }
+    // Parse the typed form to surface schema errors immediately, then
+    // re-serialise so the persisted blob is the canonical layout.
+    let typed = geonosis_protocol_saml_idp::SamlSpClientConfig::try_from_value(&raw)
+        .map_err(|e| AdminError::Storage(format!("invalid saml_sp_config: {e}")))?;
+    Ok(Some(typed.to_value()))
 }

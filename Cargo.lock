@@ -1730,6 +1730,7 @@ dependencies = [
  "geonosis-crypto",
  "geonosis-flow",
  "geonosis-i18n",
+ "geonosis-protocol-saml-idp",
  "geonosis-storage",
  "geonosis-theme",
  "geonosis-ui-kit",
@@ -1904,7 +1905,9 @@ dependencies = [
  "pretty_assertions",
  "rand 0.8.6",
  "rand_core 0.6.4",
+ "rcgen",
  "rsa",
+ "rustls-pki-types",
  "serde",
  "serde_json",
  "sha2",
@@ -1913,6 +1916,7 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tracing",
+ "x509-parser 0.16.0",
  "zeroize",
 ]
 
@@ -2025,9 +2029,11 @@ dependencies = [
  "geonosis-crypto",
  "geonosis-saml-types",
  "parking_lot",
+ "quick-xml",
  "rand 0.8.6",
  "rsa",
  "serde",
+ "serde_json",
  "sha2",
  "thiserror 1.0.69",
  "tokio",
@@ -2086,6 +2092,7 @@ dependencies = [
  "rand 0.8.6",
  "serde",
  "serde_json",
+ "sha2",
  "sqlx",
  "thiserror 1.0.69",
  "tokio",
@@ -3676,6 +3683,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
 
 [[package]]
+name = "pem"
+version = "3.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d30c53c26bc5b31a98cd02d20f25a7c8567146caf63ed593a9d87b2775291be"
+dependencies = [
+ "base64 0.22.1",
+ "serde_core",
+]
+
+[[package]]
 name = "pem-rfc7468"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4119,6 +4136,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "76afc826de14238e6e8c374ddcc1fa19e374fd8dd986b0d2af0d02377261d83c"
 dependencies = [
  "getrandom 0.3.4",
+]
+
+[[package]]
+name = "rcgen"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "75e669e5202259b5314d1ea5397316ad400819437857b90861765f24c4cf80a2"
+dependencies = [
+ "pem",
+ "ring 0.17.14",
+ "rustls-pki-types",
+ "time",
+ "yasna",
 ]
 
 [[package]]
@@ -7186,6 +7216,15 @@ name = "yansi"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cfe53a6657fd280eaa890a3bc59152892ffa3e30101319d168b781ed6529b049"
+
+[[package]]
+name = "yasna"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e17bb3549cc1321ae1296b9cdc2698e2b6cb1992adfa19a8c72e5b7a738f44cd"
+dependencies = [
+ "time",
+]
 
 [[package]]
 name = "yoke"

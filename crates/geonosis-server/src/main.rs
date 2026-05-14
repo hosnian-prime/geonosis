@@ -150,6 +150,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // Spawn the cache invalidation listener + audit-retention runner
     // when Postgres is the backend. Both attach to the same pool.
     if let Some(pool) = retention_pool.clone() {
+        // Expose DB pool depth + utilization on `/metrics`. Doc 13
+        // alert rule `GeonosisDbPoolSaturated` reads these gauges.
+        state.metrics.install_db_pool(pool.clone());
         let cache: Arc<dyn geonosis_cache::Cache> = state.cache.clone();
         geonosis_cache::listen::spawn_listener(pool, cache);
         tracing::info!(

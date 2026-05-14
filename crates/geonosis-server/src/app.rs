@@ -32,7 +32,11 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/realms/:slug/protocol/saml/sso",
-            get(handlers::saml_sso).post(handlers::saml_sso),
+            get(handlers::saml_sso_get).post(handlers::saml_sso_post),
+        )
+        .route(
+            "/realms/:slug/protocol/saml/slo",
+            post(handlers::saml_slo_post),
         )
         // Prometheus exposition endpoint — `docs/13-observability.md`.
         .route(
@@ -644,16 +648,34 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn saml_sso_returns_not_implemented_in_v0_1() {
-        // The SSO endpoint is scaffolded but the SP-config table +
-        // browser-flow integration land in v0.1.x. The handler must
-        // surface the contract honestly — 501 with a v0.1.x marker
-        // — not a 500 or a confusing 200.
+    async fn saml_sso_post_rejects_missing_saml_request() {
+        // POST without a SAMLRequest form field must reject with 400.
         let r = router(fixture_state().await);
         let resp = r
             .oneshot(
                 Request::builder()
                     .method("POST")
+                    .uri("/realms/acme/protocol/saml/sso")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+        let body = axum::body::to_bytes(resp.into_body(), 16 * 1024).await.unwrap();
+        let text = std::str::from_utf8(&body).unwrap();
+        assert!(text.contains("missing SAMLRequest"));
+    }
+
+    #[tokio::test]
+    async fn saml_sso_get_redirects_binding_lands_in_v0_1_x() {
+        // GET still 501 — HTTP-Redirect binding's DEFLATE decode
+        // path is v0.1.x; SPs using POST binding hit `sso_post` above.
+        let r = router(fixture_state().await);
+        let resp = r
+            .oneshot(
+                Request::builder()
                     .uri("/realms/acme/protocol/saml/sso")
                     .body(Body::empty())
                     .unwrap(),
@@ -661,9 +683,25 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::NOT_IMPLEMENTED);
-        let body = axum::body::to_bytes(resp.into_body(), 16 * 1024).await.unwrap();
-        let text = std::str::from_utf8(&body).unwrap();
-        assert!(text.contains("v0.1.x"));
+    }
+
+    #[tokio::test]
+    async fn saml_sso_post_rejects_garbage_saml_request() {
+        // A malformed (non-base64) SAMLRequest must reject with 400,
+        // not 500. The error surfaces the base64 decode failure.
+        let r = router(fixture_state().await);
+        let resp = r
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/realms/acme/protocol/saml/sso")
+                    .header("content-type", "application/x-www-form-urlencoded")
+                    .body(Body::from("SAMLRequest=!!!not-base64!!!"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
 
     #[tokio::test]
@@ -992,6 +1030,7 @@ mod tests {
             backchannel_logout_url: None,
             client_authentication_keys: vec![],
             pairwise_sub_algorithm: None,
+            saml_sp_config: None,
             enabled: true,
             created_at: Utc::now(),
             updated_at: Utc::now(),
@@ -1146,6 +1185,7 @@ mod tests {
             backchannel_logout_url: None,
             client_authentication_keys: vec![],
             pairwise_sub_algorithm: None,
+            saml_sp_config: None,
             enabled: true,
             created_at: Utc::now(),
             updated_at: Utc::now(),
