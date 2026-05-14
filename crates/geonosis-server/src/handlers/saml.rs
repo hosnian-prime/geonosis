@@ -281,23 +281,32 @@ pub struct SamlSsoQuery {
     pub saml_request: String,
     #[serde(rename = "RelayState", default)]
     pub relay_state: Option<String>,
-    /// `SigAlg` + `Signature` query params (the
-    /// Redirect-binding signed-request envelope). v0.1 records them
-    /// for G3's verification path; this commit lands the decode
-    /// chain only.
+    /// `SigAlg` URI when the SP signs the Redirect-binding payload.
     #[serde(default, rename = "SigAlg")]
-    pub _sig_alg: Option<String>,
+    pub sig_alg: Option<String>,
+    /// `Signature` (base64) when the SP signs the
+    /// Redirect-binding payload.
     #[serde(default, rename = "Signature")]
-    pub _signature: Option<String>,
+    pub signature: Option<String>,
+}
+
+impl SamlSsoQuery {
+    fn signature_b64(&self) -> &str {
+        self.signature.as_deref().unwrap_or("")
+    }
 }
 
 /// `GET /realms/:slug/protocol/saml/sso` — HTTP-Redirect binding
 /// entry. The `SAMLRequest` query parameter is base64'd DEFLATE-
 /// compressed XML per SAML 2.0 Bindings §3.4.4; we decode in place
-/// and re-enter the common SSO dispatch.
+/// and re-enter the common SSO dispatch. When the SP supplies
+/// `Signature` + `SigAlg`, the verify path runs **before** the
+/// AuthnRequest is parsed so a bad signature short-circuits with
+/// `saml.authnrequest.rejected`.
 pub async fn sso_get(
     State(state): State<AppState>,
     Path(slug): Path<String>,
+    axum::extract::OriginalUri(orig): axum::extract::OriginalUri,
     axum::extract::Query(q): axum::extract::Query<SamlSsoQuery>,
 ) -> Response {
     if q.saml_request.is_empty() {
@@ -315,10 +324,17 @@ pub async fn sso_get(
             )
         }
     };
-    // Hand the decoded XML to the same handler the POST binding
-    // uses — wrap it in the POST-binding shape with the bytes
-    // already in XML form (re-base64 so the inner decoder is a
-    // no-op).
+    // If the SP supplied Signature + SigAlg, verify it now against
+    // the SP's registered signing certs. The query has to be
+    // reconstructed from `OriginalUri` because axum's `Query`
+    // already URL-decoded the values; the signed bytes use the
+    // wire-form encoding.
+    let raw_query = orig.query().unwrap_or("");
+    if !q.signature_b64().is_empty() {
+        if let Err(e) = verify_inbound_redirect_signature(&state, &slug, &xml, raw_query).await {
+            return reject(&e, StatusCode::BAD_REQUEST);
+        }
+    }
     let form = SamlSsoForm {
         saml_request: base64::engine::general_purpose::STANDARD.encode(&xml),
         relay_state: q.relay_state,
@@ -327,6 +343,99 @@ pub async fn sso_get(
 }
 
 const REDIRECT_BINDING_DECOMPRESS_CAP: usize = 64 * 1024;
+
+/// Verify the inbound Redirect-binding signature against the SP's
+/// `authn_request_signing_certificates`. The signed bytes are the
+/// raw wire-form query string slices for `SAMLRequest`,
+/// `RelayState` (if present), and `SigAlg`, joined by `&`.
+async fn verify_inbound_redirect_signature(
+    state: &AppState,
+    slug: &str,
+    decoded_xml: &[u8],
+    raw_query: &str,
+) -> Result<(), String> {
+    use geonosis_protocol_saml_idp::{
+        parse_authn_request, verify_redirect_signature, RedirectSignatureCheck,
+        REDIRECT_SIG_ALG_RSA_SHA256,
+    };
+
+    // We need the SP's Issuer to look up its certs — parse the
+    // AuthnRequest once. The handle_sso path re-parses; an
+    // optimisation pass could cache the parsed result on the
+    // request context.
+    let parsed = parse_authn_request(decoded_xml).map_err(|e| format!("authn parse: {e}"))?;
+    let realm = state
+        .storage
+        .get_realm_by_slug(slug)
+        .await
+        .map_err(|_| "realm not found".to_string())?;
+    let client = state
+        .storage
+        .get_client_by_client_id(realm.id, &parsed.issuer)
+        .await
+        .map_err(|_| format!("unknown SP Issuer {}", parsed.issuer))?;
+    let raw_config = client
+        .saml_sp_config
+        .as_ref()
+        .ok_or_else(|| "SP has no saml_sp_config".to_string())?;
+    let sp_config = geonosis_protocol_saml_idp::SamlSpClientConfig::try_from_value(raw_config)
+        .map_err(|e| format!("invalid SP config: {e}"))?;
+
+    // No certs registered → operator has opted into "trust the
+    // request" mode. Fall through silently.
+    if sp_config.authn_request_signing_certificates.is_empty() {
+        return Ok(());
+    }
+
+    // Slice the raw query so the signed-bytes match the wire form.
+    let saml_pair = find_pair(raw_query, "SAMLRequest")
+        .ok_or_else(|| "SAMLRequest segment not in query".to_string())?;
+    let relay_pair = find_pair(raw_query, "RelayState");
+    let sig_alg_pair = find_pair(raw_query, "SigAlg")
+        .ok_or_else(|| "SigAlg segment not in query".to_string())?;
+
+    let signature_b64 = query_value(raw_query, "Signature")
+        .ok_or_else(|| "Signature segment not in query".to_string())?;
+    let sig_alg = query_value(raw_query, "SigAlg")
+        .ok_or_else(|| "SigAlg value not in query".to_string())?;
+    let sig_alg_decoded = percent_decode(&sig_alg);
+
+    let check = RedirectSignatureCheck {
+        saml_request_pair: saml_pair,
+        relay_state_pair: relay_pair,
+        sig_alg_pair,
+        signature_b64: &percent_decode(&signature_b64),
+        sig_alg: &sig_alg_decoded,
+    };
+    let _ = REDIRECT_SIG_ALG_RSA_SHA256; // assert constant resolves
+    verify_redirect_signature(&check, &sp_config.authn_request_signing_certificates)
+        .map_err(|e| format!("signature verification failed: {e}"))
+}
+
+/// Locate the literal `key=value` slice for `key` inside the raw
+/// query string. Returns `None` when the key isn't present.
+fn find_pair<'a>(raw: &'a str, key: &str) -> Option<&'a str> {
+    for segment in raw.split('&') {
+        if segment.starts_with(key)
+            && segment.as_bytes().get(key.len()) == Some(&b'=')
+        {
+            return Some(segment);
+        }
+    }
+    None
+}
+
+/// Extract the URL-encoded value portion of `key=value` from the
+/// raw query string.
+fn query_value(raw: &str, key: &str) -> Option<String> {
+    find_pair(raw, key).map(|seg| seg[key.len() + 1..].to_string())
+}
+
+fn percent_decode(s: &str) -> String {
+    percent_encoding::percent_decode_str(s)
+        .decode_utf8_lossy()
+        .into_owned()
+}
 
 /// `GET /realms/:slug/protocol/saml/slo` — Redirect-binding logout
 /// entry. Same decode chain as `sso_get`, dispatched into the
