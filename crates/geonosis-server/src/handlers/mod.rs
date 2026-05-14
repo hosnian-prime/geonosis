@@ -26,6 +26,7 @@ pub mod logout;
 pub mod oidc_meta;
 pub mod par;
 pub mod revoke;
+pub mod saml;
 pub mod token;
 pub mod userinfo;
 
@@ -33,6 +34,7 @@ pub use authorize::{authorize_get, authorize_post};
 pub use broker::{broker_endpoint_get, broker_endpoint_post, broker_login, broker_metadata};
 pub use device::{device_authorize, device_token};
 pub use health::{drain, healthy, ready, started};
+pub use saml::{metadata as saml_metadata, sso as saml_sso};
 pub use introspect::introspect;
 pub use login_actions::authenticate_post;
 pub use logout::{logout_get, logout_post};

@@ -2019,14 +2019,21 @@ name = "geonosis-protocol-saml-idp"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "base64 0.22.1",
  "chrono",
  "geonosis-core",
  "geonosis-crypto",
  "geonosis-saml-types",
+ "parking_lot",
+ "rand 0.8.6",
+ "rsa",
  "serde",
+ "sha2",
  "thiserror 1.0.69",
+ "tokio",
  "tracing",
  "url",
+ "zeroize",
 ]
 
 [[package]]
@@ -2064,6 +2071,7 @@ dependencies = [
  "geonosis-protocol-oauth",
  "geonosis-protocol-oidc",
  "geonosis-protocol-saml-idp",
+ "geonosis-saml-types",
  "geonosis-spi-host",
  "geonosis-storage",
  "hex",
