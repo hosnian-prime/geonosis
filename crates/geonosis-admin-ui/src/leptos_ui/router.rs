@@ -347,10 +347,8 @@ async fn post_flow_save(
             // still render. If it fails to parse the canvas degrades to
             // JSON-only — the textarea still shows the operator's
             // (broken) input so they can fix the validation error.
-            let flow_for_view = serde_json::from_str::<geonosis_flow::FlowDefinition>(
-                &form.definition,
-            )
-            .ok();
+            let flow_for_view =
+                serde_json::from_str::<geonosis_flow::FlowDefinition>(&form.definition).ok();
             let s = realm.slug;
             let body = render(move || {
                 view! {

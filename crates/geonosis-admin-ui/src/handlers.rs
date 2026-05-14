@@ -52,7 +52,10 @@ pub async fn admin_flow_editor_js() -> Response {
         .map(|f| f.data.into_owned())
         .unwrap_or_default();
     (
-        [(header::CONTENT_TYPE, "application/javascript; charset=utf-8")],
+        [(
+            header::CONTENT_TYPE,
+            "application/javascript; charset=utf-8",
+        )],
         body,
     )
         .into_response()
