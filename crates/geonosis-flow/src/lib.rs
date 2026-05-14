@@ -8,6 +8,7 @@
 //!   against the version they were started on.
 //! - Per-step requirement: Required, Optional, Alternative, Disabled.
 
+pub mod authenticator;
 pub mod builtin;
 pub mod compile;
 pub mod dsl;
@@ -15,6 +16,7 @@ pub mod executor;
 pub mod guard;
 pub mod state;
 
+pub use authenticator::{AuthnDispatcher, AuthnStepOutcome, NoopAuthnDispatcher};
 pub use compile::{compile, CompileError, CompiledFlow};
 pub use dsl::{
     Edge, EdgeCondition, FlowDefinition, FlowNode, NodeKind, Requirement, StartNode, SuccessNode,
