@@ -5,12 +5,15 @@ use std::sync::Arc;
 use url::Url;
 
 use geonosis_audit::Publisher;
+use geonosis_broker::BuiltinAdapters;
 use geonosis_cache::LocalCache;
 use geonosis_crypto::SoftwareKms;
 use geonosis_spi_host::ProviderRegistry;
 use geonosis_storage::Storage;
 
 use crate::authenticators::BuiltinAuthenticators;
+use crate::broker::BrokerRuntime;
+use crate::ldap::LdapRuntime;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -30,4 +33,13 @@ pub struct AppState {
     /// Built-in authenticator runtimes (singletons; per-realm config is
     /// passed through `AuthnContext` at dispatch time).
     pub authenticators: Arc<BuiltinAuthenticators>,
+    /// First-party broker-adapter implementations (Google / GitHub / Apple /
+    /// Microsoft + the generic OIDC adapter). Selected per IdP via
+    /// `IdentityProvider.adapter_urn`.
+    pub broker_adapters: Arc<BuiltinAdapters>,
+    /// Long-lived broker runtime: discovery + JWKS cache + reqwest pool.
+    pub broker: Arc<BrokerRuntime>,
+    /// LDAP federation runtime — per-realm pool registry. `None` when
+    /// the deployment hasn't configured any LDAP source.
+    pub ldap: Arc<LdapRuntime>,
 }
