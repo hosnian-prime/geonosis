@@ -5,6 +5,7 @@ members = [
     "crates/geonosis-crypto",
     "crates/geonosis-cache",
     "crates/geonosis-storage",
+    "crates/geonosis-migrate",
     "crates/geonosis-flow",
     "crates/geonosis-authenticators",
     "crates/geonosis-protocol-oauth",

@@ -10,6 +10,10 @@ description = "Audit event taxonomy + sink fan-out."
 [lints]
 workspace = true
 
+[features]
+default = []
+postgres = ["dep:sqlx"]
+
 [dependencies]
 geonosis-core = { path = "../geonosis-core" }
 
@@ -20,3 +24,4 @@ thiserror.workspace = true
 tracing.workspace = true
 chrono.workspace = true
 tokio.workspace = true
+sqlx = { workspace = true, optional = true }

@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use geonosis_core::{Amr, CredentialKind};
 use geonosis_crypto::verify_password;
 
+use crate::brute_force::{check_locked, record_failure, record_success, BruteForceError};
 use crate::context::AuthnContext;
 use crate::traits::{
     AuthnError, AuthnInput, AuthnOutput, Authenticator, FailureKind, RenderInstruction,
@@ -53,6 +54,14 @@ impl Authenticator for PasswordAuthenticator {
             Err(_) => return Ok(AuthnOutput::Failure(FailureKind::InvalidCredential)),
         };
 
+        // Brute-force pre-flight. If the account is locked, refuse
+        // before doing the (expensive) Argon2id verify.
+        if let Err(BruteForceError::Locked { .. }) =
+            check_locked(&*ctx.storage, ctx.realm_id, user.id, ctx.now).await
+        {
+            return Ok(AuthnOutput::Failure(FailureKind::Locked));
+        }
+
         let phc = match ctx.storage.get_password_hash(ctx.realm_id, user.id).await {
             Ok(h) => h,
             Err(_) => return Ok(AuthnOutput::Failure(FailureKind::InvalidCredential)),
@@ -60,6 +69,7 @@ impl Authenticator for PasswordAuthenticator {
 
         match verify_password(&password, &phc) {
             Ok(true) => {
+                let _ = record_success(&*ctx.storage, ctx.realm_id, user.id).await;
                 ctx.user_id = Some(user.id);
                 ctx.record_amr(Amr::Pwd);
                 Ok(AuthnOutput::Success {
@@ -67,7 +77,19 @@ impl Authenticator for PasswordAuthenticator {
                     amr: vec![Amr::Pwd],
                 })
             }
-            Ok(false) => Ok(AuthnOutput::Failure(FailureKind::InvalidCredential)),
+            Ok(false) => {
+                // Increment counter; if this push us past the threshold,
+                // the next pre-flight will see `Locked`.
+                let _ = record_failure(
+                    &*ctx.storage,
+                    ctx.realm_id,
+                    user.id,
+                    &ctx.brute_force,
+                    ctx.now,
+                )
+                .await;
+                Ok(AuthnOutput::Failure(FailureKind::InvalidCredential))
+            }
             Err(e) => Err(AuthnError::Crypto(e.to_string())),
         }
     }
@@ -101,6 +123,9 @@ mod tests {
             required_flow: None,
             organizations: vec![],
             enabled: true,
+            failed_attempts: 0,
+            locked_until: None,
+            last_failed_at: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }
@@ -156,6 +181,7 @@ mod tests {
             amr: vec![],
             locals: Default::default(),
             now: Utc::now(),
+            brute_force: geonosis_core::realm::BruteForcePolicy::default(),
         };
         (ctx, uid)
     }

@@ -68,6 +68,9 @@ mod tests {
             username: "ada".into(),
             email: Some("ada@example.com".into()),
             email_verified: true,
+            failed_attempts: 0,
+            locked_until: None,
+            last_failed_at: None,
             name: Some(PersonName {
                 given: Some("Ada".into()),
                 family: Some("Lovelace".into()),
