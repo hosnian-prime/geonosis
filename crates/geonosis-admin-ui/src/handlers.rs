@@ -37,11 +37,7 @@ fn negotiate(i18n: &I18n, headers: &HeaderMap, override_: Option<&str>) -> Langu
 
 pub async fn admin_css() -> Response {
     let body = geonosis_ui_kit::TOKENS_CSS;
-    (
-        [(header::CONTENT_TYPE, "text/css; charset=utf-8")],
-        body,
-    )
-        .into_response()
+    ([(header::CONTENT_TYPE, "text/css; charset=utf-8")], body).into_response()
 }
 
 // ---- HTML pages ----
@@ -148,7 +144,11 @@ pub async fn page_clients_html(
             }
         }
     };
-    Ok(html_response(page(&ctx, &ctx.t("admin-clients-heading"), body)))
+    Ok(html_response(page(
+        &ctx,
+        &ctx.t("admin-clients-heading"),
+        body,
+    )))
 }
 
 pub async fn page_users_html(
@@ -171,7 +171,11 @@ pub async fn page_users_html(
         .get_realm_by_slug(&slug)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
-    Ok(html_response(page(&ctx, &ctx.t("admin-users-heading"), body)))
+    Ok(html_response(page(
+        &ctx,
+        &ctx.t("admin-users-heading"),
+        body,
+    )))
 }
 
 pub async fn page_flows_html(
@@ -202,7 +206,11 @@ pub async fn page_flows_html(
             (flow_editor_mount(&realm.slug, "browser"))
         }
     };
-    Ok(html_response(page(&ctx, &ctx.t("admin-flows-heading"), body)))
+    Ok(html_response(page(
+        &ctx,
+        &ctx.t("admin-flows-heading"),
+        body,
+    )))
 }
 
 pub async fn page_spi_html(
@@ -274,7 +282,11 @@ pub async fn page_events_html(
         h1 { (ctx.t("admin-events-heading")) }
         p { "Audit events stream lands here once the event reader is wired." }
     };
-    Ok(html_response(page(&ctx, &ctx.t("admin-events-heading"), body)))
+    Ok(html_response(page(
+        &ctx,
+        &ctx.t("admin-events-heading"),
+        body,
+    )))
 }
 
 // ---- REST API ----
@@ -343,7 +355,9 @@ pub async fn api_users_list(
     // v0.1: paginated user listing follows once the storage trait
     // exposes `list_users(realm, cursor)`. The endpoint returns an
     // empty page for now so admin tooling can hit it without 500-ing.
-    Ok(Json(serde_json::json!({ "users": [], "next_cursor": null })))
+    Ok(Json(
+        serde_json::json!({ "users": [], "next_cursor": null }),
+    ))
 }
 
 pub async fn api_spi_list(

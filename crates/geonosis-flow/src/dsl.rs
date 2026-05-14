@@ -126,8 +126,14 @@ mod tests {
             provider_urn: "builtin:authn:password".into(),
         };
         let j = serde_json::to_value(&n).unwrap();
-        assert_eq!(j.get("kind").and_then(|v| v.as_str()), Some("authenticator"));
-        assert_eq!(j.get("provider_urn").and_then(|v| v.as_str()), Some("builtin:authn:password"));
+        assert_eq!(
+            j.get("kind").and_then(|v| v.as_str()),
+            Some("authenticator")
+        );
+        assert_eq!(
+            j.get("provider_urn").and_then(|v| v.as_str()),
+            Some("builtin:authn:password")
+        );
     }
 
     #[test]

@@ -266,8 +266,7 @@ pub fn decrypt(jwe: &str, recipient: &JweRecipientPrivateKey) -> Result<Vec<u8>,
     // a protocol error — return `Key` so it surfaces clearly in logs.
     let cek: Vec<u8> = match (alg, recipient) {
         (JweAlg::RsaOaep256, JweRecipientPrivateKey::RsaOaep256(sk)) => {
-            let wrapped =
-                base64url::decode(ek_b64).map_err(|e| JweError::Base64(e.to_string()))?;
+            let wrapped = base64url::decode(ek_b64).map_err(|e| JweError::Base64(e.to_string()))?;
             let padding = Oaep::new::<Sha256>();
             sk.decrypt(padding, &wrapped)
                 .map_err(|e| JweError::KeyWrap(e.to_string()))?

@@ -28,11 +28,7 @@ pub struct EventRow {
 }
 
 #[component]
-pub fn EventsPage(
-    realm_slug: String,
-    filter: EventFilter,
-    rows: Vec<EventRow>,
-) -> impl IntoView {
+pub fn EventsPage(realm_slug: String, filter: EventFilter, rows: Vec<EventRow>) -> impl IntoView {
     let ctx = PageContext {
         title: "Audit events".into(),
         active_section: "events",

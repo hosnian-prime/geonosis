@@ -8,7 +8,7 @@ use geonosis_crypto::verify_password;
 use crate::brute_force::{check_locked, record_failure, record_success, BruteForceError};
 use crate::context::AuthnContext;
 use crate::traits::{
-    AuthnError, AuthnInput, AuthnOutput, Authenticator, FailureKind, RenderInstruction,
+    Authenticator, AuthnError, AuthnInput, AuthnOutput, FailureKind, RenderInstruction,
 };
 
 /// `builtin:authn:password` — verifies username + password against the
@@ -190,7 +190,10 @@ mod tests {
     #[tokio::test]
     async fn init_renders_password_template() {
         let (mut ctx, _) = fixture().await;
-        let out = PasswordAuthenticator.process(&mut ctx, AuthnInput::Init).await.unwrap();
+        let out = PasswordAuthenticator
+            .process(&mut ctx, AuthnInput::Init)
+            .await
+            .unwrap();
         match out {
             AuthnOutput::Continue { render } => {
                 assert_eq!(render.template, "login/password.html");
@@ -210,7 +213,10 @@ mod tests {
             .await
             .unwrap();
         match out {
-            AuthnOutput::Success { amr, credentials_satisfied } => {
+            AuthnOutput::Success {
+                amr,
+                credentials_satisfied,
+            } => {
                 assert_eq!(amr, vec![Amr::Pwd]);
                 assert_eq!(credentials_satisfied, vec![CredentialKind::Password]);
             }
@@ -230,7 +236,10 @@ mod tests {
             .process(&mut ctx, AuthnInput::Submit(form))
             .await
             .unwrap();
-        assert!(matches!(out, AuthnOutput::Failure(FailureKind::InvalidCredential)));
+        assert!(matches!(
+            out,
+            AuthnOutput::Failure(FailureKind::InvalidCredential)
+        ));
         assert!(ctx.user_id.is_none(), "ctx user must not be set on failure");
     }
 
@@ -245,7 +254,10 @@ mod tests {
             .await
             .unwrap();
         // Same `InvalidCredential` failure → no username-enumeration leak.
-        assert!(matches!(out, AuthnOutput::Failure(FailureKind::InvalidCredential)));
+        assert!(matches!(
+            out,
+            AuthnOutput::Failure(FailureKind::InvalidCredential)
+        ));
     }
 
     #[tokio::test]

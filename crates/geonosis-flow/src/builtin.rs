@@ -70,8 +70,11 @@ pub fn browser(realm: RealmId) -> FlowDefinition {
     let cookie = node_authn("cookie SSO", urn::COOKIE, Requirement::Optional);
     let render_form = node_render("login form", "login");
     let password = node_authn("password", urn::PASSWORD, Requirement::Required);
-    let require_action =
-        node_authn("required actions", urn::REQUIRE_ACTION, Requirement::Optional);
+    let require_action = node_authn(
+        "required actions",
+        urn::REQUIRE_ACTION,
+        Requirement::Optional,
+    );
     let success = node_success();
     let failure = node_failure("authentication failed");
     let edges = vec![
@@ -90,7 +93,15 @@ pub fn browser(realm: RealmId) -> FlowDefinition {
         "Browser flow",
         start_id,
         edges,
-        vec![start, cookie, render_form, password, require_action, success, failure],
+        vec![
+            start,
+            cookie,
+            render_form,
+            password,
+            require_action,
+            success,
+            failure,
+        ],
     )
 }
 
@@ -145,17 +156,9 @@ pub fn registration(realm: RealmId) -> FlowDefinition {
 pub fn reset_credentials(realm: RealmId) -> FlowDefinition {
     let start = node_start();
     let render_form = node_render("email entry", "reset-credentials/email");
-    let magic = node_authn(
-        "magic-link verify",
-        urn::MAGIC_LINK,
-        Requirement::Required,
-    );
+    let magic = node_authn("magic-link verify", urn::MAGIC_LINK, Requirement::Required);
     let render_new = node_render("new password", "reset-credentials/new-password");
-    let password = node_authn(
-        "set new password",
-        urn::PASSWORD,
-        Requirement::Required,
-    );
+    let password = node_authn("set new password", urn::PASSWORD, Requirement::Required);
     let success = node_success();
     let failure = node_failure("reset failed");
     let edges = vec![
@@ -174,7 +177,15 @@ pub fn reset_credentials(realm: RealmId) -> FlowDefinition {
         "Reset credentials",
         start_id,
         edges,
-        vec![start, render_form, magic, render_new, password, success, failure],
+        vec![
+            start,
+            render_form,
+            magic,
+            render_new,
+            password,
+            success,
+            failure,
+        ],
     )
 }
 
@@ -369,9 +380,8 @@ mod tests {
         let realm = RealmId::new();
         for flow in v0_1_flows(realm) {
             let alias = flow.alias.clone();
-            compile(flow).unwrap_or_else(|e| {
-                panic!("built-in flow {alias} failed to compile: {e}")
-            });
+            compile(flow)
+                .unwrap_or_else(|e| panic!("built-in flow {alias} failed to compile: {e}"));
         }
     }
 

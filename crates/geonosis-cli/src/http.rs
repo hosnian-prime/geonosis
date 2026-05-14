@@ -59,8 +59,8 @@ impl AdminClient {
     /// `commands::login` (deferred — v0.1 bootstrap reads the token
     /// from the env directly).
     pub fn new(base_url: &str, token: Option<String>) -> anyhow::Result<Self> {
-        let base = Url::parse(base_url)
-            .with_context(|| format!("invalid admin URL: {base_url}"))?;
+        let base =
+            Url::parse(base_url).with_context(|| format!("invalid admin URL: {base_url}"))?;
         let inner = reqwest::Client::builder()
             .user_agent(USER_AGENT)
             .timeout(Duration::from_secs(DEFAULT_TIMEOUT_SECS))
@@ -141,9 +141,9 @@ impl AdminClient {
     }
 
     fn url(&self, path: &str) -> Result<Url, AdminApiError> {
-        self.base.join(path).map_err(|e| {
-            AdminApiError::Transport(format!("invalid path {path}: {e}"))
-        })
+        self.base
+            .join(path)
+            .map_err(|e| AdminApiError::Transport(format!("invalid path {path}: {e}")))
     }
 
     async fn request<I, O>(
@@ -169,8 +169,7 @@ impl AdminClient {
             .await
             .map_err(|e| AdminApiError::Transport(e.to_string()))?;
         let body = check_status(resp).await?;
-        serde_json::from_slice(&body)
-            .map_err(|e| AdminApiError::Decode(format!("body: {e}")))
+        serde_json::from_slice(&body).map_err(|e| AdminApiError::Decode(format!("body: {e}")))
     }
 }
 

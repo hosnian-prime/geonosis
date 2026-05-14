@@ -177,15 +177,13 @@ impl LdapPool {
                 .as_ref()
                 .map(|s| s.expose().clone())
                 .unwrap_or_default();
-            let result = tokio::time::timeout(
-                self.cfg.bind_timeout(),
-                ldap.simple_bind(bind_dn, &pw),
-            )
-            .await
-            .map_err(|_| LdapError::Timeout {
-                ms: self.cfg.bind_timeout_ms,
-            })?
-            .map_err(LdapError::from)?;
+            let result =
+                tokio::time::timeout(self.cfg.bind_timeout(), ldap.simple_bind(bind_dn, &pw))
+                    .await
+                    .map_err(|_| LdapError::Timeout {
+                        ms: self.cfg.bind_timeout_ms,
+                    })?
+                    .map_err(LdapError::from)?;
             if result.rc != 0 {
                 return Err(LdapError::Bind(format!("rc={} {}", result.rc, result.text)));
             }

@@ -59,16 +59,12 @@ impl WasmUserProfileValidatorRuntime {
             .map_err(|e| RuntimeError::Instantiate(e.to_string()))?;
 
         let func = instance
-            .get_typed_func::<
-                (String, Vec<String>, Vec<u8>),
-                (Result<(), wire::ValidationError>,),
-            >(&mut store, "validate")
+            .get_typed_func::<(String, Vec<String>, Vec<u8>), (Result<(), wire::ValidationError>,)>(
+                &mut store, "validate",
+            )
             .map_err(|e| RuntimeError::Plugin(format!("export not found: {e}")))?;
 
-        let call = func.call_async(
-            &mut store,
-            (attribute.to_string(), values, config.to_vec()),
-        );
+        let call = func.call_async(&mut store, (attribute.to_string(), values, config.to_vec()));
         let res = tokio::time::timeout(self.limits.wall_clock(), call)
             .await
             .map_err(|_| RuntimeError::Timeout {
@@ -95,11 +91,9 @@ impl WasmUserProfileValidatorRuntime {
             .map_err(|e| RuntimeError::Engine(e.to_string()))?;
         store.epoch_deadline_trap();
         let tick_ms = self.engine.config().epoch_tick_ms.max(1);
-        let ticks_needed = (self.limits.wall_clock_ms + tick_ms - 1) / tick_ms;
+        let ticks_needed = self.limits.wall_clock_ms.div_ceil(tick_ms);
         store.set_epoch_deadline(ticks_needed.max(1));
-        store.limiter(|s: &mut HostState| -> &mut dyn wasmtime::ResourceLimiter {
-            &mut s.limiter
-        });
+        store.limiter(|s: &mut HostState| -> &mut dyn wasmtime::ResourceLimiter { &mut s.limiter });
         Ok(store)
     }
 }

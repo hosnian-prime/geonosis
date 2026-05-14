@@ -32,14 +32,14 @@ pub use manifest::{
 };
 pub use registry::{LookupOutcome, ProviderBinding, ProviderCapabilities, ProviderRegistry};
 pub use router::{
-    active_bindings, chain, fire_forget, first_decision, first_match, named_attach,
-    named_select, Decision, DispatchError,
+    active_bindings, chain, fire_forget, first_decision, first_match, named_attach, named_select,
+    Decision, DispatchError,
 };
 
 #[cfg(feature = "wasm-runtime")]
 pub use runtime::{
     HostAllowlist, HostState, ModuleStore, ResourceLimits, RuntimeError, SandboxConfig,
-    WasmAuthnRuntime, WasmBrokerAdapterRuntime, WasmEngine, WasmEventRuntime,
-    WasmMapperRuntime, WasmPolicyRuntime, WasmUiComponentRuntime,
-    WasmUserProfileValidatorRuntime, WasmUserStorageRuntime,
+    WasmAuthnRuntime, WasmBrokerAdapterRuntime, WasmEngine, WasmEventRuntime, WasmMapperRuntime,
+    WasmPolicyRuntime, WasmUiComponentRuntime, WasmUserProfileValidatorRuntime,
+    WasmUserStorageRuntime,
 };

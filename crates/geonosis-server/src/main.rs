@@ -17,7 +17,11 @@ struct Args {
     listen: String,
 
     /// Public base URL (used to construct issuer / discovery URLs).
-    #[arg(long, env = "GEONOSIS_PUBLIC_URL", default_value = "http://127.0.0.1:8080")]
+    #[arg(
+        long,
+        env = "GEONOSIS_PUBLIC_URL",
+        default_value = "http://127.0.0.1:8080"
+    )]
     public_url: String,
 
     /// 32-byte hex master key. Generated at random if unset (DEV ONLY).
@@ -56,9 +60,8 @@ struct Args {
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let args = Args::parse();
 
-    let otlp_active = telemetry::init().map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
-        e.into()
-    })?;
+    let otlp_active =
+        telemetry::init().map_err(|e| -> Box<dyn std::error::Error + Send + Sync> { e.into() })?;
     if otlp_active {
         tracing::info!("OTLP tracing exporter active");
     }
@@ -83,18 +86,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
                 geonosis_migrate::run_with_leader_lock(&pool).await?;
             }
             // Refuse to start if the live schema is outside our window.
-            geonosis_migrate::enforce_schema_compat(&pool, geonosis_migrate::V0_1_COMPAT)
-                .await?;
+            geonosis_migrate::enforce_schema_compat(&pool, geonosis_migrate::V0_1_COMPAT).await?;
             (
                 Arc::new(PostgresStorage::new(pool.clone())) as Arc<dyn Storage>,
                 Some(pool),
             )
         } else {
             tracing::warn!("GEONOSIS_DATABASE_URL unset — using in-memory storage (DEV ONLY)");
-            (
-                Arc::new(MemoryStorage::new()) as Arc<dyn Storage>,
-                None,
-            )
+            (Arc::new(MemoryStorage::new()) as Arc<dyn Storage>, None)
         };
     // Derive deployment-wide hash keys from the master key. Per-realm
     // derivation lands in v0.1.x.
@@ -105,7 +104,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     // a database is configured. Order matters only for log clarity;
     // the publisher fans out concurrently.
     let mut audit_sinks: Vec<std::sync::Arc<dyn geonosis_audit::AuditSink>> = Vec::new();
-    for raw in args.audit_webhook_urls.split(',').filter(|s| !s.trim().is_empty()) {
+    for raw in args
+        .audit_webhook_urls
+        .split(',')
+        .filter(|s| !s.trim().is_empty())
+    {
         let url = raw.trim().to_string();
         match geonosis_audit::webhook::WebhookSink::new(
             geonosis_audit::webhook::WebhookSinkConfig::new(url.clone()),
@@ -137,9 +140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             geonosis_spi_host::runtime::SandboxConfig::default(),
         )?,
         metrics: Arc::new(geonosis_server::metrics::MetricsState::new()),
-        rate_limiter: Arc::new(
-            geonosis_server::rate_limit::PerRealmRateLimiter::default_v0_1(),
-        ),
+        rate_limiter: Arc::new(geonosis_server::rate_limit::PerRealmRateLimiter::default_v0_1()),
         draining: Arc::new(std::sync::atomic::AtomicBool::new(false)),
     };
 
@@ -180,11 +181,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         // pipeline. The G7 metric primitive was declared in F-
         // metrics; this call site closes the gap.
         let metrics_for_observer = state.metrics.clone();
-        let observer: geonosis_cache::listen::LagObserver = std::sync::Arc::new(
-            move |channel: &str, secs: f64| {
+        let observer: geonosis_cache::listen::LagObserver =
+            std::sync::Arc::new(move |channel: &str, secs: f64| {
                 metrics_for_observer.record_listener_lag(channel, secs);
-            },
-        );
+            });
         geonosis_cache::listen::spawn_listener_with_observer(pool, cache, Some(observer));
         tracing::info!(
             channel = geonosis_cache::listen::CHANNEL,
@@ -229,9 +229,7 @@ fn derive_subkey(master: &MasterKey, label: &[u8]) -> [u8; 32] {
     // domain-separated subkey. We deliberately do NOT expose the master
     // bytes; we wrap an arbitrary throwaway plaintext under it and hash
     // the ciphertext together with the label to derive the subkey.
-    let proof = master
-        .wrap(b"geonosis-derive")
-        .expect("wrap must succeed");
+    let proof = master.wrap(b"geonosis-derive").expect("wrap must succeed");
     let mut hasher = blake3::Hasher::new();
     hasher.update(label);
     hasher.update(&proof.nonce);
@@ -254,7 +252,10 @@ fn redact_url(url: &str) -> String {
 
 fn hex_decode_32(s: &str) -> Result<[u8; 32], String> {
     if s.len() != 64 {
-        return Err(format!("master key must be 64 hex chars (32 bytes), got {}", s.len()));
+        return Err(format!(
+            "master key must be 64 hex chars (32 bytes), got {}",
+            s.len()
+        ));
     }
     let mut out = [0u8; 32];
     for (i, byte) in out.iter_mut().enumerate() {

@@ -27,7 +27,7 @@
 //! 5. Render the login form (same one OIDC `/authorize` uses) — the
 //!    realm's browser flow runs unchanged.
 //! 6. On success, login_actions reads the SAML continuation, builds
-//!    + signs the assertion, and returns the auto-POST form to the
+//!    and signs the assertion, and returns the auto-POST form to the
 //!    SP's ACS URL.
 
 use std::collections::BTreeMap;
@@ -55,10 +55,7 @@ use geonosis_storage::FlowStateRow;
 use crate::state::AppState;
 
 /// `GET /realms/:slug/protocol/saml/descriptor` — IdP metadata XML.
-pub async fn metadata(
-    State(state): State<AppState>,
-    Path(slug): Path<String>,
-) -> Response {
+pub async fn metadata(State(state): State<AppState>, Path(slug): Path<String>) -> Response {
     let realm = match state.storage.get_realm_by_slug(&slug).await {
         Ok(r) => r,
         Err(_) => return (StatusCode::NOT_FOUND, "realm not found").into_response(),
@@ -411,13 +408,13 @@ async fn verify_inbound_redirect_signature(
     let saml_pair = find_pair(raw_query, "SAMLRequest")
         .ok_or_else(|| "SAMLRequest segment not in query".to_string())?;
     let relay_pair = find_pair(raw_query, "RelayState");
-    let sig_alg_pair = find_pair(raw_query, "SigAlg")
-        .ok_or_else(|| "SigAlg segment not in query".to_string())?;
+    let sig_alg_pair =
+        find_pair(raw_query, "SigAlg").ok_or_else(|| "SigAlg segment not in query".to_string())?;
 
     let signature_b64 = query_value(raw_query, "Signature")
         .ok_or_else(|| "Signature segment not in query".to_string())?;
-    let sig_alg = query_value(raw_query, "SigAlg")
-        .ok_or_else(|| "SigAlg value not in query".to_string())?;
+    let sig_alg =
+        query_value(raw_query, "SigAlg").ok_or_else(|| "SigAlg value not in query".to_string())?;
     let sig_alg_decoded = percent_decode(&sig_alg);
 
     let check = RedirectSignatureCheck {
@@ -435,14 +432,9 @@ async fn verify_inbound_redirect_signature(
 /// Locate the literal `key=value` slice for `key` inside the raw
 /// query string. Returns `None` when the key isn't present.
 fn find_pair<'a>(raw: &'a str, key: &str) -> Option<&'a str> {
-    for segment in raw.split('&') {
-        if segment.starts_with(key)
-            && segment.as_bytes().get(key.len()) == Some(&b'=')
-        {
-            return Some(segment);
-        }
-    }
-    None
+    raw.split('&').find(|segment| {
+        segment.starts_with(key) && segment.as_bytes().get(key.len()) == Some(&b'=')
+    })
 }
 
 /// Extract the URL-encoded value portion of `key=value` from the
@@ -498,7 +490,12 @@ async fn handle_sso(state: AppState, slug: String, form: SamlSsoForm) -> Respons
     }
     let xml_bytes = match B64.decode(form.saml_request.as_bytes()) {
         Ok(b) => b,
-        Err(e) => return reject(&format!("SAMLRequest is not valid base64: {e}"), StatusCode::BAD_REQUEST),
+        Err(e) => {
+            return reject(
+                &format!("SAMLRequest is not valid base64: {e}"),
+                StatusCode::BAD_REQUEST,
+            )
+        }
     };
     let parsed = match parse_authn_request(&xml_bytes) {
         Ok(p) => p,
@@ -517,10 +514,12 @@ async fn handle_sso(state: AppState, slug: String, form: SamlSsoForm) -> Respons
         .await
     {
         Ok(c) => c,
-        Err(_) => return reject(
-            &format!("unknown SP Issuer {}", parsed.issuer),
-            StatusCode::BAD_REQUEST,
-        ),
+        Err(_) => {
+            return reject(
+                &format!("unknown SP Issuer {}", parsed.issuer),
+                StatusCode::BAD_REQUEST,
+            )
+        }
     };
     if !matches!(client.kind, geonosis_core::ClientKind::SamlServiceProvider) {
         return reject(
@@ -530,17 +529,21 @@ async fn handle_sso(state: AppState, slug: String, form: SamlSsoForm) -> Respons
     }
     let raw_config = match &client.saml_sp_config {
         Some(v) => v,
-        None => return reject(
-            "SAML SP client has no saml_sp_config",
-            StatusCode::BAD_REQUEST,
-        ),
+        None => {
+            return reject(
+                "SAML SP client has no saml_sp_config",
+                StatusCode::BAD_REQUEST,
+            )
+        }
     };
     let sp_config = match SamlSpClientConfig::try_from_value(raw_config) {
         Ok(c) => c,
-        Err(e) => return reject(
-            &format!("invalid SP config: {e}"),
-            StatusCode::INTERNAL_SERVER_ERROR,
-        ),
+        Err(e) => {
+            return reject(
+                &format!("invalid SP config: {e}"),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )
+        }
     };
 
     // POST-binding XML-DSig verification per `docs/20-saml-idp.md`
@@ -589,10 +592,12 @@ async fn handle_sso(state: AppState, slug: String, form: SamlSsoForm) -> Respons
         }
         None => match sp_config.acs_urls.first() {
             Some(u) => u.as_str().to_string(),
-            None => return reject(
-                "SP has no registered ACS URL",
-                StatusCode::INTERNAL_SERVER_ERROR,
-            ),
+            None => {
+                return reject(
+                    "SP has no registered ACS URL",
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                )
+            }
         },
     };
 
@@ -717,9 +722,7 @@ async fn propagate_saml_logout(
         let xml = build_idp_logout_request(&request_id, now, &idp_issuer, &slo_url);
         let payload = B64.encode(xml.as_bytes());
 
-        let form = [
-            ("SAMLRequest", payload.as_str()),
-        ];
+        let form = [("SAMLRequest", payload.as_str())];
         let send = client_http.post(&slo_url).form(&form).send();
         // Spawn so this dispatch doesn't block the original SLO
         // response; fire-and-forget per the multi-SP fan-out
@@ -820,13 +823,7 @@ pub async fn unsolicited(
     };
     let user = match state.storage.get_user(realm.id, session.user_id).await {
         Ok(u) => u,
-        Err(_) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "user lookup failed",
-            )
-                .into_response()
-        }
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, "user lookup failed").into_response(),
     };
 
     // Resolve the SP client by alias (its client_id).
@@ -847,13 +844,7 @@ pub async fn unsolicited(
     }
     let raw_config = match client.saml_sp_config.as_ref() {
         Some(v) => v,
-        None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                "SP has no saml_sp_config",
-            )
-                .into_response()
-        }
+        None => return (StatusCode::BAD_REQUEST, "SP has no saml_sp_config").into_response(),
     };
     let sp_config = match SamlSpClientConfig::try_from_value(raw_config) {
         Ok(c) => c,
@@ -867,13 +858,7 @@ pub async fn unsolicited(
     };
     let acs_url = match sp_config.acs_urls.first() {
         Some(u) => u.as_str().to_string(),
-        None => {
-            return (
-                StatusCode::BAD_REQUEST,
-                "SP has no registered ACS URL",
-            )
-                .into_response()
-        }
+        None => return (StatusCode::BAD_REQUEST, "SP has no registered ACS URL").into_response(),
     };
 
     // NameID resolution mirrors the SP-initiated branch.
@@ -949,17 +934,14 @@ pub async fn unsolicited(
                 .into_response()
         }
     };
-    let key_info = match crate::handlers::login_actions::build_key_info_for_realm(
-        &state, &realm,
-    )
-    .await
-    {
-        Ok(k) => k,
-        Err(_) => KeyInfoMaterial::RsaKeyValue {
-            modulus_b64: "".into(),
-            exponent_b64: "AQAB".into(),
-        },
-    };
+    let key_info =
+        match crate::handlers::login_actions::build_key_info_for_realm(&state, &realm).await {
+            Ok(k) => k,
+            Err(_) => KeyInfoMaterial::RsaKeyValue {
+                modulus_b64: "".into(),
+                exponent_b64: "AQAB".into(),
+            },
+        };
     let signed_xml = match sign_assertion(
         state.kms.as_ref(),
         realm.id,

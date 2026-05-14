@@ -110,10 +110,7 @@ pub async fn logout_post(
             client_id_hint = parts.azp.or(parts.aud);
         }
         if let Some(ref sid) = sid_hint {
-            let _ = state
-                .storage
-                .delete_session(&SessionId(sid.clone()))
-                .await;
+            let _ = state.storage.delete_session(&SessionId(sid.clone())).await;
         }
     }
     // `client_id` form parameter — RP-Initiated Logout §3 allows
@@ -128,7 +125,10 @@ pub async fn logout_post(
     // to the resolved client if it has registered a callback URL.
     // Fire-and-forget so RP latency / outage cannot block the OP's
     // logout response.
-    if let (Some(cid), Some(_)) = (client_id_hint.as_ref(), sid_hint.as_ref().or(sub_hint.as_ref())) {
+    if let (Some(cid), Some(_)) = (
+        client_id_hint.as_ref(),
+        sid_hint.as_ref().or(sub_hint.as_ref()),
+    ) {
         if let Ok(client) = state.storage.get_client_by_client_id(realm.id, cid).await {
             if client.backchannel_logout_url.is_some() {
                 dispatch_backchannel_logout(
@@ -199,18 +199,19 @@ fn dispatch_backchannel_logout(
         let Some(url) = client.backchannel_logout_url.clone() else {
             return;
         };
-        let token = match build_logout_token(&state, &realm, &client, sub.clone(), sid.clone()).await {
-            Ok(t) => t,
-            Err(e) => {
-                tracing::warn!(
-                    realm = %realm.slug,
-                    client_id = %client.client_id,
-                    error = %e,
-                    "backchannel logout: token mint failed",
-                );
-                return;
-            }
-        };
+        let token =
+            match build_logout_token(&state, &realm, &client, sub.clone(), sid.clone()).await {
+                Ok(t) => t,
+                Err(e) => {
+                    tracing::warn!(
+                        realm = %realm.slug,
+                        client_id = %client.client_id,
+                        error = %e,
+                        "backchannel logout: token mint failed",
+                    );
+                    return;
+                }
+            };
         // RP receives `application/x-www-form-urlencoded` body with a
         // single `logout_token` field per spec §2.6.
         let res = reqwest::Client::new()
@@ -290,7 +291,6 @@ async fn build_logout_token(
     let header = JwsHeader::new(alg, kid.to_string(), LOGOUT_TOKEN_TYP);
     sign_jwt(&header, &claims, &private).map_err(|e| e.to_string())
 }
-
 
 /// Extract `sid` from a JWT payload **without verifying the signature**.
 /// Acceptable for hint-only routing per OIDC RP-Initiated Logout §3.
