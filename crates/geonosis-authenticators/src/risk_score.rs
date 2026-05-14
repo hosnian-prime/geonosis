@@ -188,6 +188,7 @@ mod tests {
                 backchannel_logout_url: None,
                 client_authentication_keys: vec![],
                 pairwise_sub_algorithm: None,
+                saml_sp_config: None,
                 enabled: true,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),

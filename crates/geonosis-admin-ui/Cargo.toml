@@ -17,6 +17,7 @@ geonosis-storage = { path = "../geonosis-storage" }
 geonosis-flow = { path = "../geonosis-flow" }
 geonosis-broker = { path = "../geonosis-broker" }
 geonosis-audit = { path = "../geonosis-audit" }
+geonosis-protocol-saml-idp = { path = "../geonosis-protocol-saml-idp" }
 geonosis-ui-kit = { path = "../geonosis-ui-kit" }
 geonosis-theme = { path = "../geonosis-theme" }
 geonosis-i18n = { path = "../geonosis-i18n" }
