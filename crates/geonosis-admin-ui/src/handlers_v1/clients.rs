@@ -14,7 +14,7 @@ use geonosis_audit::Target;
 use geonosis_core::id::ClientId;
 use geonosis_core::{
     AccessTokenType, Client, ClientAuthMethod, ClientKind, ConsentPolicy, FlowBinding, GrantPolicy,
-    RedirectUri,
+    RedirectUri, RedirectUriError,
 };
 
 use crate::audit_emit;
@@ -96,14 +96,7 @@ pub async fn create(
         flow_binding: FlowBinding::default(),
         default_scopes: req.default_scopes,
         optional_scopes: req.optional_scopes,
-        redirect_uris: req
-            .redirect_uris
-            .into_iter()
-            .map(|uri| RedirectUri {
-                uri,
-                wildcard_path: false,
-            })
-            .collect(),
+        redirect_uris: validate_redirect_uris(req.redirect_uris)?,
         post_logout_redirect_uris: vec![],
         web_origins: vec![],
         access_token_type: AccessTokenType::Jwt,
@@ -205,6 +198,32 @@ pub async fn delete_(
         serde_json::json!({ "client_id": existing.client_id }),
     );
     Ok(axum::http::StatusCode::NO_CONTENT)
+}
+
+/// Per `docs/03-protocols-oidc.md` §"Conformance defaults": registered
+/// redirect URIs must use https://, except for loopback hosts and
+/// reverse-DNS native-app callback schemes. Rejecting non-loopback
+/// http:// at registration time is the v0.1 contract gate; runtime
+/// match in `authorize.rs` is exact-string but doesn't enforce scheme
+/// (the registered list is trusted by then). Returns 400 with a
+/// per-URI error so the admin sees which entry was wrong.
+fn validate_redirect_uris(uris: Vec<String>) -> Result<Vec<RedirectUri>, AdminError> {
+    uris.into_iter()
+        .map(|uri| {
+            RedirectUri::validate_scheme(&uri).map_err(|e| match e {
+                RedirectUriError::HttpRequiresLoopback { ref host } => AdminError::InvalidInput(
+                    format!("redirect_uri `{uri}`: http:// only allowed for loopback (got `{host}`); use https://"),
+                ),
+                RedirectUriError::UnsupportedScheme(_) | RedirectUriError::Unparseable(_) => {
+                    AdminError::InvalidInput(format!("redirect_uri `{uri}`: {e}"))
+                }
+            })?;
+            Ok(RedirectUri {
+                uri,
+                wildcard_path: false,
+            })
+        })
+        .collect()
 }
 
 /// Round-trip the operator-supplied SAML config through the typed
