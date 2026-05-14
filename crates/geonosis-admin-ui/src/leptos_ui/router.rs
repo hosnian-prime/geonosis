@@ -9,7 +9,7 @@ use std::sync::Arc;
 use axum::extract::{Path, Query, State};
 use axum::response::Html;
 use axum::routing::get;
-use axum::Router;
+use axum::{Form, Router};
 use leptos::prelude::*;
 use serde::Deserialize;
 
@@ -17,6 +17,7 @@ use crate::handlers_v1::extractors::realm_by_slug;
 use crate::leptos_ui::pages::agents::{AgentRow, AgentsPage};
 use crate::leptos_ui::pages::clients::{ClientRow, ClientsPage};
 use crate::leptos_ui::pages::events::{EventFilter, EventRow, EventsPage};
+use crate::leptos_ui::pages::flows::{FlowEditPage, FlowRow, FlowsPage};
 use crate::leptos_ui::pages::groups::{GroupRow, GroupsPage};
 use crate::leptos_ui::pages::idps::{IdpRow, IdpsPage};
 use crate::leptos_ui::pages::orgs::{OrgRow, OrgsPage};
@@ -42,6 +43,11 @@ pub fn leptos_router(state: Arc<AdminState>) -> Router {
         .route("/admin-next/realms/:slug/groups", get(page_groups))
         .route("/admin-next/realms/:slug/events", get(page_events))
         .route("/admin-next/realms/:slug/sessions", get(page_sessions))
+        .route("/admin-next/realms/:slug/flows", get(page_flows))
+        .route(
+            "/admin-next/realms/:slug/flows/:alias",
+            get(page_flow_edit).post(post_flow_save),
+        )
         .with_state(state)
 }
 
@@ -244,6 +250,91 @@ fn parse_optional_rfc3339(
                     _ => AdminError::Storage(format!("bad datetime `{raw}`")),
                 })?;
             Ok(Some(parsed))
+        }
+    }
+}
+
+async fn page_flows(
+    State(state): State<Arc<AdminState>>,
+    Path(slug): Path<String>,
+) -> Result<Html<String>, AdminError> {
+    let realm = realm_by_slug(&state, &slug).await?;
+    let flows = state.storage.list_auth_flows(realm.id).await?;
+    let rows: Vec<FlowRow> = flows
+        .into_iter()
+        .map(|f| FlowRow {
+            alias: f.alias,
+            display_name: f.display_name,
+            version: f.version,
+            node_count: f.nodes.len(),
+        })
+        .collect();
+    let s = realm.slug;
+    Ok(render(move || view! { <FlowsPage realm_slug=s rows=rows/> }))
+}
+
+async fn page_flow_edit(
+    State(state): State<Arc<AdminState>>,
+    Path((slug, alias)): Path<(String, String)>,
+) -> Result<Html<String>, AdminError> {
+    let realm = realm_by_slug(&state, &slug).await?;
+    let flow = state.storage.get_auth_flow_by_alias(realm.id, &alias).await?;
+    let json = serde_json::to_string_pretty(&flow)
+        .map_err(|e| AdminError::Storage(e.to_string()))?;
+    let s = realm.slug;
+    Ok(render(
+        move || view! { <FlowEditPage realm_slug=s alias=alias json=json/> },
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+struct FlowSaveForm {
+    definition: String,
+}
+
+async fn post_flow_save(
+    State(state): State<Arc<AdminState>>,
+    Path((slug, alias)): Path<(String, String)>,
+    Form(form): Form<FlowSaveForm>,
+) -> Result<axum::response::Response, AdminError> {
+    use axum::response::{IntoResponse, Redirect};
+
+    let realm = realm_by_slug(&state, &slug).await?;
+    // Validate offline + against the alias path before persisting so a
+    // malformed body never lands in storage. Mirrors what `geoctl
+    // flows import` does on the CLI side.
+    let parsed = serde_json::from_str::<geonosis_flow::FlowDefinition>(&form.definition);
+    let validated = parsed
+        .map_err(|e| format!("invalid JSON: {e}"))
+        .and_then(|def| {
+            if def.alias != alias {
+                return Err(format!(
+                    "alias mismatch: body says `{}`, path says `{}`",
+                    def.alias, alias
+                ));
+            }
+            geonosis_flow::compile(def.clone()).map_err(|e| e.to_string())?;
+            Ok(def)
+        });
+    match validated {
+        Ok(def) => {
+            state.storage.save_auth_flow(def).await?;
+            let target = format!("/admin-next/realms/{slug}/flows/{alias}");
+            Ok(Redirect::to(&target).into_response())
+        }
+        Err(error) => {
+            let s = realm.slug;
+            let body = render(move || {
+                view! {
+                    <FlowEditPage
+                        realm_slug=s
+                        alias=alias
+                        json=form.definition
+                        error=error
+                    />
+                }
+            });
+            Ok(body.into_response())
         }
     }
 }
