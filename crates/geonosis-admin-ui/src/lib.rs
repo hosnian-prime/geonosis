@@ -15,6 +15,7 @@
 
 pub mod assets;
 pub mod audit_emit;
+pub mod auth;
 pub mod handlers;
 pub mod handlers_v1;
 pub mod html;
@@ -24,21 +25,30 @@ pub mod state;
 
 use std::sync::Arc;
 
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
 
 pub use state::{AdminError, AdminState};
 
 pub fn router(state: AdminState) -> Router {
     let shared = Arc::new(state);
-    let maud_routes = Router::new()
-        // Static assets.
+
+    // Public routes — no auth required.
+    let public_routes = Router::new()
         .route("/static/admin.css", get(handlers::admin_css))
         .route(
             "/static/flow-editor.js",
             get(handlers::admin_flow_editor_js),
         )
-        // HTML pages.
+        .route(
+            "/admin/login",
+            get(handlers::login_page).post(handlers::login_submit),
+        )
+        .route("/admin/logout", post(handlers::logout))
+        .with_state(shared.clone());
+
+    // Protected HTML pages — require admin auth.
+    let protected_html = Router::new()
         .route("/admin", get(handlers::page_realms_html))
         .route("/admin/realms", get(handlers::page_realms_html))
         .route("/admin/realms/:slug", get(handlers::page_realm_detail_html))
@@ -54,20 +64,36 @@ pub fn router(state: AdminState) -> Router {
             "/admin/realms/:slug/events",
             get(handlers::page_events_html),
         )
-        // REST API — only the routes not yet superseded by
-        // handlers_v1 live here. realms/clients/users have moved
-        // into handlers_v1 (full CRUD); the legacy list-only
-        // handlers stay reachable only via the Maud-rendered HTML
-        // pages above. /spi list + /flows GET/PUT remain here until
-        // handlers_v1 absorbs them.
+        .layer(axum::middleware::from_fn_with_state(
+            shared.clone(),
+            auth::require_admin,
+        ))
+        .with_state(shared.clone());
+
+    // Protected REST API routes.
+    let protected_api = Router::new()
         .route("/admin/v1/realms/:slug/spi", get(handlers::api_spi_list))
         .route(
             "/admin/v1/realms/:slug/flows/:alias",
             get(handlers::api_flow_get).put(handlers::api_flow_put),
         )
+        .layer(axum::middleware::from_fn_with_state(
+            shared.clone(),
+            auth::require_admin,
+        ))
         .with_state(shared.clone());
 
-    maud_routes
-        .merge(leptos_ui::leptos_router(shared.clone()))
-        .merge(handlers_v1::router(shared))
+    let protected_leptos = leptos_ui::leptos_router(shared.clone()).layer(
+        axum::middleware::from_fn_with_state(shared.clone(), auth::require_admin),
+    );
+
+    let protected_v1 = handlers_v1::router(shared.clone()).layer(
+        axum::middleware::from_fn_with_state(shared.clone(), auth::require_admin),
+    );
+
+    public_routes
+        .merge(protected_html)
+        .merge(protected_api)
+        .merge(protected_leptos)
+        .merge(protected_v1)
 }

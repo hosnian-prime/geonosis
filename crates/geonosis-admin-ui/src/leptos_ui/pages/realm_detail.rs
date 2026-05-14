@@ -17,6 +17,7 @@ pub fn RealmDetailPage(data: RealmDetailData) -> impl IntoView {
     let ctx = PageContext {
         title: data.display_name.clone(),
         active_section: "realms",
+        realm_slug: Some(data.slug.clone()),
     };
     let slug = data.slug.clone();
     let link = move |path: &'static str, label: &'static str| {

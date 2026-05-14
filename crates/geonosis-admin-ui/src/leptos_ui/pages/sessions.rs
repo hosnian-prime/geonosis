@@ -26,6 +26,7 @@ pub fn SessionsPage(realm_slug: String, rows: Vec<SessionRow>) -> impl IntoView 
     let ctx = PageContext {
         title: "Sessions".into(),
         active_section: "sessions",
+        realm_slug: Some(realm_slug.clone()),
     };
     let back = format!("/admin-next/realms/{realm_slug}");
     let empty = rows.is_empty();

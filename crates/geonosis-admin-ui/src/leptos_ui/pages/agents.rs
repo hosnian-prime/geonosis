@@ -21,6 +21,7 @@ pub fn AgentsPage(realm_slug: String, rows: Vec<AgentRow>) -> impl IntoView {
     let ctx = PageContext {
         title: "Agents".into(),
         active_section: "agents",
+        realm_slug: Some(realm_slug.clone()),
     };
     let back = format!("/admin-next/realms/{realm_slug}");
     view! {

@@ -19,6 +19,7 @@ pub fn IdpsPage(realm_slug: String, rows: Vec<IdpRow>) -> impl IntoView {
     let ctx = PageContext {
         title: "Identity providers".into(),
         active_section: "idps",
+        realm_slug: Some(realm_slug.clone()),
     };
     let back = format!("/admin-next/realms/{realm_slug}");
     view! {

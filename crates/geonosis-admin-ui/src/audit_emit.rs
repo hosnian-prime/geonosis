@@ -20,7 +20,32 @@ use geonosis_audit::{Actor, AuditEvent, Publisher, Target};
 use geonosis_core::id::EventId;
 use geonosis_core::RealmId;
 
+use crate::auth::AdminPrincipal;
 use crate::state::AdminState;
+
+/// Build + publish an admin audit event with the authenticated
+/// principal as the actor.
+pub fn emit_with_principal(
+    state: &AdminState,
+    principal: &AdminPrincipal,
+    realm_id: RealmId,
+    action: &str,
+    target: Option<Target>,
+    detail: serde_json::Value,
+) {
+    state.audit.publish(AuditEvent {
+        id: EventId::new(),
+        realm_id,
+        occurred_at: chrono::Utc::now(),
+        actor: Actor::AdminApi {
+            user_id: principal.user_id,
+            ip: std::net::IpAddr::V4(std::net::Ipv4Addr::UNSPECIFIED),
+        },
+        action: action.to_string(),
+        target,
+        detail,
+    });
+}
 
 /// Build + publish an admin audit event.
 pub fn emit(

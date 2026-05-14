@@ -32,6 +32,7 @@ pub fn EventsPage(realm_slug: String, filter: EventFilter, rows: Vec<EventRow>) 
     let ctx = PageContext {
         title: "Audit events".into(),
         active_section: "events",
+        realm_slug: Some(realm_slug.clone()),
     };
     let back = format!("/admin-next/realms/{realm_slug}");
     let action = filter.action.unwrap_or_default();

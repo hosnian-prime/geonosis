@@ -13,12 +13,14 @@ use crate::leptos_ui::components::layout::AdminLayout;
 pub struct PageContext {
     pub title: String,
     pub active_section: &'static str,
+    pub realm_slug: Option<String>,
 }
 
 #[component]
 pub fn Page(context: PageContext, children: Children) -> impl IntoView {
+    let slug = context.realm_slug.clone().unwrap_or_default();
     view! {
-        <AdminLayout title=context.title.clone() active_section=context.active_section>
+        <AdminLayout title=context.title.clone() active_section=context.active_section realm_slug=slug>
             {children()}
         </AdminLayout>
     }

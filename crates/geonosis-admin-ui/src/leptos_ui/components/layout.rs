@@ -12,6 +12,7 @@ use crate::leptos_ui::components::nav::SidebarNav;
 pub fn AdminLayout(
     title: String,
     active_section: &'static str,
+    #[prop(default = String::new())] realm_slug: String,
     children: Children,
 ) -> impl IntoView {
     view! {
@@ -30,7 +31,7 @@ pub fn AdminLayout(
                     </div>
                 </header>
                 <div class="gn-app">
-                    <SidebarNav active=active_section/>
+                    <SidebarNav active=active_section realm_slug=realm_slug/>
                     <main class="gn-main">
                         {children()}
                     </main>

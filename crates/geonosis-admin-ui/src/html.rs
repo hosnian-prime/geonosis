@@ -11,6 +11,7 @@ pub struct PageCtx<'a> {
     pub lang: LanguageIdentifier,
     pub i18n: &'a I18n,
     pub active: &'a str,
+    pub realm_slug: Option<&'a str>,
 }
 
 impl<'a> PageCtx<'a> {
@@ -24,7 +25,7 @@ impl<'a> PageCtx<'a> {
 pub fn page(ctx: &PageCtx, title: &str, body: Markup) -> Markup {
     let _dir = writing_direction(&ctx.lang);
     let lang = ctx.lang.to_string();
-    ui_page(title, &lang, ctx.active, body)
+    ui_page(title, &lang, ctx.active, ctx.realm_slug, body)
 }
 
 pub fn realms_table(ctx: &PageCtx, realms: &[Realm]) -> Markup {

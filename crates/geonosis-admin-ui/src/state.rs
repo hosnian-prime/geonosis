@@ -5,9 +5,11 @@ use std::sync::Arc;
 use thiserror::Error;
 
 use geonosis_audit::Publisher;
+use geonosis_crypto::SoftwareKms;
 use geonosis_i18n::I18n;
 use geonosis_storage::Storage;
 use geonosis_theme::TemplateOverlay;
+use url::Url;
 
 #[derive(Clone)]
 pub struct AdminState {
@@ -20,6 +22,11 @@ pub struct AdminState {
     /// trace of admin activity (per `docs/13-observability.md`
     /// §"Audit events").
     pub audit: Arc<Publisher>,
+    /// KMS for bearer token verification on the admin API path.
+    pub kms: Arc<SoftwareKms>,
+    /// Public base URL (e.g. `https://geonosis.example`) for issuer
+    /// validation when verifying bearer tokens.
+    pub public_base_url: Url,
 }
 
 impl AdminState {
@@ -27,7 +34,13 @@ impl AdminState {
     /// by tests and the legacy quickstart path that doesn't carry a
     /// real audit pipeline yet.
     pub fn new(storage: Arc<dyn Storage>) -> Result<Self, AdminError> {
-        Self::with_audit(storage, Arc::new(Publisher::new(vec![])))
+        use geonosis_crypto::MasterKey;
+        Self::with_audit(
+            storage,
+            Arc::new(Publisher::new(vec![])),
+            Arc::new(SoftwareKms::new(MasterKey::generate())),
+            Url::parse("http://localhost:8080").unwrap(),
+        )
     }
 
     /// Build an admin state with the supplied audit publisher. The
@@ -37,6 +50,8 @@ impl AdminState {
     pub fn with_audit(
         storage: Arc<dyn Storage>,
         audit: Arc<Publisher>,
+        kms: Arc<SoftwareKms>,
+        public_base_url: Url,
     ) -> Result<Self, AdminError> {
         let i18n = Arc::new(I18n::load_embedded().map_err(|e| AdminError::I18n(e.to_string()))?);
         let theme = Arc::new(TemplateOverlay::new());
@@ -45,6 +60,8 @@ impl AdminState {
             i18n,
             theme,
             audit,
+            kms,
+            public_base_url,
         })
     }
 }

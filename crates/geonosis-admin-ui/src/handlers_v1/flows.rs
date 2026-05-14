@@ -177,7 +177,7 @@ mod tests {
         seed_default_flows(storage.as_ref(), realm_id)
             .await
             .unwrap();
-        let admin = AdminState::with_audit(storage, Arc::new(Publisher::new(vec![]))).unwrap();
+        let admin = AdminState::new(storage).unwrap();
         (Arc::new(admin), realm_id)
     }
 
