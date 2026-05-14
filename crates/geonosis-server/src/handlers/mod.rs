@@ -37,6 +37,7 @@ pub use health::{drain, healthy, ready, started};
 pub use saml::{
     acs_auto_post_form as saml_acs_form, metadata as saml_metadata, slo_get as saml_slo_get,
     slo_post as saml_slo_post, sso_get as saml_sso_get, sso_post as saml_sso_post,
+    unsolicited as saml_unsolicited,
 };
 pub use introspect::introspect;
 pub use login_actions::authenticate_post;
