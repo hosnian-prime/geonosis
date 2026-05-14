@@ -30,3 +30,5 @@ anyhow.workspace = true
 tokio.workspace = true
 sqlx.workspace = true
 chrono.workspace = true
+sha2.workspace = true
+hex.workspace = true

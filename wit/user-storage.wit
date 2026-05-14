@@ -1,0 +1,38 @@
+// `geonosis:user-storage@0.1.0` — pluggable user lookup + credential
+// validation backend. Dispatch mode: FirstMatch.
+
+package geonosis:user-storage@0.1.0;
+
+interface user-storage-provider {
+    use geonosis:types/types@0.1.0.{provider-info, plugin-error};
+
+    variant lookup-outcome {
+        not-found,
+        found(list<u8>),  // bincode-encoded ExternalUser
+    }
+
+    record validation-result {
+        ok: bool,
+        reason: string,
+    }
+
+    describe: func() -> provider-info;
+
+    find-by-username: func(realm: string, username: string)
+        -> result<lookup-outcome, plugin-error>;
+    find-by-id: func(realm: string, id: string)
+        -> result<lookup-outcome, plugin-error>;
+    find-by-email: func(realm: string, email: string)
+        -> result<lookup-outcome, plugin-error>;
+
+    /// `credential-bytes`: bincode-encoded `Credential` per the SDK shape.
+    validate-credential: func(realm: string, id: string, credential-bytes: list<u8>)
+        -> result<validation-result, plugin-error>;
+}
+
+world user-storage-provider-world {
+    import geonosis:host/logging@0.1.0;
+    import geonosis:host/secrets@0.1.0;
+    import geonosis:host/http-client@0.1.0;
+    export user-storage-provider;
+}
