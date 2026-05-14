@@ -37,9 +37,7 @@ use geonosis_crypto::KeyManagementService;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use crate::xml::{
-    embed_signature, render_signature_block, render_signed_info, XMLNS_DS,
-};
+use crate::xml::{embed_signature, render_signature_block, render_signed_info, XMLNS_DS};
 
 #[derive(Debug, Error)]
 pub enum SignError {
@@ -61,7 +59,10 @@ pub enum KeyInfoMaterial {
     /// Base64-encoded DER X.509 certificate body (no PEM headers).
     X509Certificate { cert_b64: String },
     /// RSA modulus + exponent in big-endian unsigned bytes, base64'd.
-    RsaKeyValue { modulus_b64: String, exponent_b64: String },
+    RsaKeyValue {
+        modulus_b64: String,
+        exponent_b64: String,
+    },
 }
 
 impl KeyInfoMaterial {
@@ -130,12 +131,8 @@ where
 
     // 4. Render the <ds:Signature> block.
     let key_info_xml = key_info.render();
-    let signature_xml = render_signature_with_key_info(
-        reference_uri,
-        &digest_b64,
-        &signature_b64,
-        &key_info_xml,
-    );
+    let signature_xml =
+        render_signature_with_key_info(reference_uri, &digest_b64, &signature_b64, &key_info_xml);
 
     // 5. Embed it after <saml:Issuer>.
     Ok(embed_signature(assertion_xml, &signature_xml))
@@ -154,7 +151,12 @@ fn render_signature_with_key_info(
     let mut out = String::with_capacity(2048);
     write!(out, "<ds:Signature xmlns:ds=\"{}\">", XMLNS_DS).unwrap();
     out.push_str(&signed_info);
-    write!(out, "<ds:SignatureValue>{}</ds:SignatureValue>", signature_b64).unwrap();
+    write!(
+        out,
+        "<ds:SignatureValue>{}</ds:SignatureValue>",
+        signature_b64
+    )
+    .unwrap();
     out.push_str(key_info_xml);
     out.push_str("</ds:Signature>");
     out
@@ -267,9 +269,7 @@ mod tests {
                 friendly_name: None,
                 values: vec!["ada@acme.test".into()],
             }],
-            authn_context_class_ref: Some(
-                "urn:oasis:names:tc:SAML:2.0:ac:classes:Password".into(),
-            ),
+            authn_context_class_ref: Some("urn:oasis:names:tc:SAML:2.0:ac:classes:Password".into()),
             authn_instant: t,
             session_index: Some("s1".into()),
         }
@@ -352,5 +352,4 @@ mod tests {
         assert!(xml.contains("<ds:Modulus>Z29uZW0=</ds:Modulus>"));
         assert!(xml.contains("<ds:Exponent>AQAB</ds:Exponent>"));
     }
-
 }

@@ -28,8 +28,7 @@ const SERVICE_NAME: &str = "geonosis-server";
 /// Initialize the global subscriber. Returns `Ok(true)` when OTLP was
 /// wired, `Ok(false)` when the JSON-only fallback was used.
 pub fn init() -> Result<bool, String> {
-    let filter =
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     let fmt_layer = tracing_subscriber::fmt::layer().json();
 
     match env::var(ENV_VAR).ok().filter(|v| !v.trim().is_empty()) {
@@ -61,9 +60,7 @@ pub fn shutdown() {
     opentelemetry::global::shutdown_tracer_provider();
 }
 
-fn build_otlp_tracer(
-    endpoint: &str,
-) -> Result<opentelemetry_sdk::trace::Tracer, String> {
+fn build_otlp_tracer(endpoint: &str) -> Result<opentelemetry_sdk::trace::Tracer, String> {
     let exporter = opentelemetry_otlp::SpanExporter::builder()
         .with_tonic()
         .with_endpoint(endpoint)
@@ -72,10 +69,7 @@ fn build_otlp_tracer(
 
     let resource = opentelemetry_sdk::Resource::new(vec![
         opentelemetry::KeyValue::new("service.name", SERVICE_NAME),
-        opentelemetry::KeyValue::new(
-            "service.version",
-            env!("CARGO_PKG_VERSION").to_string(),
-        ),
+        opentelemetry::KeyValue::new("service.version", env!("CARGO_PKG_VERSION").to_string()),
     ]);
 
     let provider = opentelemetry_sdk::trace::TracerProvider::builder()

@@ -36,11 +36,7 @@ pub enum MigrateError {
     #[error("migrate: {0}")]
     Migrate(#[from] sqlx::migrate::MigrateError),
     #[error("schema version {found} not in supported range [{min}, {max}]")]
-    SchemaIncompatible {
-        found: i64,
-        min: i64,
-        max: i64,
-    },
+    SchemaIncompatible { found: i64, min: i64, max: i64 },
 }
 
 /// Run migrations with leader election. Multiple pods can call this on
@@ -54,11 +50,10 @@ pub async fn run_with_leader_lock(pool: &PgPool) -> Result<(), MigrateError> {
     // forever-hung boot.
     let deadline = std::time::Instant::now() + Duration::from_secs(60);
     loop {
-        let acquired: (bool,) =
-            sqlx::query_as("SELECT pg_try_advisory_lock($1)")
-                .bind(ADVISORY_LOCK_KEY)
-                .fetch_one(&mut *conn)
-                .await?;
+        let acquired: (bool,) = sqlx::query_as("SELECT pg_try_advisory_lock($1)")
+            .bind(ADVISORY_LOCK_KEY)
+            .fetch_one(&mut *conn)
+            .await?;
         if acquired.0 {
             break;
         }
@@ -100,11 +95,10 @@ pub async fn enforce_schema_compat(
     pool: &PgPool,
     compat: ServerCompat,
 ) -> Result<(), MigrateError> {
-    let row: Option<(i64,)> =
-        sqlx::query_as("SELECT max(version) FROM _sqlx_migrations")
-            .fetch_optional(pool)
-            .await?;
-    let found = row.and_then(|(v,)| Some(v)).unwrap_or(0);
+    let row: Option<(i64,)> = sqlx::query_as("SELECT max(version) FROM _sqlx_migrations")
+        .fetch_optional(pool)
+        .await?;
+    let found = row.map(|(v,)| v).unwrap_or(0);
     if found < compat.min_schema || found > compat.max_schema {
         return Err(MigrateError::SchemaIncompatible {
             found,
@@ -138,13 +132,10 @@ mod tests {
 
     #[test]
     fn migrator_lists_all_bootstrap_migrations() {
-        let names: Vec<&str> = MIGRATIONS
-            .iter()
-            .map(|m| m.description.as_ref())
-            .collect();
+        let names: Vec<&str> = MIGRATIONS.iter().map(|m| m.description.as_ref()).collect();
         // Each `.up.sql` is one migration; sqlx strips the timestamp
         // prefix into the description.
-        assert_eq!(names.len(), 11, "migrations: {names:?}");
+        assert_eq!(names.len(), 12, "migrations: {names:?}");
         for n in &names {
             eprintln!("migration: {n}");
         }
@@ -183,7 +174,11 @@ mod tests {
             }
             if m.description.contains("init audit") {
                 // Audit has its policy too; partitioning is orthogonal.
-                assert!(upper.contains("ENABLE ROW LEVEL SECURITY"), "{}", m.description);
+                assert!(
+                    upper.contains("ENABLE ROW LEVEL SECURITY"),
+                    "{}",
+                    m.description
+                );
                 assert!(upper.contains("TENANT_ISOLATION"), "{}", m.description);
                 continue;
             }
@@ -236,8 +231,14 @@ mod tests {
             .find(|m| m.description.contains("init audit"))
             .expect("init audit migration");
         let s = m.sql.to_ascii_uppercase();
-        assert!(s.contains("PARTITION BY RANGE"), "audit_event must be partitioned");
-        assert!(s.contains("PARTITION OF AUDIT_EVENT"), "must declare partitions");
+        assert!(
+            s.contains("PARTITION BY RANGE"),
+            "audit_event must be partitioned"
+        );
+        assert!(
+            s.contains("PARTITION OF AUDIT_EVENT"),
+            "must declare partitions"
+        );
     }
 
     #[test]

@@ -15,7 +15,7 @@ use serde_json::json;
 
 use crate::context::AuthnContext;
 use crate::traits::{
-    AuthnError, AuthnInput, AuthnOutput, Authenticator, FailureKind, RenderInstruction,
+    Authenticator, AuthnError, AuthnInput, AuthnOutput, FailureKind, RenderInstruction,
 };
 
 pub struct IdpRedirectAuthenticator {
@@ -134,6 +134,9 @@ mod tests {
             .process(&mut ctx, AuthnInput::Init)
             .await
             .unwrap();
-        assert!(matches!(out, AuthnOutput::Failure(FailureKind::BrokerError(_))));
+        assert!(matches!(
+            out,
+            AuthnOutput::Failure(FailureKind::BrokerError(_))
+        ));
     }
 }

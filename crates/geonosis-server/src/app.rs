@@ -10,11 +10,9 @@ use crate::security_headers;
 use crate::state::AppState;
 
 pub fn router(state: AppState) -> Router {
-    let admin = geonosis_admin_ui::AdminState::with_audit(
-        state.storage.clone(),
-        state.audit.clone(),
-    )
-    .expect("admin state");
+    let admin =
+        geonosis_admin_ui::AdminState::with_audit(state.storage.clone(), state.audit.clone())
+            .expect("admin state");
     let admin_router = geonosis_admin_ui::router(admin);
     let metrics_state = state.metrics.clone();
     Router::new()
@@ -181,9 +179,11 @@ mod tests {
 
     pub(crate) async fn fixture_state() -> AppState {
         let storage: Arc<dyn Storage> = Arc::new(MemoryStorage::new());
-        let mut token_policy = TokenPolicy::default();
         // Tests use EdDSA so we don't pay the RSA key-gen cost per fixture.
-        token_policy.default_signing_alg = geonosis_core::JwsAlgorithm::EdDSA;
+        let token_policy = TokenPolicy {
+            default_signing_alg: geonosis_core::JwsAlgorithm::EdDSA,
+            ..TokenPolicy::default()
+        };
         let realm = Realm {
             id: RealmId::new(),
             slug: "acme".into(),
@@ -251,7 +251,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .unwrap();
         let text = std::str::from_utf8(&body).unwrap();
         assert!(text.contains("<html"));
         assert!(text.contains("Realms"));
@@ -272,7 +274,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         // handlers_v1 returns a plain JSON array for consistency
         // with /orgs, /agents, etc. The legacy `{ "realms": [...] }`
@@ -319,7 +323,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .unwrap();
         let text = std::str::from_utf8(&body).unwrap();
         assert!(text.contains("Alanlar"));
         assert!(text.contains("lang=\"tr\""));
@@ -356,7 +362,9 @@ mod tests {
             .to_str()
             .unwrap();
         assert!(ct.starts_with("text/plain"));
-        let body = axum::body::to_bytes(resp.into_body(), 16 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 16 * 1024)
+            .await
+            .unwrap();
         let text = std::str::from_utf8(&body).unwrap();
         assert!(text.contains("geonosis_build_info"));
         assert!(text.contains("geonosis_http_requests_total"));
@@ -390,12 +398,8 @@ mod tests {
         for path in ["/-/started", "/-/ready", "/-/healthy"] {
             let resp = timeout(
                 Duration::from_secs(2),
-                r.clone().oneshot(
-                    Request::builder()
-                        .uri(path)
-                        .body(Body::empty())
-                        .unwrap(),
-                ),
+                r.clone()
+                    .oneshot(Request::builder().uri(path).body(Body::empty()).unwrap()),
             )
             .await
             .unwrap()
@@ -414,7 +418,10 @@ mod tests {
         let resp = r
             .clone()
             .oneshot(
-                Request::builder().uri("/-/ready").body(Body::empty()).unwrap(),
+                Request::builder()
+                    .uri("/-/ready")
+                    .body(Body::empty())
+                    .unwrap(),
             )
             .await
             .unwrap();
@@ -436,7 +443,10 @@ mod tests {
         let resp = r
             .clone()
             .oneshot(
-                Request::builder().uri("/-/ready").body(Body::empty()).unwrap(),
+                Request::builder()
+                    .uri("/-/ready")
+                    .body(Body::empty())
+                    .unwrap(),
             )
             .await
             .unwrap();
@@ -468,10 +478,18 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
-        assert_eq!(json["code_challenge_methods_supported"], serde_json::json!(["S256"]));
-        assert_eq!(json["response_types_supported"], serde_json::json!(["code"]));
+        assert_eq!(
+            json["code_challenge_methods_supported"],
+            serde_json::json!(["S256"])
+        );
+        assert_eq!(
+            json["response_types_supported"],
+            serde_json::json!(["code"])
+        );
     }
 
     #[tokio::test]
@@ -504,7 +522,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["error"], "invalid_request");
     }
@@ -524,7 +544,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["error"], "unsupported_grant_type");
     }
@@ -555,7 +577,9 @@ mod tests {
             )
             .await
             .unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), 32 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 32 * 1024)
+            .await
+            .unwrap();
         let text = std::str::from_utf8(&body).unwrap();
         assert!(
             text.contains("geonosis_oidc_authorize_total{realm=\"acme\""),
@@ -591,7 +615,9 @@ mod tests {
             )
             .await
             .unwrap();
-        let body = axum::body::to_bytes(resp.into_body(), 32 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 32 * 1024)
+            .await
+            .unwrap();
         let text = std::str::from_utf8(&body).unwrap();
         // The handler rejects before the grant-type label is bound,
         // so the response counter we get back is the 4xx class one.
@@ -627,7 +653,9 @@ mod tests {
             .to_str()
             .unwrap();
         assert!(ct.starts_with("application/samlmetadata+xml"));
-        let body = axum::body::to_bytes(resp.into_body(), 32 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 32 * 1024)
+            .await
+            .unwrap();
         let xml = std::str::from_utf8(&body).unwrap();
         assert!(xml.starts_with("<?xml"));
         assert!(xml.contains("md:IDPSSODescriptor"));
@@ -671,7 +699,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-        let body = axum::body::to_bytes(resp.into_body(), 16 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 16 * 1024)
+            .await
+            .unwrap();
         let text = std::str::from_utf8(&body).unwrap();
         assert!(text.contains("missing SAMLRequest"));
     }
@@ -691,7 +721,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-        let body = axum::body::to_bytes(resp.into_body(), 16 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 16 * 1024)
+            .await
+            .unwrap();
         let text = std::str::from_utf8(&body).unwrap();
         assert!(text.contains("missing SAMLRequest"));
     }
@@ -710,12 +742,10 @@ mod tests {
         let xml = r#"<samlp:AuthnRequest xmlns:samlp="urn:oasis:names:tc:SAML:2.0:protocol" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion" ID="_x" Version="2.0" IssueInstant="2026-05-14T12:00:00Z"><saml:Issuer>https://unknown.sp</saml:Issuer></samlp:AuthnRequest>"#;
         let mut enc = DeflateEncoder::new(Vec::new(), Compression::default());
         enc.write_all(xml.as_bytes()).unwrap();
-        let b64 = B64.encode(&enc.finish().unwrap());
-        let encoded = percent_encoding::utf8_percent_encode(
-            &b64,
-            percent_encoding::NON_ALPHANUMERIC,
-        )
-        .to_string();
+        let b64 = B64.encode(enc.finish().unwrap());
+        let encoded =
+            percent_encoding::utf8_percent_encode(&b64, percent_encoding::NON_ALPHANUMERIC)
+                .to_string();
 
         let r = router(fixture_state().await);
         let resp = r
@@ -730,7 +760,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-        let body = axum::body::to_bytes(resp.into_body(), 16 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 16 * 1024)
+            .await
+            .unwrap();
         let text = std::str::from_utf8(&body).unwrap();
         assert!(text.contains("unknown SP"), "got: {text}");
     }
@@ -751,7 +783,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
-        let body = axum::body::to_bytes(resp.into_body(), 16 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 16 * 1024)
+            .await
+            .unwrap();
         let text = std::str::from_utf8(&body).unwrap();
         assert!(text.contains("no SSO session"));
     }
@@ -835,7 +869,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["active"], serde_json::Value::Bool(false));
     }
@@ -858,7 +894,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::CREATED);
-        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert!(json["request_uri"]
             .as_str()
@@ -916,7 +954,12 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::SEE_OTHER);
-        let loc = resp.headers().get(axum::http::header::LOCATION).unwrap().to_str().unwrap();
+        let loc = resp
+            .headers()
+            .get(axum::http::header::LOCATION)
+            .unwrap()
+            .to_str()
+            .unwrap();
         assert!(loc.starts_with("https://example.com/bye"));
         assert!(loc.contains("state=s1"));
     }
@@ -952,7 +995,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         let acs = json["acs_url"].as_str().unwrap();
         assert!(acs.contains("/broker/google/endpoint"));
@@ -1073,7 +1118,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert!(!json["device_code"].as_str().unwrap().is_empty());
         let user_code = json["user_code"].as_str().unwrap();
@@ -1144,7 +1191,8 @@ mod tests {
     pub(crate) async fn seed_eddsa_key(state: &AppState, realm_id: RealmId) {
         use ed25519_dalek::SigningKey;
         use geonosis_crypto::{
-            jwk::Jwk, kms::{KeyMaterial, KeyState, KeyUsage, PrivateKeyRef},
+            jwk::Jwk,
+            kms::{KeyMaterial, KeyState, KeyUsage, PrivateKeyRef},
             wrap::WrappedSecret,
         };
         use pkcs8::EncodePrivateKey;
@@ -1202,7 +1250,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::OK);
-        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         let access = json["access_token"].as_str().unwrap();
         // JWT structure: three dot-separated parts.
@@ -1234,7 +1284,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
-        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024).await.unwrap();
+        let body = axum::body::to_bytes(resp.into_body(), 64 * 1024)
+            .await
+            .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["error"], "invalid_client");
     }

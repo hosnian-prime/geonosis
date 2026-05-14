@@ -51,9 +51,7 @@ pub fn leptos_router(state: Arc<AdminState>) -> Router {
         .with_state(state)
 }
 
-async fn page_realms(
-    State(state): State<Arc<AdminState>>,
-) -> Result<Html<String>, AdminError> {
+async fn page_realms(State(state): State<Arc<AdminState>>) -> Result<Html<String>, AdminError> {
     let realms = state.storage.list_realms().await?;
     let rows: Vec<RealmRow> = realms
         .into_iter()
@@ -96,7 +94,9 @@ async fn page_clients(
         })
         .collect();
     let s = realm.slug;
-    Ok(render(move || view! { <ClientsPage realm_slug=s rows=rows/> }))
+    Ok(render(
+        move || view! { <ClientsPage realm_slug=s rows=rows/> },
+    ))
 }
 
 async fn page_users(
@@ -115,7 +115,9 @@ async fn page_users(
         })
         .collect();
     let s = realm.slug;
-    Ok(render(move || view! { <UsersPage realm_slug=s rows=rows/> }))
+    Ok(render(
+        move || view! { <UsersPage realm_slug=s rows=rows/> },
+    ))
 }
 
 async fn page_orgs(
@@ -155,7 +157,9 @@ async fn page_agents(
         })
         .collect();
     let s = realm.slug;
-    Ok(render(move || view! { <AgentsPage realm_slug=s rows=rows/> }))
+    Ok(render(
+        move || view! { <AgentsPage realm_slug=s rows=rows/> },
+    ))
 }
 
 async fn page_idps(
@@ -192,7 +196,9 @@ async fn page_roles(
         })
         .collect();
     let s = realm.slug;
-    Ok(render(move || view! { <RolesPage realm_slug=s rows=rows/> }))
+    Ok(render(
+        move || view! { <RolesPage realm_slug=s rows=rows/> },
+    ))
 }
 
 async fn page_groups(
@@ -210,7 +216,9 @@ async fn page_groups(
         })
         .collect();
     let s = realm.slug;
-    Ok(render(move || view! { <GroupsPage realm_slug=s rows=rows/> }))
+    Ok(render(
+        move || view! { <GroupsPage realm_slug=s rows=rows/> },
+    ))
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -241,9 +249,7 @@ fn parse_optional_rfc3339(
                 .or_else(|_| {
                     chrono::NaiveDateTime::parse_from_str(raw, "%Y-%m-%dT%H:%M")
                         .map(|n| n.and_utc())
-                        .map_err(|e| {
-                            AdminError::Storage(format!("bad datetime `{raw}`: {e}"))
-                        })
+                        .map_err(|e| AdminError::Storage(format!("bad datetime `{raw}`: {e}")))
                 })
                 .map_err(|e| match e {
                     err @ AdminError::Storage(_) => err,
@@ -270,7 +276,9 @@ async fn page_flows(
         })
         .collect();
     let s = realm.slug;
-    Ok(render(move || view! { <FlowsPage realm_slug=s rows=rows/> }))
+    Ok(render(
+        move || view! { <FlowsPage realm_slug=s rows=rows/> },
+    ))
 }
 
 async fn page_flow_edit(
@@ -278,9 +286,12 @@ async fn page_flow_edit(
     Path((slug, alias)): Path<(String, String)>,
 ) -> Result<Html<String>, AdminError> {
     let realm = realm_by_slug(&state, &slug).await?;
-    let flow = state.storage.get_auth_flow_by_alias(realm.id, &alias).await?;
-    let json = serde_json::to_string_pretty(&flow)
-        .map_err(|e| AdminError::Storage(e.to_string()))?;
+    let flow = state
+        .storage
+        .get_auth_flow_by_alias(realm.id, &alias)
+        .await?;
+    let json =
+        serde_json::to_string_pretty(&flow).map_err(|e| AdminError::Storage(e.to_string()))?;
     let s = realm.slug;
     Ok(render(
         move || view! { <FlowEditPage realm_slug=s alias=alias json=json/> },
@@ -366,7 +377,9 @@ async fn page_sessions(
         })
         .collect();
     let slug = realm.slug;
-    Ok(render(move || view! { <SessionsPage realm_slug=slug rows=rows/> }))
+    Ok(render(
+        move || view! { <SessionsPage realm_slug=slug rows=rows/> },
+    ))
 }
 
 async fn page_events(
@@ -383,7 +396,10 @@ async fn page_events(
         from,
         until,
     };
-    let raw = state.storage.list_audit_events(realm.id, &filter, 200).await?;
+    let raw = state
+        .storage
+        .list_audit_events(realm.id, &filter, 200)
+        .await?;
     let rows: Vec<EventRow> = raw
         .into_iter()
         .map(|r| EventRow {
@@ -398,7 +414,11 @@ async fn page_events(
             target: r
                 .target
                 .as_ref()
-                .and_then(|t| t.get("kind").and_then(|v| v.as_str()).map(|s| s.to_string()))
+                .and_then(|t| {
+                    t.get("kind")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                })
                 .unwrap_or_else(|| "—".to_string()),
         })
         .collect();

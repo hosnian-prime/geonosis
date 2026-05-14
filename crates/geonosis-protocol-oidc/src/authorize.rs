@@ -156,7 +156,6 @@ impl AuthorizeRequest {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -165,7 +164,9 @@ mod tests {
     };
 
     fn params(s: &[(&str, &str)]) -> BTreeMap<String, String> {
-        s.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+        s.iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
     }
 
     #[test]

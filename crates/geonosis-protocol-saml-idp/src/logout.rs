@@ -79,9 +79,11 @@ pub fn parse_logout_request(xml_bytes: &[u8]) -> Result<ParsedLogoutRequest, Log
             Ok(Event::Text(e)) => {
                 if in_issuer || in_name_id || in_session_index {
                     if let Some(ref mut s) = current {
-                        s.push_str(&e.unescape().map_err(|err| {
-                            LogoutParseError::Xml(format!("text decode: {err}"))
-                        })?);
+                        s.push_str(
+                            &e.unescape().map_err(|err| {
+                                LogoutParseError::Xml(format!("text decode: {err}"))
+                            })?,
+                        );
                     }
                 }
             }
@@ -130,9 +132,8 @@ fn start_logout_request(
         match key {
             b"ID" => id = Some(val),
             b"IssueInstant" => {
-                let parsed = DateTime::parse_from_rfc3339(&val).map_err(|e| {
-                    LogoutParseError::Xml(format!("IssueInstant: {e}"))
-                })?;
+                let parsed = DateTime::parse_from_rfc3339(&val)
+                    .map_err(|e| LogoutParseError::Xml(format!("IssueInstant: {e}")))?;
                 issue_instant = Some(parsed.with_timezone(&Utc));
             }
             b"Destination" => destination = Some(val),
@@ -195,12 +196,7 @@ pub fn serialize_logout_response(
     .unwrap();
     write!(out, " Destination=\"{}\"", xml_escape(destination)).unwrap();
     write!(out, " InResponseTo=\"{}\">", xml_escape(in_response_to)).unwrap();
-    write!(
-        out,
-        "<saml:Issuer>{}</saml:Issuer>",
-        xml_escape(issuer)
-    )
-    .unwrap();
+    write!(out, "<saml:Issuer>{}</saml:Issuer>", xml_escape(issuer)).unwrap();
     out.push_str("<samlp:Status><samlp:StatusCode Value=\"urn:oasis:names:tc:SAML:2.0:status:Success\"/></samlp:Status>");
     out.push_str("</samlp:LogoutResponse>");
     out
@@ -255,7 +251,9 @@ mod tests {
         assert!(xml.contains("ID=\"_r1\""));
         assert!(xml.contains("InResponseTo=\"_logout1\""));
         assert!(xml.contains("Destination=\"https://sp.example/slo\""));
-        assert!(xml.contains("samlp:StatusCode Value=\"urn:oasis:names:tc:SAML:2.0:status:Success\""));
+        assert!(
+            xml.contains("samlp:StatusCode Value=\"urn:oasis:names:tc:SAML:2.0:status:Success\"")
+        );
         assert!(xml.contains("<saml:Issuer>https://idp.example</saml:Issuer>"));
     }
 }

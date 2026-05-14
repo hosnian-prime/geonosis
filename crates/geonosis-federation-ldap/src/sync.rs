@@ -76,7 +76,9 @@ pub async fn run_incremental_sync(
 ) -> Result<(SyncReport, Vec<SyncOutcome>), LdapError> {
     let cfg = pool.config();
     let attr = match &cfg.sync_policy {
-        crate::config::SyncPolicy::Periodic { changed_attribute, .. } => changed_attribute.clone(),
+        crate::config::SyncPolicy::Periodic {
+            changed_attribute, ..
+        } => changed_attribute.clone(),
         crate::config::SyncPolicy::OnDemand => {
             return Err(LdapError::Other(
                 "incremental sync requires SyncPolicy::Periodic".into(),
@@ -86,10 +88,7 @@ pub async fn run_incremental_sync(
     let started = Utc::now();
     // Generalized Time per RFC 4517 §3.3.13 — `YYYYMMDDHHMMSSZ`.
     let since_gt = since.format("%Y%m%d%H%M%SZ").to_string();
-    let filter = format!(
-        "(&{}({attr}>={since_gt}))",
-        cfg.render_user_filter("*"),
-    );
+    let filter = format!("(&{}({attr}>={since_gt}))", cfg.render_user_filter("*"),);
     let attrs = {
         let mut a = cfg.attribute_map.request_attrs();
         if let Some(gs) = &cfg.group_sync {
@@ -185,7 +184,8 @@ async fn paged_search(
     let mut conn = pool.acquire().await?;
     let (rs, _) = tokio::time::timeout(
         cfg.search_timeout(),
-        conn.ldap.search(&cfg.base_dn, Scope::Subtree, filter, attrs.to_vec()),
+        conn.ldap
+            .search(&cfg.base_dn, Scope::Subtree, filter, attrs.to_vec()),
     )
     .await
     .map_err(|_| LdapError::Timeout {
