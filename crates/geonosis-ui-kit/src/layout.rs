@@ -5,7 +5,13 @@ use maud::{html, Markup, DOCTYPE};
 /// the active link. When `realm_slug` is `Some`, sub-realm nav links
 /// resolve to `/admin/realms/{slug}/...`; when `None` (realm list
 /// page), only the Realms link is shown.
-pub fn page(title: &str, locale: &str, active: &str, realm_slug: Option<&str>, body: Markup) -> Markup {
+pub fn page(
+    title: &str,
+    locale: &str,
+    active: &str,
+    realm_slug: Option<&str>,
+    body: Markup,
+) -> Markup {
     html! {
         (DOCTYPE)
         html lang=(locale) dir="auto" {

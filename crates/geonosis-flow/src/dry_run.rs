@@ -299,6 +299,7 @@ mod tests {
             kind,
             requirement: Requirement::Required,
             config: serde_json::Value::Null,
+            layout: None,
         }
     }
 

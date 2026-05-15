@@ -88,12 +88,21 @@ pub fn LdapDetailPage(
         .with_crumbs(vec![
             Crumb::link("Realms", "/admin/realms"),
             Crumb::link(realm_slug.clone(), format!("/admin/realms/{realm_slug}")),
-            Crumb::link("Federation", format!("/admin/realms/{realm_slug}/federation")),
+            Crumb::link(
+                "Federation",
+                format!("/admin/realms/{realm_slug}/federation"),
+            ),
             Crumb::current(alias.clone()),
         ]);
     let tab_items = LDAP_TABS
         .iter()
-        .map(|(k, l)| TabItem::new(*k, *l, format!("/admin/realms/{realm_slug}/federation/{alias}?tab={k}")))
+        .map(|(k, l)| {
+            TabItem::new(
+                *k,
+                *l,
+                format!("/admin/realms/{realm_slug}/federation/{alias}?tab={k}"),
+            )
+        })
         .collect::<Vec<_>>();
     let panel = match active_tab.as_str() {
         "connection" => render_connection(cfg.clone()).into_any(),
@@ -137,7 +146,11 @@ fn render_connection(c: LdapFederationConfig) -> impl IntoView {
 
 fn render_mapping(c: LdapFederationConfig) -> impl IntoView {
     let m = c.attribute_map;
-    let custom = m.extras.iter().map(|(k, v)| (k.clone(), v.clone())).collect::<Vec<_>>();
+    let custom = m
+        .extras
+        .iter()
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect::<Vec<_>>();
     let custom_section = if custom.is_empty() {
         view! { <p class="gn-text-muted">"No custom mappings."</p> }.into_any()
     } else {
@@ -150,7 +163,8 @@ fn render_mapping(c: LdapFederationConfig) -> impl IntoView {
                     </tr>
                 }).collect_view()}
             </ListTable>
-        }.into_any()
+        }
+        .into_any()
     };
     view! {
         <div class="gn-stack">

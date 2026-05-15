@@ -93,24 +93,27 @@ pub fn leptos_router(state: Arc<AdminState>) -> Router {
         .route("/admin/realms/:slug/disable", post(post_realm_disable))
         // Settings tabs
         .route("/admin/realms/:slug/settings", get(page_realm_settings))
-        .route("/admin/realms/:slug/settings/:tab", post(post_realm_settings))
+        .route(
+            "/admin/realms/:slug/settings/:tab",
+            post(post_realm_settings),
+        )
         // ---- Clients ----
         .route(
             "/admin/realms/:slug/clients",
             get(page_clients).post(post_client_create),
         )
         .route("/admin/realms/:slug/clients/new", get(page_client_new))
-        .route("/admin/realms/:slug/clients/:client_id", get(page_client_detail))
+        .route(
+            "/admin/realms/:slug/clients/:client_id",
+            get(page_client_detail),
+        )
         // ---- Users ----
         .route(
             "/admin/realms/:slug/users",
             get(page_users).post(post_user_create),
         )
         .route("/admin/realms/:slug/users/new", get(page_user_new))
-        .route(
-            "/admin/realms/:slug/users/:username",
-            get(page_user_detail),
-        )
+        .route("/admin/realms/:slug/users/:username", get(page_user_detail))
         // ---- Roles ----
         .route(
             "/admin/realms/:slug/roles",
@@ -176,10 +179,7 @@ pub fn leptos_router(state: Arc<AdminState>) -> Router {
 //                                  Context
 // =========================================================================
 
-async fn build_ctx(
-    state: &Arc<AdminState>,
-    principal: Option<&AdminPrincipal>,
-) -> PageContext {
+async fn build_ctx(state: &Arc<AdminState>, principal: Option<&AdminPrincipal>) -> PageContext {
     let realms = state
         .storage
         .list_realms()
@@ -196,7 +196,9 @@ async fn build_ctx(
     let profile = ProfileContext {
         username: principal.map(|p| p.username.clone()),
     };
-    PageContext::default().with_realms(realms).with_profile(profile)
+    PageContext::default()
+        .with_realms(realms)
+        .with_profile(profile)
 }
 
 // =========================================================================
@@ -385,7 +387,9 @@ async fn page_realm_detail(
         idp_count,
         flow_count,
     };
-    Ok(render(move || view! { <RealmDetailPage data=data ctx=ctx/> }))
+    Ok(render(
+        move || view! { <RealmDetailPage data=data ctx=ctx/> },
+    ))
 }
 
 async fn post_realm_delete(
@@ -415,7 +419,11 @@ async fn post_realm_disable(
     crate::audit_emit::emit(
         &state,
         realm.id,
-        if realm.enabled { "realm.enabled" } else { "realm.disabled" },
+        if realm.enabled {
+            "realm.enabled"
+        } else {
+            "realm.disabled"
+        },
         None,
         serde_json::json!({ "slug": realm.slug }),
     );
@@ -435,8 +443,10 @@ async fn page_realm_settings(
     let ctx = build_ctx(&state, principal.as_deref()).await;
     let realm = realm_by_slug(&state, &slug).await?;
     let tab = q.tab.unwrap_or_else(|| "general".into());
-    Ok(render(move || view! {
-        <RealmSettingsPage realm=realm active_tab=tab ctx=ctx/>
+    Ok(render(move || {
+        view! {
+            <RealmSettingsPage realm=realm active_tab=tab ctx=ctx/>
+        }
     }))
 }
 
@@ -525,8 +535,10 @@ async fn page_clients(
         })
         .collect();
     let s = realm.slug;
-    Ok(render(move || view! {
-        <ClientsPage realm_slug=s rows=rows ctx=ctx/>
+    Ok(render(move || {
+        view! {
+            <ClientsPage realm_slug=s rows=rows ctx=ctx/>
+        }
     }))
 }
 
@@ -550,7 +562,9 @@ async fn page_client_new(
 ) -> Result<Html<String>, AdminError> {
     let ctx = build_ctx(&state, principal.as_deref()).await;
     let _ = realm_by_slug(&state, &slug).await?;
-    Ok(render(move || view! { <ClientCreatePage realm_slug=slug ctx=ctx/> }))
+    Ok(render(
+        move || view! { <ClientCreatePage realm_slug=slug ctx=ctx/> },
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -647,8 +661,10 @@ async fn page_client_detail(
         .get_client_by_client_id(realm.id, &client_id)
         .await?;
     let tab = q.tab.unwrap_or_else(|| "general".into());
-    Ok(render(move || view! {
-        <ClientDetailPage realm_slug=slug client=client active_tab=tab ctx=ctx/>
+    Ok(render(move || {
+        view! {
+            <ClientDetailPage realm_slug=slug client=client active_tab=tab ctx=ctx/>
+        }
     }))
 }
 
@@ -689,8 +705,10 @@ async fn page_users(
         })
         .collect();
     let s = realm.slug;
-    Ok(render(move || view! {
-        <UsersPage realm_slug=s rows=rows ctx=ctx search=search/>
+    Ok(render(move || {
+        view! {
+            <UsersPage realm_slug=s rows=rows ctx=ctx search=search/>
+        }
     }))
 }
 
@@ -701,7 +719,9 @@ async fn page_user_new(
 ) -> Result<Html<String>, AdminError> {
     let ctx = build_ctx(&state, principal.as_deref()).await;
     let _ = realm_by_slug(&state, &slug).await?;
-    Ok(render(move || view! { <UserCreatePage realm_slug=slug ctx=ctx/> }))
+    Ok(render(
+        move || view! { <UserCreatePage realm_slug=slug ctx=ctx/> },
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -787,7 +807,10 @@ async fn page_user_detail(
 ) -> Result<Html<String>, AdminError> {
     let ctx = build_ctx(&state, principal.as_deref()).await;
     let realm = realm_by_slug(&state, &slug).await?;
-    let user = state.storage.get_user_by_username(realm.id, &username).await?;
+    let user = state
+        .storage
+        .get_user_by_username(realm.id, &username)
+        .await?;
     let roles = state
         .storage
         .list_user_roles(realm.id, user.id)
@@ -834,8 +857,10 @@ async fn page_user_detail(
         sessions,
     };
     let tab = q.tab.unwrap_or_else(|| "general".into());
-    Ok(render(move || view! {
-        <UserDetailPage realm_slug=slug data=data active_tab=tab ctx=ctx/>
+    Ok(render(move || {
+        view! {
+            <UserDetailPage realm_slug=slug data=data active_tab=tab ctx=ctx/>
+        }
     }))
 }
 
@@ -866,7 +891,9 @@ async fn page_roles(
         })
         .collect();
     let s = realm.slug;
-    Ok(render(move || view! { <RolesPage realm_slug=s rows=rows ctx=ctx/> }))
+    Ok(render(
+        move || view! { <RolesPage realm_slug=s rows=rows ctx=ctx/> },
+    ))
 }
 
 async fn page_role_new(
@@ -876,7 +903,9 @@ async fn page_role_new(
 ) -> Result<Html<String>, AdminError> {
     let ctx = build_ctx(&state, principal.as_deref()).await;
     let _ = realm_by_slug(&state, &slug).await?;
-    Ok(render(move || view! { <RoleCreatePage realm_slug=slug ctx=ctx/> }))
+    Ok(render(
+        move || view! { <RoleCreatePage realm_slug=slug ctx=ctx/> },
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -923,7 +952,10 @@ async fn post_role_create(
         &state,
         realm.id,
         "role.created",
-        Some(geonosis_audit::Target::Other { entity: "role".into(), id: role.id.to_string() }),
+        Some(geonosis_audit::Target::Other {
+            entity: "role".into(),
+            id: role.id.to_string(),
+        }),
         serde_json::json!({ "name": role.name }),
     );
     Ok(Redirect::to(&format!("/admin/realms/{slug}/roles/{}", form.name)).into_response())
@@ -937,7 +969,10 @@ async fn page_role_detail(
 ) -> Result<Html<String>, AdminError> {
     let ctx = build_ctx(&state, principal.as_deref()).await;
     let realm = realm_by_slug(&state, &slug).await?;
-    let role = state.storage.get_role_by_name(realm.id, None, &name).await?;
+    let role = state
+        .storage
+        .get_role_by_name(realm.id, None, &name)
+        .await?;
     let composites_realm = role
         .composites
         .realm_roles
@@ -960,8 +995,10 @@ async fn page_role_detail(
         assigned_groups: vec![],
     };
     let tab = q.tab.unwrap_or_else(|| "general".into());
-    Ok(render(move || view! {
-        <RoleDetailPage realm_slug=slug data=data active_tab=tab ctx=ctx/>
+    Ok(render(move || {
+        view! {
+            <RoleDetailPage realm_slug=slug data=data active_tab=tab ctx=ctx/>
+        }
     }))
 }
 
@@ -988,8 +1025,10 @@ async fn page_groups(
         })
         .collect();
     let s = realm.slug;
-    Ok(render(move || view! {
-        <GroupsPage realm_slug=s rows=rows ctx=ctx/>
+    Ok(render(move || {
+        view! {
+            <GroupsPage realm_slug=s rows=rows ctx=ctx/>
+        }
     }))
 }
 
@@ -1000,7 +1039,9 @@ async fn page_group_new(
 ) -> Result<Html<String>, AdminError> {
     let ctx = build_ctx(&state, principal.as_deref()).await;
     let _ = realm_by_slug(&state, &slug).await?;
-    Ok(render(move || view! { <GroupCreatePage realm_slug=slug ctx=ctx/> }))
+    Ok(render(
+        move || view! { <GroupCreatePage realm_slug=slug ctx=ctx/> },
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -1047,7 +1088,10 @@ async fn post_group_create(
         &state,
         realm.id,
         "group.created",
-        Some(geonosis_audit::Target::Other { entity: "group".into(), id: group.id.to_string() }),
+        Some(geonosis_audit::Target::Other {
+            entity: "group".into(),
+            id: group.id.to_string(),
+        }),
         serde_json::json!({ "path": path }),
     );
     Ok(Redirect::to(&format!("/admin/realms/{slug}/groups/{}", group.id)).into_response())
@@ -1074,8 +1118,10 @@ async fn page_group_detail(
         realm_roles: group.realm_role_ids.iter().map(|r| r.to_string()).collect(),
     };
     let tab = q.tab.unwrap_or_else(|| "general".into());
-    Ok(render(move || view! {
-        <GroupDetailPage realm_slug=slug data=data active_tab=tab ctx=ctx/>
+    Ok(render(move || {
+        view! {
+            <GroupDetailPage realm_slug=slug data=data active_tab=tab ctx=ctx/>
+        }
     }))
 }
 
@@ -1101,8 +1147,10 @@ async fn page_orgs(
         })
         .collect();
     let s = realm.slug;
-    Ok(render(move || view! {
-        <OrgsPage realm_slug=s rows=rows ctx=ctx/>
+    Ok(render(move || {
+        view! {
+            <OrgsPage realm_slug=s rows=rows ctx=ctx/>
+        }
     }))
 }
 
@@ -1113,7 +1161,9 @@ async fn page_org_new(
 ) -> Result<Html<String>, AdminError> {
     let ctx = build_ctx(&state, principal.as_deref()).await;
     let _ = realm_by_slug(&state, &slug).await?;
-    Ok(render(move || view! { <OrgCreatePage realm_slug=slug ctx=ctx/> }))
+    Ok(render(
+        move || view! { <OrgCreatePage realm_slug=slug ctx=ctx/> },
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -1154,7 +1204,10 @@ async fn post_org_create(
         &state,
         realm.id,
         "organization.created",
-        Some(geonosis_audit::Target::Other { entity: "organization".into(), id: org.id.to_string() }),
+        Some(geonosis_audit::Target::Other {
+            entity: "organization".into(),
+            id: org.id.to_string(),
+        }),
         serde_json::json!({ "alias": org.alias }),
     );
     Ok(Redirect::to(&format!("/admin/realms/{slug}/orgs/{}", form.alias)).into_response())
@@ -1168,7 +1221,10 @@ async fn page_org_detail(
 ) -> Result<Html<String>, AdminError> {
     let ctx = build_ctx(&state, principal.as_deref()).await;
     let realm = realm_by_slug(&state, &slug).await?;
-    let org = state.storage.get_organization_by_alias(realm.id, &alias).await?;
+    let org = state
+        .storage
+        .get_organization_by_alias(realm.id, &alias)
+        .await?;
     let domains = state
         .storage
         .list_org_domains(realm.id, org.id)
@@ -1243,8 +1299,16 @@ async fn page_org_detail(
         .map(|p| OrgConsentRow {
             client_id: p.client_id.to_string(),
             mode: p.mode,
-            pre_approved: p.pre_approved_scopes.iter().map(|s| s.as_str().to_string()).collect(),
-            blocked: p.blocked_scopes.iter().map(|s| s.as_str().to_string()).collect(),
+            pre_approved: p
+                .pre_approved_scopes
+                .iter()
+                .map(|s| s.as_str().to_string())
+                .collect(),
+            blocked: p
+                .blocked_scopes
+                .iter()
+                .map(|s| s.as_str().to_string())
+                .collect(),
         })
         .collect();
     let data = OrgDetailData {
@@ -1257,8 +1321,10 @@ async fn page_org_detail(
         consent_policies,
     };
     let tab = q.tab.unwrap_or_else(|| "general".into());
-    Ok(render(move || view! {
-        <OrgDetailPage realm_slug=slug data=data active_tab=tab ctx=ctx/>
+    Ok(render(move || {
+        view! {
+            <OrgDetailPage realm_slug=slug data=data active_tab=tab ctx=ctx/>
+        }
     }))
 }
 
@@ -1286,8 +1352,10 @@ async fn page_agents(
         })
         .collect();
     let s = realm.slug;
-    Ok(render(move || view! {
-        <AgentsPage realm_slug=s rows=rows ctx=ctx/>
+    Ok(render(move || {
+        view! {
+            <AgentsPage realm_slug=s rows=rows ctx=ctx/>
+        }
     }))
 }
 
@@ -1312,8 +1380,10 @@ async fn page_agent_detail(
     let realm = realm_by_slug(&state, &slug).await?;
     let agent = state.storage.get_agent_by_alias(realm.id, &alias).await?;
     let tab = q.tab.unwrap_or_else(|| "general".into());
-    Ok(render(move || view! {
-        <AgentDetailPage realm_slug=slug agent=agent active_tab=tab ctx=ctx/>
+    Ok(render(move || {
+        view! {
+            <AgentDetailPage realm_slug=slug agent=agent active_tab=tab ctx=ctx/>
+        }
     }))
 }
 
@@ -1344,7 +1414,9 @@ async fn page_idps(
         })
         .collect();
     let s = realm.slug;
-    Ok(render(move || view! { <IdpsPage realm_slug=s rows=rows ctx=ctx/> }))
+    Ok(render(
+        move || view! { <IdpsPage realm_slug=s rows=rows ctx=ctx/> },
+    ))
 }
 
 async fn page_idp_new(
@@ -1354,7 +1426,9 @@ async fn page_idp_new(
 ) -> Result<Html<String>, AdminError> {
     let ctx = build_ctx(&state, principal.as_deref()).await;
     let _ = realm_by_slug(&state, &slug).await?;
-    Ok(render(move || view! { <IdpCreatePage realm_slug=slug ctx=ctx/> }))
+    Ok(render(
+        move || view! { <IdpCreatePage realm_slug=slug ctx=ctx/> },
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -1426,7 +1500,10 @@ async fn post_idp_create(
         &state,
         realm.id,
         "idp.created",
-        Some(geonosis_audit::Target::Other { entity: "idp".into(), id: idp.id.to_string() }),
+        Some(geonosis_audit::Target::Other {
+            entity: "idp".into(),
+            id: idp.id.to_string(),
+        }),
         serde_json::json!({ "alias": form.alias }),
     );
     Ok(Redirect::to(&format!("/admin/realms/{slug}/idps/{}", form.alias)).into_response())
@@ -1442,8 +1519,10 @@ async fn page_idp_detail(
     let realm = realm_by_slug(&state, &slug).await?;
     let idp = state.storage.get_idp_by_alias(realm.id, &alias).await?;
     let tab = q.tab.unwrap_or_else(|| "general".into());
-    Ok(render(move || view! {
-        <IdpDetailPage realm_slug=slug idp=idp active_tab=tab ctx=ctx/>
+    Ok(render(move || {
+        view! {
+            <IdpDetailPage realm_slug=slug idp=idp active_tab=tab ctx=ctx/>
+        }
     }))
 }
 
@@ -1470,8 +1549,10 @@ async fn page_federation(
         })
         .collect();
     let s = realm.slug;
-    Ok(render(move || view! {
-        <FederationPage realm_slug=s rows=rows ctx=ctx/>
+    Ok(render(move || {
+        view! {
+            <FederationPage realm_slug=s rows=rows ctx=ctx/>
+        }
     }))
 }
 
@@ -1485,8 +1566,10 @@ async fn page_federation_detail(
     let realm = realm_by_slug(&state, &slug).await?;
     let cfg = state.storage.get_ldap_source(realm.id, &alias).await?;
     let tab = q.tab.unwrap_or_else(|| "connection".into());
-    Ok(render(move || view! {
-        <LdapDetailPage realm_slug=slug cfg=cfg active_tab=tab ctx=ctx/>
+    Ok(render(move || {
+        view! {
+            <LdapDetailPage realm_slug=slug cfg=cfg active_tab=tab ctx=ctx/>
+        }
     }))
 }
 
@@ -1548,8 +1631,10 @@ async fn page_spi(
     }
     let bindings = all_bindings;
     let s = realm.slug;
-    Ok(render(move || view! {
-        <SpiPage realm_slug=s modules=modules bindings=bindings ctx=ctx/>
+    Ok(render(move || {
+        view! {
+            <SpiPage realm_slug=s modules=modules bindings=bindings ctx=ctx/>
+        }
     }))
 }
 
@@ -1569,7 +1654,9 @@ async fn page_keys(
     // page renders cleanly.
     let rows: Vec<KeyRow> = vec![];
     let s = slug;
-    Ok(render(move || view! { <KeysPage realm_slug=s rows=rows ctx=ctx/> }))
+    Ok(render(
+        move || view! { <KeysPage realm_slug=s rows=rows ctx=ctx/> },
+    ))
 }
 
 // =========================================================================
@@ -1597,8 +1684,10 @@ async fn page_sessions(
         })
         .collect();
     let s = realm.slug;
-    Ok(render(move || view! {
-        <SessionsPage realm_slug=s rows=rows ctx=ctx/>
+    Ok(render(move || {
+        view! {
+            <SessionsPage realm_slug=s rows=rows ctx=ctx/>
+        }
     }))
 }
 
@@ -1678,8 +1767,10 @@ async fn page_events(
         until: q.until,
     };
     let s = realm.slug;
-    Ok(render(move || view! {
-        <EventsPage realm_slug=s filter=filter_view rows=rows ctx=ctx/>
+    Ok(render(move || {
+        view! {
+            <EventsPage realm_slug=s filter=filter_view rows=rows ctx=ctx/>
+        }
     }))
 }
 
@@ -1705,7 +1796,9 @@ async fn page_flows(
         })
         .collect();
     let s = realm.slug;
-    Ok(render(move || view! { <FlowsPage realm_slug=s rows=rows ctx=ctx/> }))
+    Ok(render(
+        move || view! { <FlowsPage realm_slug=s rows=rows ctx=ctx/> },
+    ))
 }
 
 async fn page_flow_edit(
@@ -1719,12 +1812,14 @@ async fn page_flow_edit(
         .storage
         .get_auth_flow_by_alias(realm.id, &alias)
         .await?;
-    let json = serde_json::to_string_pretty(&flow)
-        .map_err(|e| AdminError::Storage(e.to_string()))?;
+    let json =
+        serde_json::to_string_pretty(&flow).map_err(|e| AdminError::Storage(e.to_string()))?;
     let s = realm.slug;
     let flow_for_view = Some(flow);
-    Ok(render(move || view! {
-        <FlowEditPage realm_slug=s alias=alias flow=flow_for_view json=json ctx=ctx/>
+    Ok(render(move || {
+        view! {
+            <FlowEditPage realm_slug=s alias=alias flow=flow_for_view json=json ctx=ctx/>
+        }
     }))
 }
 
@@ -1771,15 +1866,17 @@ async fn post_flow_save(
             let flow_for_view =
                 serde_json::from_str::<geonosis_flow::FlowDefinition>(&form.definition).ok();
             let s = realm.slug;
-            let body = render(move || view! {
-                <FlowEditPage
-                    realm_slug=s
-                    alias=alias
-                    flow=flow_for_view
-                    json=form.definition
-                    ctx=ctx
-                    error=error
-                />
+            let body = render(move || {
+                view! {
+                    <FlowEditPage
+                        realm_slug=s
+                        alias=alias
+                        flow=flow_for_view
+                        json=form.definition
+                        ctx=ctx
+                        error=error
+                    />
+                }
             });
             Ok(body.into_response())
         }
@@ -1799,8 +1896,10 @@ async fn page_user_profile_schema(
     let realm = realm_by_slug(&state, &slug).await?;
     let profile = state.storage.get_user_profile_schema(realm.id).await?;
     let s = realm.slug;
-    Ok(render(move || view! {
-        <UserProfileSchemaPage realm_slug=s profile=profile ctx=ctx/>
+    Ok(render(move || {
+        view! {
+            <UserProfileSchemaPage realm_slug=s profile=profile ctx=ctx/>
+        }
     }))
 }
 
@@ -1834,8 +1933,10 @@ async fn page_profile(
         .collect();
     let data = ProfileData { user, sessions };
     let tab = q.tab.unwrap_or_else(|| "general".into());
-    Ok(render(move || view! {
-        <ProfilePage data=data active_tab=tab ctx=ctx/>
+    Ok(render(move || {
+        view! {
+            <ProfilePage data=data active_tab=tab ctx=ctx/>
+        }
     }))
 }
 

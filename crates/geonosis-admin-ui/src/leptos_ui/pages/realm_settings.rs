@@ -15,7 +15,9 @@ use geonosis_core::JwsAlgorithm;
 
 use crate::leptos_ui::app::{Page, PageContext};
 use crate::leptos_ui::components::breadcrumb::Crumb;
-use crate::leptos_ui::components::form::{ActionBar, Field, Select, SelectOption, TextInput, Toggle};
+use crate::leptos_ui::components::form::{
+    ActionBar, Field, Select, SelectOption, TextInput, Toggle,
+};
 use crate::leptos_ui::components::list_table::ListTable;
 use crate::leptos_ui::components::page_header::PageHeader;
 use crate::leptos_ui::components::tabs::{TabBar, TabItem};
@@ -63,9 +65,8 @@ pub fn RealmSettingsPage(
         })
         .collect::<Vec<_>>();
     let body = render_tab(&active_tab, realm.clone());
-    let subtitle = format!(
-        "Configure policies that apply to all users, clients and sessions in {display}."
-    );
+    let subtitle =
+        format!("Configure policies that apply to all users, clients and sessions in {display}.");
     view! {
         <Page context=ctx>
             <PageHeader title="Realm settings".into() subtitle=Some(subtitle)/>
@@ -114,7 +115,10 @@ fn save_bar(slug: String) -> impl IntoView {
 fn tab_general(realm: Realm) -> impl IntoView {
     let slug = realm.slug.clone();
     let display = realm.display_name.clone();
-    let frontend = realm.frontend_url.map(|u| u.to_string()).unwrap_or_default();
+    let frontend = realm
+        .frontend_url
+        .map(|u| u.to_string())
+        .unwrap_or_default();
     let admin_frontend = realm
         .admin_frontend_url
         .map(|u| u.to_string())
@@ -335,7 +339,10 @@ fn tab_otp(realm: Realm) -> impl IntoView {
     let o = realm.otp_policy;
     let slug = realm.slug.clone();
     let action = form_post(&slug, "otp");
-    let kind = match o.kind { OtpKind::Totp => "totp", OtpKind::Hotp => "hotp" };
+    let kind = match o.kind {
+        OtpKind::Totp => "totp",
+        OtpKind::Hotp => "hotp",
+    };
     let alg = match o.algorithm {
         OtpAlgorithm::Sha1 => "sha1",
         OtpAlgorithm::Sha256 => "sha256",
@@ -536,7 +543,10 @@ fn describe_acr(req: &AcrRequirement) -> String {
         AcrRequirement::Any => "any".into(),
         AcrRequirement::AmrContains(v) => format!(
             "amr-contains({})",
-            v.iter().map(|a| a.as_token_value()).collect::<Vec<_>>().join(", ")
+            v.iter()
+                .map(|a| a.as_token_value())
+                .collect::<Vec<_>>()
+                .join(", ")
         ),
         AcrRequirement::AllOf(v) => format!("all-of({})", v.len()),
         AcrRequirement::AnyOf(v) => format!("any-of({})", v.len()),

@@ -156,7 +156,8 @@ fn initials_from(username: &str) -> String {
     if trimmed.is_empty() {
         return "·".into();
     }
-    let parts: Vec<&str> = trimmed.split(|c: char| c == '.' || c == '-' || c == '_' || c.is_whitespace())
+    let parts: Vec<&str> = trimmed
+        .split(|c: char| c == '.' || c == '-' || c == '_' || c.is_whitespace())
         .filter(|s| !s.is_empty())
         .collect();
     let mut s = String::new();

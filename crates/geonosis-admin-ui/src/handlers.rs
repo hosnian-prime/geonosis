@@ -233,10 +233,7 @@ async fn try_login(
     Ok((sid, realm.id))
 }
 
-pub async fn logout(
-    State(state): State<Arc<AdminState>>,
-    headers: HeaderMap,
-) -> Response {
+pub async fn logout(State(state): State<Arc<AdminState>>, headers: HeaderMap) -> Response {
     if let Some(sid) = crate::auth::cookie_value_from(&headers) {
         let session_id = geonosis_core::id::SessionId(sid);
         let _ = state.storage.delete_session(&session_id).await;

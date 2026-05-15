@@ -10,9 +10,7 @@ use crate::leptos_ui::components::form::{ActionBar, Field, TextInput, Toggle};
 use crate::leptos_ui::components::list_table::ListTable;
 use crate::leptos_ui::components::page_header::PageHeader;
 use crate::leptos_ui::components::tabs::{TabBar, TabItem};
-use crate::leptos_ui::components::widgets::{
-    Alert, AlertKind, ButtonKind, EmptyState, LinkButton,
-};
+use crate::leptos_ui::components::widgets::{Alert, AlertKind, ButtonKind, EmptyState, LinkButton};
 
 pub const PROFILE_TABS: &[(&str, &str)] = &[
     ("general", "General"),
@@ -88,8 +86,16 @@ pub fn ProfilePage(
 
 fn render_general(u: User) -> impl IntoView {
     let email = u.email.clone().unwrap_or_default();
-    let first = u.name.as_ref().and_then(|n| n.given.clone()).unwrap_or_default();
-    let last = u.name.as_ref().and_then(|n| n.family.clone()).unwrap_or_default();
+    let first = u
+        .name
+        .as_ref()
+        .and_then(|n| n.given.clone())
+        .unwrap_or_default();
+    let last = u
+        .name
+        .as_ref()
+        .and_then(|n| n.family.clone())
+        .unwrap_or_default();
     view! {
         <form method="post" action="/admin/profile/general" class="gn-form">
             <Field label="Username".into() name="username".into()>
@@ -168,7 +174,8 @@ fn render_sessions(sessions: Vec<ProfileSession>) -> impl IntoView {
         return view! {
             <EmptyState title="No active sessions".into()
                 description="No live sessions tied to this account.".into()/>
-        }.into_any();
+        }
+        .into_any();
     }
     view! {
         <ListTable headers=vec!["Session", "Started", "Last seen", "Actions"]>

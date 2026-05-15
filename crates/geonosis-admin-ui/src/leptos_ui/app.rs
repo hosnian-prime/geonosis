@@ -11,7 +11,7 @@ use crate::leptos_ui::components::breadcrumb::{Breadcrumb, Crumb};
 use crate::leptos_ui::components::chrome::{ProfileContext, RealmChoice};
 use crate::leptos_ui::components::layout::AdminLayout;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct PageContext {
     pub title: String,
     pub active_section: &'static str,
@@ -23,19 +23,6 @@ pub struct PageContext {
     /// Breadcrumb trail. The page is responsible for terminating it
     /// with a `Crumb::Current` entry.
     pub crumbs: Vec<Crumb>,
-}
-
-impl Default for PageContext {
-    fn default() -> Self {
-        Self {
-            title: String::new(),
-            active_section: "",
-            realm_slug: None,
-            realms: Vec::new(),
-            profile: ProfileContext::default(),
-            crumbs: Vec::new(),
-        }
-    }
 }
 
 impl PageContext {

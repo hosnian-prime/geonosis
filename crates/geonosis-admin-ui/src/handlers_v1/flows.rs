@@ -132,7 +132,6 @@ mod tests {
     use chrono::Utc;
     use tower::ServiceExt;
 
-    use geonosis_audit::Publisher;
     use geonosis_core::{
         AcrPolicy, BruteForcePolicy, EventConfig, LocalizationPolicy, LoginSettings, OtpPolicy,
         PasswordPolicy, Realm, RealmId, RegistrationPolicy, SenderConstraint, SessionPolicy,
