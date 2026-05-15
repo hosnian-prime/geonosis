@@ -38,10 +38,7 @@ pub fn router(state: AdminState) -> Router {
     // Public routes — no auth required.
     let public_routes = Router::new()
         .route("/static/admin.css", get(handlers::admin_css))
-        .route(
-            "/static/admin-chrome.js",
-            get(handlers::admin_chrome_js),
-        )
+        .route("/static/admin-chrome.js", get(handlers::admin_chrome_js))
         .route(
             "/static/flow-editor.js",
             get(handlers::admin_flow_editor_js),

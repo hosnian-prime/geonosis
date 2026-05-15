@@ -295,9 +295,9 @@ img, svg { display: block; max-width: 100%; }
     top: 50%;
     width: 8px;
     height: 8px;
-    margin-top: -5px;
-    border-right: 2px solid var(--gn-color-text-muted);
-    border-bottom: 2px solid var(--gn-color-text-muted);
+    margin-block-start: -5px;
+    border-inline-end: 2px solid var(--gn-color-text-muted);
+    border-block-end: 2px solid var(--gn-color-text-muted);
     transform: rotate(45deg);
     pointer-events: none;
 }
@@ -370,7 +370,7 @@ html[data-theme="light"] .gn-theme-toggle .gn-icon-moon { display: block; }
     top: var(--gn-header-height);
     height: calc(100vh - var(--gn-header-height));
     background: var(--gn-color-bg-alt);
-    border-right: 1px solid var(--gn-color-border);
+    border-inline-end: 1px solid var(--gn-color-border);
     padding: var(--gn-space-5) var(--gn-space-3);
     overflow-y: auto;
     overscroll-behavior: contain;

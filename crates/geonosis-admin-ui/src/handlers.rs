@@ -86,10 +86,10 @@ async fn login_page_inner(
                 meta name="viewport" content="width=device-width,initial-scale=1";
                 title { "Sign in · Geonosis" }
                 link rel="stylesheet" href="/static/admin.css";
-                script {
-                    (maud::PreEscaped(crate::leptos_ui::components::chrome::BOOT_SCRIPT))
-                }
-                script src="/static/admin-chrome.js" defer {}
+                // Loaded synchronously so the theme bootstrap IIFE in
+                // the script applies `data-theme` before the body
+                // renders. CSP `script-src 'self'` permits this.
+                script src="/static/admin-chrome.js" {}
             }
             body {
                 div class="gn-login-page" {
@@ -233,10 +233,7 @@ async fn try_login(
     Ok((sid, realm.id))
 }
 
-pub async fn logout(
-    State(state): State<Arc<AdminState>>,
-    headers: HeaderMap,
-) -> Response {
+pub async fn logout(State(state): State<Arc<AdminState>>, headers: HeaderMap) -> Response {
     if let Some(sid) = crate::auth::cookie_value_from(&headers) {
         let session_id = geonosis_core::id::SessionId(sid);
         let _ = state.storage.delete_session(&session_id).await;

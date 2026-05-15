@@ -6,7 +6,9 @@ use geonosis_core::agent::{Agent, AgentAuthMethod, AgentKind};
 
 use crate::leptos_ui::app::{Page, PageContext};
 use crate::leptos_ui::components::breadcrumb::Crumb;
-use crate::leptos_ui::components::form::{ActionBar, Field, Select, SelectOption, TextInput, Toggle};
+use crate::leptos_ui::components::form::{
+    ActionBar, Field, Select, SelectOption, TextInput, Toggle,
+};
 use crate::leptos_ui::components::list_table::ListTable;
 use crate::leptos_ui::components::page_header::PageHeader;
 use crate::leptos_ui::components::tabs::{TabBar, TabItem};
@@ -99,7 +101,13 @@ pub fn AgentDetailPage(
         ]);
     let tab_items = AGENT_TABS
         .iter()
-        .map(|(k, l)| TabItem::new(*k, *l, format!("/admin/realms/{realm_slug}/agents/{alias}?tab={k}")))
+        .map(|(k, l)| {
+            TabItem::new(
+                *k,
+                *l,
+                format!("/admin/realms/{realm_slug}/agents/{alias}?tab={k}"),
+            )
+        })
         .collect::<Vec<_>>();
     let panel = match active_tab.as_str() {
         "general" => render_general(realm_slug.clone(), agent.clone()).into_any(),
@@ -194,12 +202,18 @@ fn render_capabilities(a: Agent) -> impl IntoView {
                     }
                 }).collect_view()}
             </ListTable>
-        }.into_any()
+        }
+        .into_any()
     }
 }
 
 fn render_scopes(a: Agent) -> impl IntoView {
-    let scopes = a.allowed_scopes.iter().map(|s| s.as_str().to_string()).collect::<Vec<_>>().join(", ");
+    let scopes = a
+        .allowed_scopes
+        .iter()
+        .map(|s| s.as_str().to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
     let auds = a.allowed_audiences.join(", ");
     view! {
         <div class="gn-stack">
@@ -217,7 +231,11 @@ fn render_scopes(a: Agent) -> impl IntoView {
 
 fn render_rate_limits(realm_slug: String, a: Agent) -> impl IntoView {
     let action = format!("/admin/realms/{realm_slug}/agents/{}/rate-limits", a.alias);
-    let tpd = a.rate_limit.tokens_per_day.map(|n| n.to_string()).unwrap_or_default();
+    let tpd = a
+        .rate_limit
+        .tokens_per_day
+        .map(|n| n.to_string())
+        .unwrap_or_default();
     view! {
         <form method="post" action=action class="gn-form">
             <Field label="Requests per minute".into() name="requests_per_minute".into()>
@@ -243,7 +261,8 @@ fn render_public_key(a: Agent) -> impl IntoView {
         view! {
             <EmptyState title="No public key registered".into()
                 description="Upload a JWK to enable private_key_jwt or DPoP.".into()/>
-        }.into_any()
+        }
+        .into_any()
     }
 }
 

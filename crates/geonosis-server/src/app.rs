@@ -365,7 +365,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn admin_negotiates_turkish() {
+    async fn admin_html_renders_doctype_and_chrome() {
+        // The Leptos admin shell (per docs/08-admin-ui.md §1.1) renders
+        // a complete document with the brand header, sidebar nav, and
+        // the design-token stylesheet. i18n routing into Leptos pages
+        // lands in v0.2 alongside the user-profile schema editor;
+        // until then every page renders English regardless of
+        // Accept-Language.
         let state = fixture_state().await;
         let cookie = admin_session_cookie(&state).await;
         let r = router(state);
@@ -385,8 +391,13 @@ mod tests {
             .await
             .unwrap();
         let text = std::str::from_utf8(&body).unwrap();
-        assert!(text.contains("Alanlar"));
-        assert!(text.contains("lang=\"tr\""));
+        assert!(text.starts_with("<!DOCTYPE html>"));
+        assert!(text.contains("Geonosis"));
+        // Persistent chrome elements emitted by the layout.
+        assert!(text.contains("class=\"gn-header\""));
+        assert!(text.contains("data-gn-theme-toggle"));
+        // The acme realm seeded by the fixture appears in the list.
+        assert!(text.contains("acme"));
     }
 
     #[tokio::test]

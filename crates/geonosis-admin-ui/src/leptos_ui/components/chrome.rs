@@ -151,34 +151,13 @@ pub fn Sidebar(active: &'static str, realm_slug: String) -> impl IntoView {
     }
 }
 
-/// Inline boot script — runs **before** the body renders so the
-/// stored theme is applied before any pixels paint. The string is
-/// tiny + escaped manually so no XSS surface opens.
-pub const BOOT_SCRIPT: &str = r#"
-(function(){
-    try {
-        var stored = localStorage.getItem("gn-theme");
-        var theme;
-        if (stored === "light" || stored === "dark") {
-            theme = stored;
-        } else {
-            theme = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches
-                ? "light"
-                : "dark";
-        }
-        document.documentElement.setAttribute("data-theme", theme);
-    } catch (_) {
-        document.documentElement.setAttribute("data-theme", "dark");
-    }
-})();
-"#;
-
 fn initials_from(username: &str) -> String {
     let trimmed = username.trim();
     if trimmed.is_empty() {
         return "·".into();
     }
-    let parts: Vec<&str> = trimmed.split(|c: char| c == '.' || c == '-' || c == '_' || c.is_whitespace())
+    let parts: Vec<&str> = trimmed
+        .split(|c: char| c == '.' || c == '-' || c == '_' || c.is_whitespace())
         .filter(|s| !s.is_empty())
         .collect();
     let mut s = String::new();

@@ -146,7 +146,11 @@ async fn verify_bearer(state: &AdminState, token: &str) -> Result<AdminPrincipal
         other => return Err(format!("unsupported alg: {other}")),
     };
 
-    let public = state.kms.load_public(&kid).await.map_err(|e| e.to_string())?;
+    let public = state
+        .kms
+        .load_public(&kid)
+        .await
+        .map_err(|e| e.to_string())?;
 
     let claims: geonosis_core::AccessTokenClaims =
         verify_jwt(token, alg, &header.kid, &public).map_err(|e| e.to_string())?;
@@ -171,11 +175,7 @@ async fn verify_bearer(state: &AdminState, token: &str) -> Result<AdminPrincipal
     let user_id: UserId = claims.sub.parse().map_err(|_| "bad sub")?;
 
     // Resolve realm from issuer.
-    let realm_slug = claims
-        .iss
-        .rsplit('/')
-        .next()
-        .ok_or("bad issuer")?;
+    let realm_slug = claims.iss.rsplit('/').next().ok_or("bad issuer")?;
     let realm = state
         .storage
         .get_realm_by_slug(realm_slug)

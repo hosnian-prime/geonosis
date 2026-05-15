@@ -105,10 +105,7 @@ impl AlertKind {
 }
 
 #[component]
-pub fn Alert(
-    message: String,
-    #[prop(default = AlertKind::Info)] kind: AlertKind,
-) -> impl IntoView {
+pub fn Alert(message: String, #[prop(default = AlertKind::Info)] kind: AlertKind) -> impl IntoView {
     view! { <div class=kind.css() role="status">{message}</div> }
 }
 

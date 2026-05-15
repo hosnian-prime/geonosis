@@ -41,9 +41,12 @@ pub fn RealmDetailPage(data: RealmDetailData, ctx: PageContext) -> impl IntoView
             Crumb::current(display.clone()),
         ]);
     let settings = format!("/admin/realms/{slug}/settings");
-    let edit_actions = Some(view! {
-        <LinkButton href=settings label="Settings".to_string()/>
-    }.into_any());
+    let edit_actions = Some(
+        view! {
+            <LinkButton href=settings label="Settings".to_string()/>
+        }
+        .into_any(),
+    );
 
     let card = move |path: &'static str, title: &'static str, desc: &'static str, count: usize| {
         let href = format!("/admin/realms/{slug}/{path}");
