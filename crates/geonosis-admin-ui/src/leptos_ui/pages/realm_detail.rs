@@ -119,10 +119,16 @@ pub fn RealmDetailPage(data: RealmDetailData, ctx: PageContext) -> impl IntoView
                             data-gn-confirm=format!("Disable realm {} for all users?", data.slug.clone())>
                             <button type="submit" class="gn-btn">"Disable realm"</button>
                         </form>
-                        <form method="post" action=format!("/admin/realms/{}/delete", data.slug.clone())
-                            data-gn-confirm=format!("Delete realm {} permanently? This cannot be undone.", data.slug.clone())>
-                            <button type="submit" class="gn-btn gn-btn--danger">"Delete realm"</button>
-                        </form>
+                        {if data.slug != geonosis_core::MASTER_REALM_SLUG {
+                            Some(view! {
+                                <form method="post" action=format!("/admin/realms/{}/delete", data.slug.clone())
+                                    data-gn-confirm=format!("Delete realm {} permanently? This cannot be undone.", data.slug.clone())>
+                                    <button type="submit" class="gn-btn gn-btn--danger">"Delete realm"</button>
+                                </form>
+                            })
+                        } else {
+                            None
+                        }}
                     </div>
                 </div>
             </section>

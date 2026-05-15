@@ -290,6 +290,10 @@
         }
 
         container.addEventListener("keydown", function (ev) {
+            // Don't intercept when typing in inputs/textareas/selects.
+            var tag = ev.target.tagName;
+            if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || ev.target.isContentEditable) return;
+
             var key = ev.key;
             var handled = true;
 

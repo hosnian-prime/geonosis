@@ -358,7 +358,7 @@ service (REST API), bypass the built-in Postgres-backed
    six required functions; uses `host.http-client` for outbound
    calls. Build target `wasm32-wasip2`.
 2. Operator uploads the module via admin API or
-   `geoctl spi install --realm acme --module ... --alias acme-internal-store`.
+   `geoctl spi install --realm master --module ... --alias acme-internal-store`.
 3. Operator adds a binding:
    ```yaml
    interface: geonosis:user-storage@0.1.0
@@ -767,7 +767,7 @@ Upload to a realm:
 
 ```sh
 geoctl spi install \
-  --realm acme \
+  --realm master \
   --interface geonosis:authn@0.1.0 \
   --alias acme-magic \
   --module target/wasm32-wasip2/release/my_authn_provider.wasm \

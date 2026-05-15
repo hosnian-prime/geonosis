@@ -129,7 +129,7 @@ hCaptcha token before allowing the next flow step.
 
    ```sh
    geoctl spi install \
-     --realm acme \
+     --realm master \
      --interface geonosis:authn@0.1.0 \
      --alias acme-captcha \
      --module target/wasm32-wasip2/release/geonosis_spi_captcha.wasm \
@@ -146,7 +146,7 @@ hCaptcha token before allowing the next flow step.
 
 5. **Bind it into the `browser` flow.**
 
-   Edit `geoctl flows edit --realm acme --alias browser` and add
+   Edit `geoctl flows edit --realm master --alias browser` and add
    a node with `provider: wasm:acme-captcha:authn` before the
    password step. See [`06-auth-flows.md`](../06-auth-flows.md)
    §Authenticators.
@@ -155,14 +155,14 @@ hCaptcha token before allowing the next flow step.
 
 ```sh
 docker run --rm --network host \
-  ghcr.io/hosnian-prime/geonosis-quickstart-helper login --realm acme --user ada
+  ghcr.io/hosnian-prime/geonosis-quickstart-helper login --realm master --user ada
 ```
 
 The helper now displays a captcha challenge before the password
 prompt. Audit log emits:
 
 ```sh
-geoctl audit list --realm acme --action 'spi.*'
+geoctl audit list --realm master --action 'spi.*'
 ```
 
 includes `spi.module_recompiled` (on upload) and your captcha

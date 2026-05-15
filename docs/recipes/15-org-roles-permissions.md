@@ -9,7 +9,7 @@ but not manage IdPs.
 
 ## Prerequisites
 
-- A running realm `acme` with `organizations_enabled = true`.
+- A running realm `master` with `organizations_enabled = true`.
 - Organization `customer-co` created (recipe 09).
 
 ## Steps
@@ -17,7 +17,7 @@ but not manage IdPs.
 1. **List the built-in roles.**
 
    ```sh
-   geoctl orgs role-list --realm acme --alias customer-co | jq
+   geoctl orgs role-list --realm master --alias customer-co | jq
    ```
 
    Every new org ships with three built-in roles:
@@ -35,7 +35,7 @@ but not manage IdPs.
 
    ```sh
    geoctl orgs role-create \
-     --realm acme \
+     --realm master \
      --alias customer-co \
      --name billing \
      --description "Can manage consent policies and view members" \
@@ -46,7 +46,7 @@ but not manage IdPs.
 
    ```sh
    geoctl orgs role-create \
-     --realm acme \
+     --realm master \
      --alias customer-co \
      --name team-lead \
      --description "Can invite and remove team members" \
@@ -58,14 +58,14 @@ but not manage IdPs.
    ```sh
    # Assign billing to an existing member:
    geoctl orgs member-roles \
-     --realm acme \
+     --realm master \
      --alias customer-co \
      --user cfo@customer-co.example \
      --set '["billing"]'
 
    # Invite a new member with the team-lead role:
    geoctl orgs invite \
-     --realm acme \
+     --realm master \
      --alias customer-co \
      --email lead@customer-co.example \
      --roles team-lead \
@@ -82,7 +82,7 @@ but not manage IdPs.
 
    ```sh
    geoctl orgs role-create \
-     --realm acme \
+     --realm master \
      --alias customer-co \
      --name data-steward \
      --permissions '["ViewMembers", {"Custom": "data:approve-export"}]'
@@ -113,14 +113,14 @@ Expected:
 # Billing member tries to invite — should be forbidden:
 curl -fsS -X POST \
   -H "Authorization: Bearer $BILLING_TOKEN" \
-  https://geonosis.example.com/admin/v1/realms/acme/orgs/customer-co/invitations \
+  https://geonosis.example.com/admin/v1/realms/master/orgs/customer-co/invitations \
   -d '{"email":"new@customer-co.example","roles":["member"]}'
 # → 403 Forbidden (InviteMembers permission required)
 
 # Billing member manages consent — should succeed:
 curl -fsS -X GET \
   -H "Authorization: Bearer $BILLING_TOKEN" \
-  https://geonosis.example.com/admin/v1/realms/acme/orgs/customer-co/consent-policies
+  https://geonosis.example.com/admin/v1/realms/master/orgs/customer-co/consent-policies
 # → 200 OK
 ```
 
@@ -144,7 +144,7 @@ resource servers.
 - **Token missing `org.roles`** — session not in org context.
   Add `?organization=customer-co` to the `/authorize` request.
 - **Custom permission not in token** — check the role assignment:
-  `geoctl orgs member-get --realm acme --alias customer-co
+  `geoctl orgs member-get --realm master --alias customer-co
   --user the-user | jq '.roles'`.
 
 ## See also

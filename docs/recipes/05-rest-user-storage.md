@@ -78,7 +78,7 @@ service in a small HTTP layer and the WASM provider calls that.
 
    ```sh
    geoctl spi install \
-     --realm acme \
+     --realm master \
      --interface geonosis:user-storage@0.1.0 \
      --alias acme-internal-store \
      --module target/wasm32-wasip2/release/geonosis_spi_rest_store.wasm \
@@ -98,7 +98,7 @@ service in a small HTTP layer and the WASM provider calls that.
 3. **Add the secret.**
 
    ```sh
-   geoctl secrets put --realm acme --name INTERNAL_USERS_API_KEY --value "$INTERNAL_API_KEY"
+   geoctl secrets put --realm master --name INTERNAL_USERS_API_KEY --value "$INTERNAL_API_KEY"
    ```
 
    Stored encrypted under the master key
@@ -109,7 +109,7 @@ service in a small HTTP layer and the WASM provider calls that.
    ```sh
    docker run --rm --network host \
      ghcr.io/hosnian-prime/geonosis-quickstart-helper \
-     login --realm acme --user $USER_FROM_YOUR_REST_API --pw 'pw'
+     login --realm master --user $USER_FROM_YOUR_REST_API --pw 'pw'
    ```
 
 ## Verifying
@@ -126,7 +126,7 @@ Stays at the bootstrap count (3) even after many logins.
 Audit log:
 
 ```sh
-geoctl audit list --realm acme --action 'login.success'
+geoctl audit list --realm master --action 'login.success'
 ```
 
 shows `source_urn: wasm:acme-internal-store:user-storage`.
@@ -140,7 +140,7 @@ shows `source_urn: wasm:acme-internal-store:user-storage`.
   pool and lower the verify endpoint's latency. Default fuel for
   user-storage is 200 M (~2 s wall-clock).
 - **Rolling back to the built-in store** — clear `replaces` on
-  the binding: `geoctl spi patch --realm acme --alias
+  the binding: `geoctl spi patch --realm master --alias
   acme-internal-store --clear-replaces`. The local store
   re-activates within 100 ms via NOTIFY.
 

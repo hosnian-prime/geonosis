@@ -1,5 +1,9 @@
 //! Realm (tenant) configuration.
 
+/// The slug of the built-in master realm. This realm is created by
+/// the quickstart bootstrap and **cannot be deleted**.
+pub const MASTER_REALM_SLUG: &str = "master";
+
 use std::collections::BTreeMap;
 use std::time::Duration;
 

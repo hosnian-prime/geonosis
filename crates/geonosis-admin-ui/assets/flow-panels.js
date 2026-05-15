@@ -354,24 +354,13 @@
         mirrorToTextarea(state);
     }
 
-    /** Write a kind-specific field into `node.kind`. */
+    /** Write a kind-specific field into `node.kind`.
+     *  Internally-tagged: {kind: "start", require_session: false}
+     *  Fields are siblings of the `kind` discriminator. */
     function setKindField(node, fieldName, value) {
         if (!node.kind) return;
-
-        if (typeof node.kind === "string") {
-            // Simple kind (e.g. "success") — wrap in an object to hold
-            // the extra field.
-            var tag = node.kind;
-            node.kind = {};
-            node.kind[tag] = {};
-            node.kind[tag][fieldName] = value;
-        } else if (typeof node.kind === "object") {
-            var key = Object.keys(node.kind)[0];
-            if (!key) return;
-            if (node.kind[key] === null || typeof node.kind[key] !== "object") {
-                node.kind[key] = {};
-            }
-            node.kind[key][fieldName] = value;
+        if (typeof node.kind === "object") {
+            node.kind[fieldName] = value;
         }
     }
 
@@ -420,7 +409,7 @@
             guard[k] = parsed;
         });
 
-        edge.guard = Object.keys(guard).length ? guard : undefined;
+        edge.guard = Object.keys(guard).length ? guard : {};
         mirrorToTextarea(state);
     }
 
@@ -617,19 +606,20 @@
         }) || null;
     }
 
-    /** Extract the kind tag string (e.g. "start", "render"). */
+    /** Extract the kind tag string (e.g. "start", "render").
+     *  Rust uses internally-tagged enum: { kind: "start", require_session: false } */
     function nodeKindTag(kind) {
         if (!kind) return "unknown";
         if (typeof kind === "string") return kind;
-        return Object.keys(kind)[0] || "unknown";
+        return kind.kind || "unknown";
     }
 
-    /** Extract the kind payload object (e.g. { template: "..." }). */
+    /** The kind object IS the payload for internally-tagged enums.
+     *  Fields are siblings of the `kind` discriminator. */
     function nodeKindPayload(kind) {
         if (!kind) return null;
         if (typeof kind === "string") return null;
-        var key = Object.keys(kind)[0];
-        return key ? kind[key] : null;
+        return kind;
     }
 
     // =================================================================

@@ -2,7 +2,7 @@
 
 ## What you'll have at the end
 
-A complete YAML export of realm `acme`'s configuration (clients,
+A complete YAML export of realm `master`'s configuration (clients,
 flows, roles, groups, IdPs, SPI bindings, policies) that can be
 imported into another Geonosis instance or version-controlled
 in Git.
@@ -10,14 +10,14 @@ in Git.
 ## Prerequisites
 
 - A running Geonosis with `geoctl` available.
-- The source realm `acme` with configuration you want to export.
+- The source realm `master` with configuration you want to export.
 
 ## Steps
 
 1. **Export the realm.**
 
    ```sh
-   geoctl realm export --realm acme --output acme-realm.yaml
+   geoctl realm export --realm master --output acme-realm.yaml
    ```
 
    The export includes:
@@ -56,7 +56,7 @@ in Git.
 3. **Import to another instance.**
 
    ```sh
-   geoctl realm import --file acme-realm.yaml --realm acme-staging
+   geoctl realm import --file acme-realm.yaml --realm master-staging
    ```
 
    If `acme-staging` doesn't exist, it's created. If it exists,
@@ -66,7 +66,7 @@ in Git.
    To force a destructive sync (staging/test only):
 
    ```sh
-   geoctl realm import --file acme-realm.yaml --realm acme-staging --mode replace
+   geoctl realm import --file acme-realm.yaml --realm master-staging --mode replace
    ```
 
 4. **Re-inject secrets.**
@@ -74,21 +74,21 @@ in Git.
    The import doesn't carry secrets. After import:
 
    ```sh
-   geoctl secrets put --realm acme-staging --name GOOGLE_CLIENT_SECRET --value "$SECRET"
-   geoctl secrets put --realm acme-staging --name CORP_AD_BIND_PW --value "$AD_PW"
+   geoctl secrets put --realm master-staging --name GOOGLE_CLIENT_SECRET --value "$SECRET"
+   geoctl secrets put --realm master-staging --name CORP_AD_BIND_PW --value "$AD_PW"
    ```
 
 ## Export individual components
 
 ```sh
 # Export only flows:
-geoctl flows export --realm acme --output flows.yaml
+geoctl flows export --realm master --output flows.yaml
 
 # Export only clients:
-geoctl clients export --realm acme --output clients.yaml
+geoctl clients export --realm master --output clients.yaml
 
 # Export a single flow:
-geoctl flows get --realm acme --alias browser --format yaml > browser-flow.yaml
+geoctl flows get --realm master --alias browser --format yaml > browser-flow.yaml
 ```
 
 ## Version control workflow
@@ -111,7 +111,7 @@ geoctl realm import --file iam/realms/production.yaml --realm production
 
 ```sh
 # Compare source and target:
-geoctl realm export --realm acme-staging --output staging-check.yaml
+geoctl realm export --realm master-staging --output staging-check.yaml
 diff acme-realm.yaml staging-check.yaml
 ```
 

@@ -1,0 +1,113 @@
+---
+import PlanetCanvas from './PlanetCanvas.astro';
+---
+
+<section class="relative pt-24 pb-16 sm:pt-32 sm:pb-24 overflow-hidden">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-4 items-center min-h-[70vh]">
+
+      <!-- Left: Content -->
+      <div class="relative z-10 max-w-xl">
+        <!-- Overline -->
+        <div class="hero-anim flex items-center gap-2 mb-6">
+          <span class="h-px w-8 bg-accent"></span>
+          <span class="text-xs font-mono text-accent tracking-widest uppercase">Open Source IAM</span>
+        </div>
+
+        <!-- Main heading -->
+        <h1 class="font-display font-bold text-5xl sm:text-6xl lg:text-7xl tracking-tight leading-[1.05]">
+          <span class="hero-anim block">Geonosis</span>
+          <span class="hero-anim block text-accent mt-1">Identity's New</span>
+          <span class="hero-anim block mt-1">Planet.</span>
+        </h1>
+
+        <!-- Description -->
+        <p class="hero-anim mt-6 text-base sm:text-lg text-text-secondary leading-relaxed max-w-md">
+          IAM server written in Rust. OIDC&nbsp;1.0 + OAuth&nbsp;2.1 compliant,
+          with a graph&#8209;DSL flow engine, WASM plugin system,
+          and a built&#8209;in admin UI.
+        </p>
+
+        <!-- CTA buttons -->
+        <div class="hero-anim flex items-center gap-3 mt-8">
+          <a
+            href="#quickstart"
+            class="inline-flex items-center gap-2 h-10 px-5 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-md transition-colors duration-200"
+          >
+            Get Started
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          </a>
+          <a
+            href="https://github.com/hosnian-prime/geonosis"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center gap-2 h-10 px-5 border border-border hover:border-accent/40 text-sm font-medium rounded-md transition-colors duration-200"
+          >
+            View Source
+          </a>
+        </div>
+
+        <!-- Stat widgets -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-12">
+          <div class="stat-widget border border-border rounded-md px-3 py-2.5 bg-surface/50">
+            <span class="block font-mono text-lg font-bold text-accent" data-count="5">&lt; 5 MB</span>
+            <span class="block text-xs text-text-secondary mt-0.5">Memory footprint</span>
+          </div>
+          <div class="stat-widget border border-border rounded-md px-3 py-2.5 bg-surface/50">
+            <span class="block font-mono text-lg font-bold text-text" data-count="12">12ms</span>
+            <span class="block text-xs text-text-secondary mt-0.5">p99 latency</span>
+          </div>
+          <div class="stat-widget border border-border rounded-md px-3 py-2.5 bg-surface/50">
+            <span class="block font-mono text-lg font-bold text-text">WASM</span>
+            <span class="block text-xs text-text-secondary mt-0.5">Plugin runtime</span>
+          </div>
+          <div class="stat-widget border border-border rounded-md px-3 py-2.5 bg-surface/50">
+            <span class="block font-mono text-lg font-bold text-text">OIDC</span>
+            <span class="block text-xs text-text-secondary mt-0.5">+ OAuth 2.1</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Planet -->
+      <div class="relative w-full max-w-lg lg:max-w-none mx-auto lg:mx-0">
+        <PlanetCanvas />
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Background grid pattern -->
+  <div
+    class="absolute inset-0 -z-20 opacity-[0.03]"
+    style="background-image: linear-gradient(var(--color-text) 1px, transparent 1px), linear-gradient(90deg, var(--color-text) 1px, transparent 1px); background-size: 64px 64px"
+  ></div>
+</section>
+
+<script>
+  import gsap from 'gsap';
+
+  // Hero staggered entrance
+  gsap.fromTo(
+    '.hero-anim',
+    { opacity: 0, y: 24 },
+    { opacity: 1, y: 0, duration: 0.7, ease: 'power3.out', stagger: 0.1, delay: 0.15 },
+  );
+
+  // Stat widgets staggered after hero
+  gsap.fromTo(
+    '.stat-widget',
+    { opacity: 0, y: 16 },
+    { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out', stagger: 0.08, delay: 0.8 },
+  );
+</script>
+
+<style>
+  .hero-anim {
+    opacity: 0;
+  }
+  .stat-widget {
+    opacity: 0;
+  }
+</style>

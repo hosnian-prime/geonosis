@@ -2,15 +2,15 @@
 
 ## What you'll have at the end
 
-Every access token + id token issued for the `acme-web` client
+Every access token + id token issued for the `master-web` client
 carries a `department` claim, sourced from the user's
 `department` attribute.
 
 ## Prerequisites
 
-- A running realm `acme`.
+- A running realm `master`.
 - A user with a `department` attribute already on file (use
-  recipe 01's `ada` or set one: `geoctl users patch --realm acme
+  recipe 01's `ada` or set one: `geoctl users patch --realm master
   --user ada --attribute department=engineering`).
 
 ## Steps
@@ -18,10 +18,10 @@ carries a `department` claim, sourced from the user's
 1. **Declare the attribute in the User Profile.**
 
    Required so the attribute is admin/UI-editable and writable
-   via the API. Add to `acme`'s user-profile schema:
+   via the API. Add to `master`'s user-profile schema:
 
    ```sh
-   geoctl user-profile patch --realm acme --add-attribute '{
+   geoctl user-profile patch --realm master --add-attribute '{
      "name": "department",
      "display_name": "Department",
      "permissions": {"view":["admin","user"], "edit":["admin"]},
@@ -38,8 +38,8 @@ carries a `department` claim, sourced from the user's
 
    ```sh
    geoctl clients mapper-add \
-     --realm acme \
-     --client acme-web \
+     --realm master \
+     --client master-web \
      --mapper-urn builtin:mapper:claim-from-attribute \
      --config '{
        "attribute": "department",
@@ -74,7 +74,7 @@ Expected: `"engineering"`.
 
 ```sh
 curl -fsS -H "Authorization: Bearer $ACCESS_TOKEN" \
-  http://localhost:8080/realms/acme/protocol/openid-connect/userinfo | jq .department
+  http://localhost:8080/realms/master/protocol/openid-connect/userinfo | jq .department
 ```
 
 Returns the same value.
@@ -83,8 +83,8 @@ Returns the same value.
 
 - **Claim missing in token** — check `geoctl users get --realm
   acme --user ada` shows the attribute. Then check the mapper
-  binding: `geoctl clients mapper-list --realm acme --client
-  acme-web`. If the binding has `enabled: false`, enable it.
+  binding: `geoctl clients mapper-list --realm master --client
+  master-web`. If the binding has `enabled: false`, enable it.
 - **`invalid_attribute` on profile update** — the User Profile
   rejects unmanaged attributes by default (see
   [`16-user-profile.md`](../16-user-profile.md) §Unmanaged

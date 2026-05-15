@@ -2,14 +2,14 @@
 
 ## What you'll have at the end
 
-New users in realm `acme` are required to enroll a TOTP
+New users in realm `master` are required to enroll a TOTP
 authenticator on their first login. The realm's OTP policy uses
 SHA-1 / 6 digits / 30-second period for maximum app compatibility,
 with recovery codes as a fallback.
 
 ## Prerequisites
 
-- A running realm `acme`.
+- A running realm `master`.
 - Users with email verified (for recovery-code delivery).
 
 ## Steps
@@ -17,7 +17,7 @@ with recovery codes as a fallback.
 1. **Set the realm OTP policy.**
 
    ```sh
-   geoctl realm patch --realm acme --otp-policy '{
+   geoctl realm patch --realm master --otp-policy '{
      "mode": "Totp",
      "algorithm": "SHA1",
      "digits": 6,
@@ -38,7 +38,7 @@ with recovery codes as a fallback.
 2. **Add `ConfigureOtp` as a required action for new users.**
 
    ```sh
-   geoctl realm patch --realm acme --registration-policy '{
+   geoctl realm patch --realm master --registration-policy '{
      "required_actions": ["VerifyEmail", "ConfigureOtp"]
    }'
    ```
@@ -46,7 +46,7 @@ with recovery codes as a fallback.
    Existing users can be forced individually:
 
    ```sh
-   geoctl users patch --realm acme --user ada \
+   geoctl users patch --realm master --user ada \
      --required-actions '["ConfigureOtp"]'
    ```
 
@@ -57,7 +57,7 @@ with recovery codes as a fallback.
    otp`. Verify:
 
    ```sh
-   geoctl flows get --realm acme --alias browser | grep -A2 'otp'
+   geoctl flows get --realm master --alias browser | grep -A2 'otp'
    ```
 
    If your flow is custom, insert an `otp` authenticator node
@@ -70,7 +70,7 @@ with recovery codes as a fallback.
    authenticator after `otp` in the `Switch` node.
 
    ```sh
-   geoctl realm patch --realm acme --registration-policy '{
+   geoctl realm patch --realm master --registration-policy '{
      "required_actions": ["VerifyEmail", "ConfigureOtp"]
    }'
    ```
@@ -85,7 +85,7 @@ with recovery codes as a fallback.
 # Login as ada — the flow will require OTP enrollment:
 docker run --rm --network host \
   ghcr.io/hosnian-prime/geonosis-quickstart-helper \
-  login --realm acme --user ada --pw ada-pw
+  login --realm master --user ada --pw ada-pw
 ```
 
 The helper will display a `otpauth://` URI (and QR code in
@@ -93,7 +93,7 @@ supported terminals). After scanning with an authenticator app and
 submitting the 6-digit code:
 
 ```sh
-geoctl users get --realm acme --user ada | jq '.credentials[] | select(.kind=="otp")'
+geoctl users get --realm master --user ada | jq '.credentials[] | select(.kind=="otp")'
 ```
 
 Shows the credential entry (secret is never exposed — only
@@ -105,7 +105,7 @@ Subsequent logins require the TOTP code after password.
 
 ```sh
 geoctl users required-action-add \
-  --realm acme \
+  --realm master \
   --filter '{"credentials_missing":"otp"}' \
   --action ConfigureOtp
 ```
@@ -123,10 +123,10 @@ don't already have OTP enrolled.
   `Realm.display_name` simple (alphanumeric + spaces).
 - **Recovery code rejected** — codes are single-use and
   case-insensitive. The user may have already used it.
-  `geoctl users credential-list --realm acme --user ada --kind
+  `geoctl users credential-list --realm master --user ada --kind
   recovery` shows remaining codes.
 - **User locked out (no device, no recovery codes)** — admin
-  resets: `geoctl users credential-remove --realm acme --user ada
+  resets: `geoctl users credential-remove --realm master --user ada
   --kind otp` and re-adds `ConfigureOtp` required action.
 
 ## See also

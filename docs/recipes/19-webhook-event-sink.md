@@ -2,13 +2,13 @@
 
 ## What you'll have at the end
 
-Realm `acme` pushes login events and admin events to your webhook
+Realm `master` pushes login events and admin events to your webhook
 endpoint in real time, with HMAC signature verification and
 retry-on-failure.
 
 ## Prerequisites
 
-- A running realm `acme`.
+- A running realm `master`.
 - An HTTPS endpoint that accepts POST requests (your SIEM, Slack
   webhook, custom handler, etc.).
 
@@ -17,7 +17,7 @@ retry-on-failure.
 1. **Create the webhook secret.**
 
    ```sh
-   geoctl secrets put --realm acme \
+   geoctl secrets put --realm master \
      --name WEBHOOK_HMAC_SECRET \
      --value "$(openssl rand -base64 32)"
    ```
@@ -30,7 +30,7 @@ retry-on-failure.
 
    ```sh
    geoctl event-sinks create \
-     --realm acme \
+     --realm master \
      --alias security-siem \
      --kind webhook \
      --config '{
@@ -89,7 +89,7 @@ retry-on-failure.
        "id": "01HS..."
      },
      "detail": {
-       "client_id": "acme-web",
+       "client_id": "master-web",
        "amr": ["pwd", "otp"],
        "acr": "2"
      }
@@ -114,10 +114,10 @@ retry-on-failure.
 # Trigger a login:
 docker run --rm --network host \
   ghcr.io/hosnian-prime/geonosis-quickstart-helper \
-  login --realm acme --user ada --pw ada-pw
+  login --realm master --user ada --pw ada-pw
 
 # Check delivery status:
-geoctl event-sinks status --realm acme --alias security-siem
+geoctl event-sinks status --realm master --alias security-siem
 ```
 
 Shows `last_delivery: success`, `events_delivered: N`,
@@ -130,7 +130,7 @@ A realm can have multiple event sinks. Each is independent:
 ```sh
 # Slack for admin events only:
 geoctl event-sinks create \
-  --realm acme \
+  --realm master \
   --alias slack-admin \
   --kind webhook \
   --config '{"url": "https://hooks.slack.com/services/T.../B.../xxx"}' \

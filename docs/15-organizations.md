@@ -213,7 +213,7 @@ user is authenticated in an organization context:
   "sub": "01HJ...",
   "org": {
     "id": "01HJORG...",
-    "alias": "acme",
+    "alias": "master",
     "roles": ["owner", "billing"]
   },
   "realm_access": { "roles": ["user"] }
@@ -392,7 +392,7 @@ When a user in an org context hits a consent-required client:
 - Property: an org's invariants (single realm, unique alias) hold
   under concurrent admin operations.
 - Auto-join: a user with `email=user@acme.com` registering against
-  a realm with verified org `acme` ends up in `acme` exactly once.
+  a realm with verified org `master` ends up in `master` exactly once.
 - Token claim: `org` claim present iff org context active.
 - IdP binding: claim from the bound IdP propagates `org` correctly.
 

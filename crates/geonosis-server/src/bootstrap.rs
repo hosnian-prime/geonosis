@@ -3,13 +3,13 @@
 //! Per `docs/21-dx-package.md` §"The 5-minute quickstart" the
 //! quickstart compose stack expects this gate to exist: setting the
 //! env var on a fresh database leaves the operator with realm
-//! `acme`, end-user `ada@acme.test` (pw `ada-pw`), admin user
-//! `admin@acme.test` (pw `admin-pw`), and OIDC client `acme-web`
+//! `master`, end-user `ada@master.test` (pw `ada-pw`), admin user
+//! `admin@master.test` (pw `admin-pw`), and OIDC client `master-web`
 //! with redirect URI `http://127.0.0.1:8888/callback`.
 //!
 //! Safety properties this module enforces:
 //!
-//! - **Idempotent**: if realm `acme` already exists, the run is a
+//! - **Idempotent**: if realm `master` already exists, the run is a
 //!   no-op so restart loops do not duplicate state.
 //! - **Production-safe by construction**: the only entry point is
 //!   guarded by an env-var check at the call site
@@ -31,13 +31,13 @@ use geonosis_core::{
 };
 use geonosis_storage::Storage;
 
-const REALM_SLUG: &str = "acme";
-const REALM_DISPLAY: &str = "Acme (quickstart)";
-const ADMIN_USER: &str = "admin@acme.test";
+const REALM_SLUG: &str = geonosis_core::MASTER_REALM_SLUG;
+const REALM_DISPLAY: &str = "Master";
+const ADMIN_USER: &str = "admin@master.test";
 const ADMIN_PW: &str = "admin-pw";
-const END_USER: &str = "ada@acme.test";
+const END_USER: &str = "ada@master.test";
 const END_USER_PW: &str = "ada-pw";
-const CLIENT_ID: &str = "acme-web";
+const CLIENT_ID: &str = "master-web";
 const REDIRECT_URI: &str = "http://127.0.0.1:8888/callback";
 
 #[derive(Debug, thiserror::Error)]
@@ -49,7 +49,7 @@ pub enum BootstrapError {
 }
 
 /// Run the quickstart bootstrap. Idempotent: short-circuits if realm
-/// `acme` already exists with no further checks (per the v0.1 demo
+/// `master` already exists with no further checks (per the v0.1 demo
 /// contract — re-running the compose stack must not error).
 pub async fn run(storage: Arc<dyn Storage>) -> Result<(), BootstrapError> {
     if storage.get_realm_by_slug(REALM_SLUG).await.is_ok() {
@@ -175,7 +175,7 @@ async fn provision_client(
         id: ClientId::new(),
         realm_id,
         client_id: CLIENT_ID.into(),
-        display_name: Some("Acme Web (quickstart)".into()),
+        display_name: Some("Master Web (quickstart)".into()),
         kind: ClientKind::Public,
         grants: GrantPolicy::public_app(),
         auth_method: ClientAuthMethod::None,

@@ -1,0 +1,195 @@
+---
+const tabs = [
+  {
+    id: 'docker',
+    label: 'Docker',
+    steps: [
+      { prompt: '$ ', cmd: 'docker compose -f deploy/compose/quickstart.yml up -d', comment: '# Start Geonosis + Postgres' },
+      { prompt: '$ ', cmd: 'curl -s http://localhost:8080/realms/acme/.well-known/openid-configuration | jq .issuer', comment: '# Verify discovery endpoint' },
+      { prompt: '', cmd: '"http://localhost:8080/realms/acme"', comment: '' },
+    ],
+  },
+  {
+    id: 'cargo',
+    label: 'Cargo',
+    steps: [
+      { prompt: '$ ', cmd: 'cargo install geonosis-server', comment: '# Install from crates.io' },
+      { prompt: '$ ', cmd: 'geonosis serve --bootstrap-quickstart', comment: '# Run with demo data' },
+    ],
+  },
+  {
+    id: 'helm',
+    label: 'Helm',
+    steps: [
+      { prompt: '$ ', cmd: 'helm install geonosis oci://ghcr.io/hosnian-prime/charts/geonosis', comment: '# Deploy to Kubernetes' },
+      { prompt: '$ ', cmd: 'kubectl port-forward svc/geonosis 8080:8080', comment: '# Access locally' },
+    ],
+  },
+];
+---
+
+<section id="quickstart" class="py-24 sm:py-32 border-t border-border/50" data-animate>
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-start">
+      <!-- Left: text -->
+      <div class="max-w-md" data-animate-child>
+        <div class="flex items-center gap-2 mb-4">
+          <span class="h-px w-8 bg-accent"></span>
+          <span class="text-xs font-mono text-accent tracking-widest uppercase">Quickstart</span>
+        </div>
+        <h2 class="font-display font-bold text-3xl sm:text-4xl tracking-tight">
+          Running in<br />under a minute.
+        </h2>
+        <p class="mt-4 text-text-secondary text-sm leading-relaxed">
+          One command gets you a fully provisioned identity server with a demo realm,
+          test users, and an OIDC client — ready for integration testing.
+        </p>
+
+        <!-- Demo credentials -->
+        <div class="mt-8 border border-border rounded-md bg-surface/50 p-4">
+          <span class="text-xs font-mono text-text-secondary block mb-3">Demo credentials</span>
+          <div class="space-y-2 text-sm font-mono">
+            <div class="flex justify-between">
+              <span class="text-text-secondary">admin</span>
+              <span class="text-text">admin@acme.test / admin-pw</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-text-secondary">user</span>
+              <span class="text-text">ada@acme.test / ada-pw</span>
+            </div>
+            <div class="flex justify-between">
+              <span class="text-text-secondary">client</span>
+              <span class="text-accent">acme-web</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: terminal (always dark regardless of theme) -->
+      <div class="terminal-widget border border-border rounded-lg overflow-hidden" data-animate-child>
+        <!-- Terminal header -->
+        <div class="terminal-header flex items-center justify-between px-4 py-2.5">
+          <div class="flex items-center gap-1.5">
+            <span class="w-2.5 h-2.5 rounded-full bg-[#ff5f57]"></span>
+            <span class="w-2.5 h-2.5 rounded-full bg-[#febc2e]"></span>
+            <span class="w-2.5 h-2.5 rounded-full bg-[#28c840]"></span>
+          </div>
+          <!-- Tabs -->
+          <div class="flex items-center gap-px">
+            {tabs.map((tab, i) => (
+              <button
+                data-tab={tab.id}
+                class:list={[
+                  'tab-btn px-3 py-1 text-xs font-mono rounded-sm transition-colors',
+                  i === 0 ? 'tab-btn-active' : '',
+                ]}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <div class="w-16"></div>
+        </div>
+
+        <!-- Terminal content -->
+        <div class="terminal-body p-4 min-h-[200px]">
+          {tabs.map((tab, i) => (
+            <div
+              data-tab-content={tab.id}
+              class:list={['tab-content font-mono text-sm leading-relaxed', i !== 0 && 'hidden']}
+            >
+              {tab.steps.map((step) => (
+                <div class="group relative mb-2">
+                  {step.comment && (
+                    <span class="terminal-comment text-xs">{step.comment}</span>
+                  )}
+                  <div class="flex items-start gap-0">
+                    <span class="terminal-prompt shrink-0 select-none">{step.prompt}</span>
+                    <span class:list={[step.prompt ? 'terminal-cmd' : 'terminal-output']}>{step.cmd}</span>
+                  </div>
+                  {step.prompt && (
+                    <button
+                      data-copy={step.cmd}
+                      class="copy-btn absolute right-0 top-0 opacity-0 group-hover:opacity-100 text-xs px-2 py-1 transition-opacity"
+                      aria-label="Copy command"
+                    >
+                      copy
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  /* Terminal always has dark background regardless of theme */
+  .terminal-widget {
+    background: #0a0c10;
+  }
+  .terminal-header {
+    background: #0f1218;
+    border-bottom: 1px solid #1e2530;
+  }
+  .terminal-body {
+    background: #0a0c10;
+  }
+  .terminal-prompt {
+    color: #4ade80;
+  }
+  .terminal-cmd {
+    color: #e2e8f0;
+  }
+  .terminal-output {
+    color: #fb923c;
+  }
+  .terminal-comment {
+    color: #64748b;
+  }
+  .copy-btn {
+    color: #64748b;
+  }
+  .copy-btn:hover {
+    color: #e2e8f0;
+  }
+  .tab-btn {
+    color: #64748b;
+  }
+  .tab-btn-active,
+  .tab-btn.active {
+    color: #e2e8f0;
+    background: #1e2530;
+  }
+</style>
+
+<script>
+  // Tab switching
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.getAttribute('data-tab');
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        b.classList.remove('active');
+      });
+      btn.classList.add('active');
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+      document.querySelector(`[data-tab-content="${tab}"]`)?.classList.remove('hidden');
+    });
+  });
+
+  // Copy to clipboard
+  document.querySelectorAll('.copy-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const text = btn.getAttribute('data-copy') ?? '';
+      navigator.clipboard.writeText(text).then(() => {
+        const original = btn.textContent;
+        btn.textContent = 'copied!';
+        setTimeout(() => { btn.textContent = original; }, 1500);
+      });
+    });
+  });
+</script>

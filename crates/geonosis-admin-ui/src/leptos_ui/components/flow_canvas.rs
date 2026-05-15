@@ -228,8 +228,8 @@ pub fn FlowCanvas(
                     xmlns="http://www.w3.org/2000/svg"
                     viewBox=view_box
                     preserveAspectRatio="xMidYMid meet"
-                    role="img"
-                    aria-label="Flow graph"
+                    role="application"
+                    aria-label="Flow graph editor — drag nodes to reposition, use ports to create edges"
                 >
                     <defs>
                         <marker

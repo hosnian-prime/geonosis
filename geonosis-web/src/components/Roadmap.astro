@@ -1,0 +1,95 @@
+---
+const milestones = [
+  {
+    version: 'v0.1 GA',
+    title: 'Foundation',
+    desc: 'Core protocols, flow engine, admin UI, storage backends, CLI.',
+    done: true,
+  },
+  {
+    version: 'v0.2',
+    title: 'Scale',
+    desc: 'Multi-tenancy, advanced federation, plugin marketplace.',
+    done: false,
+  },
+  {
+    version: 'v0.3',
+    title: 'Modern Auth',
+    desc: 'Passkeys / WebAuthn, adaptive MFA, analytics dashboard.',
+    done: false,
+  },
+  {
+    version: 'v1.0',
+    title: 'Production',
+    desc: 'Battle-tested stability, enterprise support, SLA guarantees.',
+    done: false,
+  },
+];
+---
+
+<section id="roadmap" class="py-24 sm:py-32 border-t border-border/50" data-animate>
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+
+    <div class="max-w-xl mb-16">
+      <div class="flex items-center gap-2 mb-4">
+        <span class="h-px w-8 bg-accent"></span>
+        <span class="text-xs font-mono text-accent tracking-widest uppercase">Roadmap</span>
+      </div>
+      <h2 class="font-display font-bold text-3xl sm:text-4xl tracking-tight">
+        The trajectory.
+      </h2>
+    </div>
+
+    <!-- Timeline -->
+    <div class="relative max-w-2xl">
+      <!-- Vertical line -->
+      <div class="absolute left-[11px] top-2 bottom-2 w-px bg-border"></div>
+
+      <div class="space-y-10">
+        {milestones.map((m) => (
+          <div class="relative flex items-start gap-6 pl-9">
+            <!-- Dot -->
+            <div class:list={[
+              'absolute left-0 top-1.5 w-[23px] h-[23px] rounded-full border-2 flex items-center justify-center',
+              m.done
+                ? 'border-accent bg-accent/10'
+                : 'border-border bg-bg',
+            ]}>
+              {m.done && (
+                <div class="w-2 h-2 rounded-full bg-accent"></div>
+              )}
+            </div>
+
+            <div>
+              <div class="flex items-center gap-3 mb-1">
+                <span class:list={[
+                  'font-mono text-sm font-bold',
+                  m.done ? 'text-accent' : 'text-text-secondary',
+                ]}>
+                  {m.version}
+                </span>
+                <span class:list={[
+                  'font-display font-bold text-lg',
+                  m.done ? 'text-text' : 'text-text-secondary/70',
+                ]}>
+                  {m.title}
+                </span>
+                {m.done && (
+                  <span class="text-[10px] font-mono text-success border border-success/30 bg-success/5 px-1.5 py-0.5 rounded">
+                    shipped
+                  </span>
+                )}
+              </div>
+              <p class:list={[
+                'text-sm',
+                m.done ? 'text-text-secondary' : 'text-text-secondary/60',
+              ]}>
+                {m.desc}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  </div>
+</section>

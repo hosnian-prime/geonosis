@@ -399,7 +399,7 @@ fn escape(value: &str) -> String {
 ///
 /// The `path` label uses the matched route template (so
 /// `/realms/:slug/protocol/saml/sso` instead of the resolved
-/// `/realms/acme/protocol/saml/sso`) to keep cardinality bounded
+/// `/realms/master/protocol/saml/sso`) to keep cardinality bounded
 /// — every realm slug would otherwise spawn its own series.
 pub async fn count_requests(
     State(metrics): State<SharedMetrics>,

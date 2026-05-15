@@ -124,11 +124,11 @@ quickstart: compose-up ## Bring up the stack and print the verification commands
 	@echo "Geonosis is running at $(SERVER_URL)"
 	@echo
 	@echo "Verify discovery:"
-	@echo "  curl -fsS $(SERVER_URL)/realms/acme/.well-known/openid-configuration | jq ."
+	@echo "  curl -fsS $(SERVER_URL)/realms/master/.well-known/openid-configuration | jq ."
 	@echo
-	@echo "Demo user:    ada@acme.test / ada-pw"
-	@echo "Admin user:   admin@acme.test / admin-pw"
-	@echo "OIDC client:  acme-web  (redirect http://127.0.0.1:8888/callback)"
+	@echo "Demo user:    ada@master.test / ada-pw"
+	@echo "Admin user:   admin@master.test / admin-pw"
+	@echo "OIDC client:  master-web  (redirect http://127.0.0.1:8888/callback)"
 
 .PHONY: run
 run: ## Run the server locally with in-memory storage (no Postgres)

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#06080D"/>
+  <!-- Subtle grid -->
+  <defs>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1B1F2A" stroke-width="0.5"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="url(#grid)" opacity="0.4"/>
+  <!-- Planet glow -->
+  <circle cx="900" cy="315" r="200" fill="#FF5E1A" opacity="0.06"/>
+  <circle cx="900" cy="315" r="120" fill="#FF5E1A" opacity="0.1"/>
+  <circle cx="900" cy="315" r="80" fill="#FF5E1A" opacity="0.15"/>
+  <!-- Planet -->
+  <circle cx="900" cy="315" r="60" fill="#2A1408"/>
+  <circle cx="900" cy="315" r="60" fill="url(#planetGrad)"/>
+  <defs>
+    <radialGradient id="planetGrad" cx="40%" cy="35%">
+      <stop offset="0%" stop-color="#C06020"/>
+      <stop offset="60%" stop-color="#6B3010"/>
+      <stop offset="100%" stop-color="#1A0A04"/>
+    </radialGradient>
+  </defs>
+  <!-- Text -->
+  <text x="80" y="260" font-family="system-ui, sans-serif" font-weight="700" font-size="72" fill="#E2E8F0">Geonosis</text>
+  <text x="80" y="330" font-family="system-ui, sans-serif" font-weight="700" font-size="42" fill="#FF5E1A">Identity's New Planet.</text>
+  <text x="80" y="390" font-family="ui-monospace, monospace" font-size="20" fill="#64748B">IAM server written in Rust · OIDC 1.0 + OAuth 2.1</text>
+  <!-- Accent line -->
+  <rect x="80" y="210" width="50" height="3" fill="#FF5E1A"/>
+  <text x="140" y="213" font-family="ui-monospace, monospace" font-size="14" fill="#FF5E1A" letter-spacing="3">OPEN SOURCE IAM</text>
+</svg>

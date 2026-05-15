@@ -37,7 +37,7 @@ Sample log line:
   "msg": "token request failed",
   "request_id": "01HKZTV1A2B3CRYZ",
   "realm_id": "01HKZ...",
-  "client_id": "acme-web",
+  "client_id": "master-web",
   "error_code": "invalid_grant",
   "detail": "code_already_used"
 }

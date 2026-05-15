@@ -8,7 +8,7 @@ subsequent logins delegate credential validation to LDAP via bind.
 
 ## Prerequisites
 
-- A running realm `acme`.
+- A running realm `master`.
 - Network access from Geonosis pods to the LDAP/AD endpoint.
 - A **dedicated read-only service account** in AD (not a domain
   admin — principle of least privilege). The account needs only
@@ -20,7 +20,7 @@ subsequent logins delegate credential validation to LDAP via bind.
 
    ```sh
    geoctl federation create \
-     --realm acme \
+     --realm master \
      --alias corp-ad \
      --kind ldap \
      --config '{
@@ -68,13 +68,13 @@ subsequent logins delegate credential validation to LDAP via bind.
 2. **Store the bind password.**
 
    ```sh
-   geoctl secrets put --realm acme --name CORP_AD_BIND_PW --value "$AD_PASSWORD"
+   geoctl secrets put --realm master --name CORP_AD_BIND_PW --value "$AD_PASSWORD"
    ```
 
 3. **Enable group sync (optional).**
 
    ```sh
-   geoctl federation patch --realm acme --alias corp-ad \
+   geoctl federation patch --realm master --alias corp-ad \
      --group-sync '{
        "group_object_classes": ["group"],
        "group_filter": "(objectClass=group)",
@@ -90,7 +90,7 @@ subsequent logins delegate credential validation to LDAP via bind.
 4. **Run an initial full sync.**
 
    ```sh
-   geoctl federation sync --realm acme --source corp-ad --full
+   geoctl federation sync --realm master --source corp-ad --full
    ```
 
 ## Verifying
@@ -99,10 +99,10 @@ subsequent logins delegate credential validation to LDAP via bind.
 # Login as an AD user:
 docker run --rm --network host \
   ghcr.io/hosnian-prime/geonosis-quickstart-helper \
-  login --realm acme --user jdoe --pw 'AD_password'
+  login --realm master --user jdoe --pw 'AD_password'
 
 # Check the user was mirrored:
-geoctl users get --realm acme --user jdoe | jq '.federation'
+geoctl users get --realm master --user jdoe | jq '.federation'
 ```
 
 Shows `source_urn: "builtin:user-storage:ldap:corp-ad"` and
@@ -118,7 +118,7 @@ The GC holds a read-only partial attribute set across all domains.
 
 - **`CircuitOpen` after 5 failures** — check network connectivity
   and TLS cert validity. Health probe retries every 30 s;
-  `geoctl federation status --realm acme --alias corp-ad` shows
+  `geoctl federation status --realm master --alias corp-ad` shows
   current state.
 - **User attributes missing** — the service account may lack
   read permission on the attribute. AD's default deny on
@@ -129,7 +129,7 @@ The GC holds a read-only partial attribute set across all domains.
 - **Tombstoned users still appear enabled** — incremental sync
   checks the deleted-objects container only if `sync_policy` is
   enabled. Run a one-shot: `geoctl federation sync --source
-  corp-ad --realm acme --incremental`.
+  corp-ad --realm master --incremental`.
 
 ## See also
 

@@ -12,7 +12,7 @@ its own right but separate.
 
 ## Prerequisites
 
-- A running realm `acme` with at least one Active signing key (an
+- A running realm `master` with at least one Active signing key (an
   RS256 key works fine; ES256 also accepted).
 - The downstream SaaS app's SAML SP entity-id and ACS URL (you
   get these from its SAML setup screen).
@@ -25,7 +25,7 @@ its own right but separate.
 
    ```sh
    geoctl clients create \
-     --realm acme \
+     --realm master \
      --client-id confluence-prod \
      --kind SamlServiceProvider \
      --saml-config '{
@@ -61,7 +61,7 @@ its own right but separate.
 
    ```sh
    geoctl clients saml-cert-add \
-     --realm acme \
+     --realm master \
      --client confluence-prod \
      --purpose authnrequest-signing \
      --cert-file confluence-sp.crt
@@ -73,7 +73,7 @@ its own right but separate.
 3. **Download Geonosis's IdP metadata.**
 
    ```sh
-   curl -fsS https://geonosis.example.com/realms/acme/protocol/saml/descriptor \
+   curl -fsS https://geonosis.example.com/realms/master/protocol/saml/descriptor \
      -o geonosis-acme-idp.xml
    ```
 
@@ -116,12 +116,12 @@ Browser dev tools: the second POST request body decodes (Base64,
 maybe-zlib) to a SAML Response with:
 
 ```xml
-<saml2:Issuer>https://geonosis.example.com/realms/acme</saml2:Issuer>
+<saml2:Issuer>https://geonosis.example.com/realms/master</saml2:Issuer>
 <saml2:Subject>
-  <saml2:NameID Format="...emailAddress">ada@acme.test</saml2:NameID>
+  <saml2:NameID Format="...emailAddress">ada@master.test</saml2:NameID>
 </saml2:Subject>
 <saml2:AttributeStatement>
-  <saml2:Attribute Name="email">ada@acme.test</saml2:Attribute>
+  <saml2:Attribute Name="email">ada@master.test</saml2:Attribute>
   <saml2:Attribute Name="Role">user</saml2:Attribute>
 </saml2:AttributeStatement>
 ```
@@ -129,7 +129,7 @@ maybe-zlib) to a SAML Response with:
 And:
 
 ```sh
-geoctl audit list --realm acme --action 'saml.assertion_issued' --limit 5
+geoctl audit list --realm master --action 'saml.assertion_issued' --limit 5
 ```
 
 shows recent issuances with the client_id.

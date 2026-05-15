@@ -97,11 +97,11 @@ pub fn RealmCreatePage(
             {error.map(|e| view! { <Alert message=e kind=AlertKind::Danger/> })}
             <form method="post" action="/admin/realms" class="gn-form">
                 <Field label="Slug".into() name="slug".into() required=true
-                    hint=Some("URL-safe identifier; e.g. acme.".into())>
-                    <TextInput name="slug".into() required=true placeholder="acme".into()/>
+                    hint=Some("URL-safe identifier; e.g. staging.".into())>
+                    <TextInput name="slug".into() required=true placeholder="staging".into()/>
                 </Field>
                 <Field label="Display name".into() name="display_name".into() required=true>
-                    <TextInput name="display_name".into() required=true placeholder="Acme Corp".into()/>
+                    <TextInput name="display_name".into() required=true placeholder="Staging".into()/>
                 </Field>
                 <Toggle name="enabled".into() label="Enabled".into() checked=true/>
                 <ActionBar>

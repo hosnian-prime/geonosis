@@ -111,20 +111,15 @@ pub fn FlowEditPage(
                     flow_json=canvas_json
                 />
             })}
-            <form id="gn-flow-json-form" method="post" action=post class="gn-flow-json gn-form">
-                <label class="gn-field">
-                    <span class="gn-field__label">"Flow definition (JSON)"</span>
-                    <textarea
-                        id="gn-flow-json-textarea"
-                        name="definition"
-                        rows="24"
-                        cols="120"
-                        class="gn-textarea gn-textarea--code"
-                    >{json}</textarea>
-                </label>
-                <div class="gn-action-bar">
-                    <button type="submit" class="gn-btn gn-btn--primary">"Save JSON"</button>
-                </div>
+            // Hidden textarea for Canvas ↔ JSON sync (toggled via toolbar).
+            <form id="gn-flow-json-form" method="post" action=post class="gn-flow-json gn-form" style="display:none">
+                <textarea
+                    id="gn-flow-json-textarea"
+                    name="definition"
+                    rows="24"
+                    cols="120"
+                    class="gn-textarea gn-textarea--code"
+                >{json}</textarea>
             </form>
             <script src="/static/elk.min.js" defer></script>
             <script src="/static/flow-viewport.js" defer></script>

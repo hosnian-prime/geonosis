@@ -148,6 +148,11 @@ pub async fn delete_(
     State(state): State<Arc<AdminState>>,
     Path(slug): Path<String>,
 ) -> Result<axum::http::StatusCode, AdminError> {
+    if slug == geonosis_core::MASTER_REALM_SLUG {
+        return Err(AdminError::InvalidInput(
+            "The master realm cannot be deleted.".into(),
+        ));
+    }
     let existing = state
         .storage
         .get_realm_by_slug(&slug)

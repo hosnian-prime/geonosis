@@ -9,9 +9,9 @@ for TOTP / WebAuthn before issuing a new token with `acr=2`.
 
 ## Prerequisites
 
-- Realm `acme` with users that have either TOTP enrolled
+- Realm `master` with users that have either TOTP enrolled
   (`geoctl users credential-add --kind otp ...`) or WebAuthn.
-- Client `acme-web` configured for the standard `browser` flow.
+- Client `master-web` configured for the standard `browser` flow.
 
 ## Steps
 
@@ -22,7 +22,7 @@ for TOTP / WebAuthn before issuing a new token with `acr=2`.
    Policy). Verify:
 
    ```sh
-   geoctl realm get --realm acme --field acr_policy | jq
+   geoctl realm get --realm master --field acr_policy | jq
    ```
 
    Should show `level: "2"` requiring `pwd` AND (`otp` OR `wbn`).
@@ -32,7 +32,7 @@ for TOTP / WebAuthn before issuing a new token with `acr=2`.
    Geonosis ships `step-up-mfa` pre-installed for level 2. Confirm:
 
    ```sh
-   geoctl flows get --realm acme --alias step-up-mfa | head -30
+   geoctl flows get --realm master --alias step-up-mfa | head -30
    ```
 
    The graph is short: re-validate cookie → branch on whether the
@@ -43,7 +43,7 @@ for TOTP / WebAuthn before issuing a new token with `acr=2`.
 3. **Bind the flow to the realm at the right ACR level.**
 
    ```sh
-   geoctl realm patch --realm acme \
+   geoctl realm patch --realm master \
      --acr-bind '{"acr":"2","step_up_flow":"step-up-mfa"}'
    ```
 
@@ -60,7 +60,7 @@ for TOTP / WebAuthn before issuing a new token with `acr=2`.
 
    ```ts
    const url = new URL(`${ISSUER}/protocol/openid-connect/auth`);
-   url.searchParams.set("client_id", "acme-web");
+   url.searchParams.set("client_id", "master-web");
    url.searchParams.set("response_type", "code");
    url.searchParams.set("redirect_uri", `${APP}/callback`);
    url.searchParams.set("scope", "openid");

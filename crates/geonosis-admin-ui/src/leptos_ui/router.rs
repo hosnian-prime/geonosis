@@ -107,6 +107,10 @@ pub fn leptos_router(state: Arc<AdminState>) -> Router {
             "/admin/realms/:slug/clients/:client_id",
             get(page_client_detail),
         )
+        .route(
+            "/admin/realms/:slug/clients/:client_id/:tab",
+            post(post_client_update),
+        )
         // ---- Users ----
         .route(
             "/admin/realms/:slug/users",
@@ -114,6 +118,14 @@ pub fn leptos_router(state: Arc<AdminState>) -> Router {
         )
         .route("/admin/realms/:slug/users/new", get(page_user_new))
         .route("/admin/realms/:slug/users/:username", get(page_user_detail))
+        .route(
+            "/admin/realms/:slug/users/:username/:tab",
+            post(post_user_update),
+        )
+        .route(
+            "/admin/realms/:slug/users/:username/sessions/:session_id/revoke",
+            post(post_user_session_revoke),
+        )
         // ---- Roles ----
         .route(
             "/admin/realms/:slug/roles",
@@ -121,6 +133,10 @@ pub fn leptos_router(state: Arc<AdminState>) -> Router {
         )
         .route("/admin/realms/:slug/roles/new", get(page_role_new))
         .route("/admin/realms/:slug/roles/:name", get(page_role_detail))
+        .route(
+            "/admin/realms/:slug/roles/:name/general",
+            post(post_role_update),
+        )
         // ---- Groups ----
         .route(
             "/admin/realms/:slug/groups",
@@ -128,6 +144,10 @@ pub fn leptos_router(state: Arc<AdminState>) -> Router {
         )
         .route("/admin/realms/:slug/groups/new", get(page_group_new))
         .route("/admin/realms/:slug/groups/:id", get(page_group_detail))
+        .route(
+            "/admin/realms/:slug/groups/:id/general",
+            post(post_group_update),
+        )
         // ---- Orgs ----
         .route(
             "/admin/realms/:slug/orgs",
@@ -135,9 +155,25 @@ pub fn leptos_router(state: Arc<AdminState>) -> Router {
         )
         .route("/admin/realms/:slug/orgs/new", get(page_org_new))
         .route("/admin/realms/:slug/orgs/:alias", get(page_org_detail))
+        .route(
+            "/admin/realms/:slug/orgs/:alias/:tab",
+            post(post_org_update),
+        )
+        .route(
+            "/admin/realms/:slug/orgs/:alias/domains/:domain/verify",
+            post(post_org_domain_verify),
+        )
+        .route(
+            "/admin/realms/:slug/orgs/:alias/domains/:domain/remove",
+            post(post_org_domain_remove),
+        )
         // ---- Agents ----
         .route("/admin/realms/:slug/agents", get(page_agents))
         .route("/admin/realms/:slug/agents/:alias", get(page_agent_detail))
+        .route(
+            "/admin/realms/:slug/agents/:alias/:tab",
+            post(post_agent_update),
+        )
         // ---- IdPs ----
         .route(
             "/admin/realms/:slug/idps",
@@ -145,6 +181,10 @@ pub fn leptos_router(state: Arc<AdminState>) -> Router {
         )
         .route("/admin/realms/:slug/idps/new", get(page_idp_new))
         .route("/admin/realms/:slug/idps/:alias", get(page_idp_detail))
+        .route(
+            "/admin/realms/:slug/idps/:alias/general",
+            post(post_idp_update),
+        )
         // ---- Federation ----
         .route("/admin/realms/:slug/federation", get(page_federation))
         .route(
@@ -157,6 +197,10 @@ pub fn leptos_router(state: Arc<AdminState>) -> Router {
         .route("/admin/realms/:slug/keys", get(page_keys))
         // ---- Sessions ----
         .route("/admin/realms/:slug/sessions", get(page_sessions))
+        .route(
+            "/admin/realms/:slug/sessions/:session_id/revoke",
+            post(post_session_revoke),
+        )
         // ---- Events ----
         .route("/admin/realms/:slug/events", get(page_events))
         // ---- Flows ----
@@ -172,6 +216,12 @@ pub fn leptos_router(state: Arc<AdminState>) -> Router {
         )
         // ---- Profile (own account) ----
         .route("/admin/profile", get(page_profile))
+        .route("/admin/profile/general", post(post_profile_general))
+        .route("/admin/profile/password", post(post_profile_password))
+        .route(
+            "/admin/profile/sessions/:session_id/revoke",
+            post(post_profile_session_revoke),
+        )
         .with_state(state)
 }
 
@@ -396,6 +446,11 @@ async fn post_realm_delete(
     State(state): State<Arc<AdminState>>,
     Path(slug): Path<String>,
 ) -> Result<Response, AdminError> {
+    if slug == geonosis_core::MASTER_REALM_SLUG {
+        return Err(AdminError::InvalidInput(
+            "The master realm cannot be deleted.".into(),
+        ));
+    }
     let realm = realm_by_slug(&state, &slug).await?;
     state.storage.delete_realm(realm.id).await?;
     crate::audit_emit::emit(
@@ -1938,6 +1993,700 @@ async fn page_profile(
             <ProfilePage data=data active_tab=tab ctx=ctx/>
         }
     }))
+}
+
+// =========================================================================
+//                        Client detail update
+// =========================================================================
+
+async fn post_client_update(
+    State(state): State<Arc<AdminState>>,
+    Path((slug, client_id, tab)): Path<(String, String, String)>,
+    Form(form): Form<serde_json::Value>,
+) -> Result<Response, AdminError> {
+    use geonosis_core::client::{ClientAuthMethod, RedirectUri};
+    let realm = realm_by_slug(&state, &slug).await?;
+    let mut client = state
+        .storage
+        .get_client_by_client_id(realm.id, &client_id)
+        .await?;
+
+    match tab.as_str() {
+        "general" => {
+            if let Some(v) = form.get("display_name").and_then(|v| v.as_str()) {
+                client.display_name = if v.is_empty() { None } else { Some(v.into()) };
+            }
+            client.enabled = form.get("enabled").is_some();
+            if let Some(v) = form.get("auth_method").and_then(|v| v.as_str()) {
+                client.auth_method = match v {
+                    "client-secret-post" => ClientAuthMethod::ClientSecretPost,
+                    "client-secret-jwt" => ClientAuthMethod::ClientSecretJwt,
+                    "private-key-jwt" => ClientAuthMethod::PrivateKeyJwt,
+                    "none" => ClientAuthMethod::None,
+                    "tls-client-auth" => ClientAuthMethod::TlsClientAuth,
+                    _ => ClientAuthMethod::ClientSecretBasic,
+                };
+            }
+        }
+        "uris" => {
+            let parse_lines = |key: &str| -> Vec<String> {
+                form.get(key)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .lines()
+                    .map(|l| l.trim().to_string())
+                    .filter(|l| !l.is_empty())
+                    .collect()
+            };
+            client.redirect_uris = parse_lines("redirect_uris")
+                .into_iter()
+                .map(|uri| RedirectUri {
+                    uri,
+                    wildcard_path: false,
+                })
+                .collect();
+            client.post_logout_redirect_uris = parse_lines("post_logout_redirect_uris")
+                .into_iter()
+                .map(|uri| RedirectUri {
+                    uri,
+                    wildcard_path: false,
+                })
+                .collect();
+            client.web_origins = parse_lines("web_origins");
+        }
+        "grants" => {
+            client.grants.authorization_code = form.get("authorization_code").is_some();
+            client.grants.refresh_token = form.get("refresh_token").is_some();
+            client.grants.client_credentials = form.get("client_credentials").is_some();
+            client.grants.password = form.get("password").is_some();
+            client.grants.device_code = form.get("device_code").is_some();
+            client.grants.token_exchange = form.get("token_exchange").is_some();
+        }
+        "scopes" => {
+            let parse_scope = |key: &str| -> Vec<geonosis_core::ScopeName> {
+                form.get(key)
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .split_whitespace()
+                    .filter_map(|s| geonosis_core::ScopeName::new(s.to_string()).ok())
+                    .collect()
+            };
+            client.default_scopes = parse_scope("default_scopes");
+            client.optional_scopes = parse_scope("optional_scopes");
+        }
+        "consent" => {
+            client.consent.required = form.get("required").is_some();
+            client.consent.display_on_consent_screen =
+                form.get("display_on_consent_screen").is_some();
+            client.consent.consent_screen_text = form
+                .get("consent_screen_text")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(String::from);
+        }
+        "tokens" => {
+            client.access_token_lifespan = form
+                .get("access_token_lifespan")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse::<u64>().ok())
+                .filter(|&n| n > 0)
+                .map(std::time::Duration::from_secs);
+            client.refresh_token_lifespan = form
+                .get("refresh_token_lifespan")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse::<u64>().ok())
+                .filter(|&n| n > 0)
+                .map(std::time::Duration::from_secs);
+        }
+        "logout" => {
+            client.front_channel_logout_enabled =
+                form.get("front_channel_logout_enabled").is_some();
+            client.backchannel_logout_url = form
+                .get("backchannel_logout_url")
+                .and_then(|v| v.as_str())
+                .and_then(|s| parse_optional_url(s));
+        }
+        _ => {}
+    }
+
+    client.updated_at = chrono::Utc::now();
+    state.storage.update_client(client.clone()).await?;
+    crate::audit_emit::emit(
+        &state,
+        realm.id,
+        "client.updated",
+        Some(geonosis_audit::Target::Client { id: client.id }),
+        serde_json::json!({ "client_id": client_id, "tab": tab }),
+    );
+    Ok(Redirect::to(&format!(
+        "/admin/realms/{slug}/clients/{client_id}?tab={tab}"
+    ))
+    .into_response())
+}
+
+// =========================================================================
+//                         User detail update
+// =========================================================================
+
+async fn post_user_update(
+    State(state): State<Arc<AdminState>>,
+    Path((slug, username, tab)): Path<(String, String, String)>,
+    Form(form): Form<serde_json::Value>,
+) -> Result<Response, AdminError> {
+    let realm = realm_by_slug(&state, &slug).await?;
+
+    match tab.as_str() {
+        "general" => {
+            let mut user = state
+                .storage
+                .get_user_by_username(realm.id, &username)
+                .await?;
+            if let Some(v) = form.get("email").and_then(|v| v.as_str()) {
+                user.email = if v.is_empty() { None } else { Some(v.into()) };
+            }
+            user.email_verified = form.get("email_verified").is_some();
+            user.enabled = form.get("enabled").is_some();
+            let first = form
+                .get("first_name")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(String::from);
+            let last = form
+                .get("last_name")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(String::from);
+            if first.is_some() || last.is_some() {
+                user.name = Some(geonosis_core::PersonName {
+                    given: first,
+                    family: last,
+                    middle: None,
+                    display: None,
+                });
+            }
+            user.updated_at = chrono::Utc::now();
+            state.storage.update_user(user.clone()).await?;
+            crate::audit_emit::emit(
+                &state,
+                realm.id,
+                "user.updated",
+                Some(geonosis_audit::Target::User { id: user.id }),
+                serde_json::json!({ "username": username, "tab": "general" }),
+            );
+        }
+        "password" => {
+            let user = state
+                .storage
+                .get_user_by_username(realm.id, &username)
+                .await?;
+            let password = form
+                .get("password")
+                .or_else(|| form.get("new"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if password.is_empty() {
+                return Err(AdminError::InvalidInput("password is required".into()));
+            }
+            let report =
+                realm
+                    .password_policy
+                    .validate(password, &username, user.email.as_deref());
+            if !report.is_ok() {
+                return Err(AdminError::PasswordPolicy(report.violations));
+            }
+            let phc = geonosis_crypto::hash_password(password)
+                .map_err(|e| AdminError::Storage(format!("hash_password: {e}")))?;
+            state
+                .storage
+                .store_password_hash(realm.id, user.id, phc)
+                .await?;
+            crate::audit_emit::emit(
+                &state,
+                realm.id,
+                "user.password_set",
+                Some(geonosis_audit::Target::User { id: user.id }),
+                serde_json::json!({ "username": username }),
+            );
+        }
+        _ => {}
+    }
+
+    Ok(
+        Redirect::to(&format!("/admin/realms/{slug}/users/{username}?tab={tab}"))
+            .into_response(),
+    )
+}
+
+async fn post_user_session_revoke(
+    State(state): State<Arc<AdminState>>,
+    Path((slug, username, session_id)): Path<(String, String, String)>,
+) -> Result<Response, AdminError> {
+    let realm = realm_by_slug(&state, &slug).await?;
+    let sid = geonosis_core::SessionId(session_id);
+    state.storage.delete_session(&sid).await?;
+    crate::audit_emit::emit(
+        &state,
+        realm.id,
+        "session.revoked",
+        Some(geonosis_audit::Target::Session { id: sid }),
+        serde_json::json!({ "username": username, "reason": "admin" }),
+    );
+    Ok(
+        Redirect::to(&format!("/admin/realms/{slug}/users/{username}?tab=sessions"))
+            .into_response(),
+    )
+}
+
+// =========================================================================
+//                         Role detail update
+// =========================================================================
+
+async fn post_role_update(
+    State(state): State<Arc<AdminState>>,
+    Path((slug, name)): Path<(String, String)>,
+    Form(form): Form<serde_json::Value>,
+) -> Result<Response, AdminError> {
+    let realm = realm_by_slug(&state, &slug).await?;
+    let mut role = state
+        .storage
+        .get_role_by_name(realm.id, None, &name)
+        .await?;
+    if let Some(v) = form.get("description").and_then(|v| v.as_str()) {
+        role.description = if v.is_empty() { None } else { Some(v.into()) };
+    }
+    role.updated_at = chrono::Utc::now();
+    state.storage.update_role(role.clone()).await?;
+    crate::audit_emit::emit(
+        &state,
+        realm.id,
+        "role.updated",
+        None,
+        serde_json::json!({ "name": name }),
+    );
+    Ok(Redirect::to(&format!("/admin/realms/{slug}/roles/{name}")).into_response())
+}
+
+// =========================================================================
+//                        Group detail update
+// =========================================================================
+
+async fn post_group_update(
+    State(state): State<Arc<AdminState>>,
+    Path((slug, id)): Path<(String, geonosis_core::GroupId)>,
+    Form(form): Form<serde_json::Value>,
+) -> Result<Response, AdminError> {
+    let realm = realm_by_slug(&state, &slug).await?;
+    let mut group = state.storage.get_group(realm.id, id).await?;
+    if let Some(v) = form.get("name").and_then(|v| v.as_str()) {
+        if !v.is_empty() {
+            group.name = v.into();
+        }
+    }
+    group.updated_at = chrono::Utc::now();
+    state.storage.update_group(group.clone()).await?;
+    crate::audit_emit::emit(
+        &state,
+        realm.id,
+        "group.updated",
+        None,
+        serde_json::json!({ "id": id.to_string() }),
+    );
+    Ok(Redirect::to(&format!("/admin/realms/{slug}/groups/{id}")).into_response())
+}
+
+// =========================================================================
+//                         Org detail update
+// =========================================================================
+
+async fn post_org_update(
+    State(state): State<Arc<AdminState>>,
+    Path((slug, alias, tab)): Path<(String, String, String)>,
+    Form(form): Form<serde_json::Value>,
+) -> Result<Response, AdminError> {
+    let realm = realm_by_slug(&state, &slug).await?;
+    let mut org = state
+        .storage
+        .get_organization_by_alias(realm.id, &alias)
+        .await?;
+
+    match tab.as_str() {
+        "general" => {
+            if let Some(v) = form.get("display_name").and_then(|v| v.as_str()) {
+                org.display_name = v.into();
+            }
+            if let Some(v) = form.get("description").and_then(|v| v.as_str()) {
+                org.description = if v.is_empty() { None } else { Some(v.into()) };
+            }
+            org.enabled = form.get("enabled").is_some();
+        }
+        "branding" => {
+            if let Some(v) = form.get("logo_url").and_then(|v| v.as_str()) {
+                org.branding.logo_url = parse_optional_url(v);
+            }
+        }
+        "domains" => {
+            // Add domain form
+            if let Some(domain) = form.get("domain").and_then(|v| v.as_str()) {
+                if !domain.is_empty() {
+                    let d = geonosis_core::OrgDomain {
+                        id: geonosis_core::id::OrgDomainId::new(),
+                        organization_id: org.id,
+                        realm_id: realm.id,
+                        domain: domain.to_ascii_lowercase(),
+                        verified: false,
+                        verification_token: Some(
+                            geonosis_core::id::SessionId::new_random().0,
+                        ),
+                        verified_at: None,
+                    };
+                    state.storage.upsert_org_domain(d).await?;
+                }
+            }
+            return Ok(Redirect::to(&format!(
+                "/admin/realms/{slug}/orgs/{alias}?tab=domains"
+            ))
+            .into_response());
+        }
+        "invitations" => {
+            // Create invitation form
+            let email = form
+                .get("email")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            if !email.is_empty() {
+                let invited_by = form
+                    .get("invited_by")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or_else(geonosis_core::id::UserId::new);
+                let inv = geonosis_core::OrgInvitation {
+                    id: geonosis_core::id::OrgInvitationId::new(),
+                    organization_id: org.id,
+                    realm_id: realm.id,
+                    email: email.into(),
+                    roles: vec![],
+                    invited_by,
+                    token: geonosis_core::Secret::new(
+                        geonosis_core::id::SessionId::new_random().0,
+                    ),
+                    expires_at: chrono::Utc::now() + chrono::Duration::days(14),
+                    accepted_at: None,
+                };
+                state.storage.create_org_invitation(inv).await?;
+            }
+            return Ok(Redirect::to(&format!(
+                "/admin/realms/{slug}/orgs/{alias}?tab=invitations"
+            ))
+            .into_response());
+        }
+        _ => {}
+    }
+
+    org.updated_at = chrono::Utc::now();
+    state.storage.update_organization(org.clone()).await?;
+    crate::audit_emit::emit(
+        &state,
+        realm.id,
+        "org.updated",
+        None,
+        serde_json::json!({ "alias": alias, "tab": tab }),
+    );
+    Ok(Redirect::to(&format!(
+        "/admin/realms/{slug}/orgs/{alias}?tab={tab}"
+    ))
+    .into_response())
+}
+
+async fn post_org_domain_verify(
+    State(state): State<Arc<AdminState>>,
+    Path((slug, alias, domain)): Path<(String, String, String)>,
+) -> Result<Response, AdminError> {
+    let realm = realm_by_slug(&state, &slug).await?;
+    let org = state
+        .storage
+        .get_organization_by_alias(realm.id, &alias)
+        .await?;
+    let mut domains = state
+        .storage
+        .list_org_domains(realm.id, org.id)
+        .await?;
+    let domain_l = domain.to_ascii_lowercase();
+    let target = domains
+        .iter_mut()
+        .find(|d| d.domain == domain_l)
+        .ok_or(AdminError::NotFound)?;
+    target.verified = true;
+    target.verified_at = Some(chrono::Utc::now());
+    target.verification_token = None;
+    state.storage.upsert_org_domain(target.clone()).await?;
+    Ok(Redirect::to(&format!(
+        "/admin/realms/{slug}/orgs/{alias}?tab=domains"
+    ))
+    .into_response())
+}
+
+async fn post_org_domain_remove(
+    State(state): State<Arc<AdminState>>,
+    Path((slug, alias, domain)): Path<(String, String, String)>,
+) -> Result<Response, AdminError> {
+    let realm = realm_by_slug(&state, &slug).await?;
+    let org = state
+        .storage
+        .get_organization_by_alias(realm.id, &alias)
+        .await?;
+    state
+        .storage
+        .delete_org_domain(realm.id, org.id, &domain.to_ascii_lowercase())
+        .await?;
+    Ok(Redirect::to(&format!(
+        "/admin/realms/{slug}/orgs/{alias}?tab=domains"
+    ))
+    .into_response())
+}
+
+// =========================================================================
+//                        Agent detail update
+// =========================================================================
+
+async fn post_agent_update(
+    State(state): State<Arc<AdminState>>,
+    Path((slug, alias, tab)): Path<(String, String, String)>,
+    Form(form): Form<serde_json::Value>,
+) -> Result<Response, AdminError> {
+    let realm = realm_by_slug(&state, &slug).await?;
+    let mut agent = state
+        .storage
+        .get_agent_by_alias(realm.id, &alias)
+        .await?;
+
+    match tab.as_str() {
+        "general" => {
+            if let Some(v) = form.get("display_name").and_then(|v| v.as_str()) {
+                agent.display_name = v.into();
+            }
+            if let Some(v) = form.get("model_hint").and_then(|v| v.as_str()) {
+                agent.model_hint = if v.is_empty() { None } else { Some(v.into()) };
+            }
+            if let Some(v) = form.get("vendor").and_then(|v| v.as_str()) {
+                agent.vendor = if v.is_empty() { None } else { Some(v.into()) };
+            }
+            agent.enabled = form.get("enabled").is_some();
+        }
+        "rate-limits" => {
+            if let Some(v) = form
+                .get("requests_per_minute")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse::<u32>().ok())
+            {
+                agent.rate_limit.requests_per_minute = v;
+            }
+            if let Some(v) = form
+                .get("tokens_per_day")
+                .and_then(|v| v.as_str())
+                .and_then(|s| s.parse::<u64>().ok())
+            {
+                agent.rate_limit.tokens_per_day = Some(v);
+            }
+        }
+        _ => {}
+    }
+
+    state.storage.update_agent(agent.clone()).await?;
+    crate::audit_emit::emit(
+        &state,
+        realm.id,
+        "agent.updated",
+        Some(geonosis_audit::Target::Other {
+            entity: "agent".into(),
+            id: agent.id.to_string(),
+        }),
+        serde_json::json!({ "alias": alias, "tab": tab }),
+    );
+    Ok(Redirect::to(&format!(
+        "/admin/realms/{slug}/agents/{alias}?tab={tab}"
+    ))
+    .into_response())
+}
+
+// =========================================================================
+//                         IdP detail update
+// =========================================================================
+
+async fn post_idp_update(
+    State(state): State<Arc<AdminState>>,
+    Path((slug, alias)): Path<(String, String)>,
+    Form(form): Form<serde_json::Value>,
+) -> Result<Response, AdminError> {
+    let realm = realm_by_slug(&state, &slug).await?;
+    let mut idp = state.storage.get_idp_by_alias(realm.id, &alias).await?;
+
+    if let Some(v) = form.get("display_name").and_then(|v| v.as_str()) {
+        idp.display_name = v.into();
+    }
+    idp.enabled = form.get("enabled").is_some();
+    idp.link_only = form.get("link_only").is_some();
+
+    // update via upsert (same as handlers_v1/idps.rs)
+    state.storage.create_idp(idp.clone()).await?;
+    crate::audit_emit::emit(
+        &state,
+        realm.id,
+        "idp.updated",
+        None,
+        serde_json::json!({ "alias": alias }),
+    );
+    Ok(Redirect::to(&format!("/admin/realms/{slug}/idps/{alias}")).into_response())
+}
+
+// =========================================================================
+//                        Session revoke (admin)
+// =========================================================================
+
+async fn post_session_revoke(
+    State(state): State<Arc<AdminState>>,
+    Path((slug, session_id)): Path<(String, String)>,
+) -> Result<Response, AdminError> {
+    let realm = realm_by_slug(&state, &slug).await?;
+    let sid = geonosis_core::SessionId(session_id);
+    state.storage.delete_session(&sid).await?;
+    crate::audit_emit::emit(
+        &state,
+        realm.id,
+        "session.revoked",
+        Some(geonosis_audit::Target::Session { id: sid }),
+        serde_json::json!({ "reason": "admin" }),
+    );
+    Ok(Redirect::to(&format!("/admin/realms/{slug}/sessions")).into_response())
+}
+
+// =========================================================================
+//                       Profile (own account)
+// =========================================================================
+
+async fn post_profile_general(
+    State(state): State<Arc<AdminState>>,
+    principal: axum::Extension<AdminPrincipal>,
+    Form(form): Form<serde_json::Value>,
+) -> Result<Response, AdminError> {
+    let mut user = state
+        .storage
+        .get_user(principal.realm_id, principal.user_id)
+        .await?;
+    if let Some(v) = form.get("email").and_then(|v| v.as_str()) {
+        user.email = if v.is_empty() { None } else { Some(v.into()) };
+    }
+    user.email_verified = form.get("email_verified").is_some();
+    let first = form
+        .get("first_name")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+    let last = form
+        .get("last_name")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(String::from);
+    if first.is_some() || last.is_some() {
+        user.name = Some(geonosis_core::PersonName {
+            given: first,
+            family: last,
+            middle: None,
+            display: None,
+        });
+    }
+    user.updated_at = chrono::Utc::now();
+    state.storage.update_user(user.clone()).await?;
+    crate::audit_emit::emit(
+        &state,
+        principal.realm_id,
+        "user.profile_updated",
+        Some(geonosis_audit::Target::User { id: user.id }),
+        serde_json::json!({ "username": user.username }),
+    );
+    Ok(Redirect::to("/admin/profile?tab=general").into_response())
+}
+
+async fn post_profile_password(
+    State(state): State<Arc<AdminState>>,
+    principal: axum::Extension<AdminPrincipal>,
+    Form(form): Form<serde_json::Value>,
+) -> Result<Response, AdminError> {
+    let user = state
+        .storage
+        .get_user(principal.realm_id, principal.user_id)
+        .await?;
+    let realm = state.storage.get_realm(principal.realm_id).await?;
+
+    // Verify current password
+    let current = form
+        .get("current")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let stored_hash = state
+        .storage
+        .get_password_hash(principal.realm_id, user.id)
+        .await
+        .map_err(|_| AdminError::InvalidInput("no password set".into()))?;
+    let valid = geonosis_crypto::verify_password(current, &stored_hash).unwrap_or(false);
+    if !valid {
+        return Err(AdminError::InvalidInput(
+            "current password is incorrect".into(),
+        ));
+    }
+
+    // Check new == confirm
+    let new_pw = form.get("new").and_then(|v| v.as_str()).unwrap_or("");
+    let confirm = form.get("confirm").and_then(|v| v.as_str()).unwrap_or("");
+    if new_pw != confirm {
+        return Err(AdminError::InvalidInput(
+            "new password and confirmation do not match".into(),
+        ));
+    }
+    if new_pw.is_empty() {
+        return Err(AdminError::InvalidInput(
+            "new password is required".into(),
+        ));
+    }
+
+    // Validate against realm password policy
+    let report = realm
+        .password_policy
+        .validate(new_pw, &user.username, user.email.as_deref());
+    if !report.is_ok() {
+        return Err(AdminError::PasswordPolicy(report.violations));
+    }
+
+    let phc = geonosis_crypto::hash_password(new_pw)
+        .map_err(|e| AdminError::Storage(format!("hash_password: {e}")))?;
+    state
+        .storage
+        .store_password_hash(principal.realm_id, user.id, phc)
+        .await?;
+    crate::audit_emit::emit(
+        &state,
+        principal.realm_id,
+        "user.password_changed",
+        Some(geonosis_audit::Target::User { id: user.id }),
+        serde_json::json!({ "username": user.username }),
+    );
+    Ok(Redirect::to("/admin/profile?tab=password").into_response())
+}
+
+async fn post_profile_session_revoke(
+    State(state): State<Arc<AdminState>>,
+    principal: axum::Extension<AdminPrincipal>,
+    Path(session_id): Path<String>,
+) -> Result<Response, AdminError> {
+    let sid = geonosis_core::SessionId(session_id);
+    state.storage.delete_session(&sid).await?;
+    crate::audit_emit::emit(
+        &state,
+        principal.realm_id,
+        "session.revoked",
+        Some(geonosis_audit::Target::Session { id: sid }),
+        serde_json::json!({ "reason": "self" }),
+    );
+    Ok(Redirect::to("/admin/profile?tab=sessions").into_response())
 }
 
 // =========================================================================

@@ -7,7 +7,7 @@ export default async function Home() {
       <h1>Geonosis + Next.js</h1>
       <p>
         Minimal OIDC client wired against the realm from the quickstart
-        stack (<code>acme</code>, client <code>acme-web</code>).
+        stack (<code>acme</code>, client <code>master-web</code>).
       </p>
       {session?.user ? (
         <section>

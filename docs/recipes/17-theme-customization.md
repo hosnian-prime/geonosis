@@ -2,7 +2,7 @@
 
 ## What you'll have at the end
 
-Realm `acme` has a custom login theme with your company logo,
+Realm `master` has a custom login theme with your company logo,
 brand colors, and a modified login page — hot-reloadable without
 restarting any pod.
 
@@ -117,7 +117,7 @@ restarting any pod.
 5. **Bind the theme to the realm.**
 
    ```sh
-   geoctl realm patch --realm acme \
+   geoctl realm patch --realm master \
      --theme-binding '{"login": "acme-brand", "email": "acme-brand"}'
    ```
 
@@ -126,8 +126,8 @@ restarting any pod.
 Open the login page:
 
 ```sh
-open "https://geonosis.example.com/realms/acme/protocol/openid-connect/auth?\
-client_id=acme-web&response_type=code&redirect_uri=http://127.0.0.1:8888/callback&scope=openid"
+open "https://geonosis.example.com/realms/master/protocol/openid-connect/auth?\
+client_id=master-web&response_type=code&redirect_uri=http://127.0.0.1:8888/callback&scope=openid"
 ```
 
 You should see your logo, brand colors, and any template changes.
@@ -141,7 +141,7 @@ request drop.
 
 ```sh
 # Watch the reload event:
-geoctl audit list --realm acme --action 'theme.reloaded' --limit 1
+geoctl audit list --realm master --action 'theme.reloaded' --limit 1
 ```
 
 ## Accessibility checklist

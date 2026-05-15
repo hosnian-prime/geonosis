@@ -29,7 +29,7 @@ Output: `target/wasm32-wasip1/release/spi_twilio.wasm`.
 
 ```bash
 geoctl spi install \
-  --realm acme \
+  --realm master \
   --interface geonosis:event@0.1.0 \
   --alias spi-twilio \
   --module target/wasm32-wasip1/release/spi_twilio.wasm \

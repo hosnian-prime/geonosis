@@ -1,0 +1,187 @@
+---
+---
+
+<section id="features" class="py-24 sm:py-32" data-animate>
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+
+    <!-- Section header -->
+    <div class="max-w-xl mb-16" data-animate-child>
+      <div class="flex items-center gap-2 mb-4">
+        <span class="h-px w-8 bg-accent"></span>
+        <span class="text-xs font-mono text-accent tracking-widest uppercase">Features</span>
+      </div>
+      <h2 class="font-display font-bold text-3xl sm:text-4xl tracking-tight">
+        Built for the demands<br />of modern identity.
+      </h2>
+    </div>
+
+    <!-- Bento grid -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-px bg-border/50 rounded-lg overflow-hidden border border-border" data-animate-child>
+
+      <!-- OIDC + OAuth — spans 2 cols -->
+      <div class="feature-card md:col-span-2 bg-bg p-6 sm:p-8 group">
+        <div class="flex items-start justify-between mb-4">
+          <h3 class="font-display font-bold text-lg">OIDC 1.0 + OAuth 2.1</h3>
+          <span class="text-xs font-mono text-text-secondary bg-surface px-2 py-0.5 rounded border border-border">protocol</span>
+        </div>
+        <p class="text-sm text-text-secondary mb-6 max-w-md">
+          Full protocol compliance out of the box. Authorization Code with PKCE,
+          Client Credentials, Device Authorization, Token Exchange, and Dynamic Client Registration.
+        </p>
+        <!-- Mini flow diagram -->
+        <div class="flex items-center gap-2 text-xs font-mono text-text-secondary overflow-x-auto py-2">
+          <span class="whitespace-nowrap px-2 py-1 border border-border rounded bg-surface/50">Client</span>
+          <svg width="20" height="8" class="shrink-0 text-accent"><path d="M0 4h16M12 1l4 3-4 3" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+          <span class="whitespace-nowrap px-2 py-1 border border-border rounded bg-surface/50">/authorize</span>
+          <svg width="20" height="8" class="shrink-0 text-accent"><path d="M0 4h16M12 1l4 3-4 3" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+          <span class="whitespace-nowrap px-2 py-1 border border-border rounded bg-surface/50">Flow Engine</span>
+          <svg width="20" height="8" class="shrink-0 text-accent"><path d="M0 4h16M12 1l4 3-4 3" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+          <span class="whitespace-nowrap px-2 py-1 border border-accent/30 rounded bg-accent/5 text-accent">Token</span>
+        </div>
+      </div>
+
+      <!-- Rust Performance -->
+      <div class="feature-card bg-bg p-6 sm:p-8 group">
+        <h3 class="font-display font-bold text-lg mb-4">Rust Performance</h3>
+        <p class="text-sm text-text-secondary mb-6">
+          Zero-cost abstractions, no GC pauses, predictable latency.
+          Starts in milliseconds, idles at single-digit MB.
+        </p>
+        <!-- Performance bars -->
+        <div class="space-y-3">
+          <div>
+            <div class="flex justify-between text-xs font-mono mb-1">
+              <span class="text-accent">Geonosis</span>
+              <span class="text-text-secondary">~5 MB</span>
+            </div>
+            <div class="h-1.5 bg-surface rounded-sm overflow-hidden">
+              <div class="h-full bg-accent rounded-sm" style="width: 3%"></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs font-mono mb-1">
+              <span class="text-text-secondary">Keycloak</span>
+              <span class="text-text-secondary">~512 MB</span>
+            </div>
+            <div class="h-1.5 bg-surface rounded-sm overflow-hidden">
+              <div class="h-full bg-text-secondary/30 rounded-sm" style="width: 85%"></div>
+            </div>
+          </div>
+          <div>
+            <div class="flex justify-between text-xs font-mono mb-1">
+              <span class="text-text-secondary">Ory Hydra</span>
+              <span class="text-text-secondary">~30 MB</span>
+            </div>
+            <div class="h-1.5 bg-surface rounded-sm overflow-hidden">
+              <div class="h-full bg-text-secondary/30 rounded-sm" style="width: 8%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Flow Engine -->
+      <div class="feature-card bg-bg p-6 sm:p-8 group">
+        <h3 class="font-display font-bold text-lg mb-4">Flow Engine</h3>
+        <p class="text-sm text-text-secondary mb-5">
+          Define authentication and registration flows with a graph-based DSL.
+          No XML configs, no code needed.
+        </p>
+        <!-- Mini graph visualization -->
+        <div class="font-mono text-xs text-text-secondary leading-relaxed bg-surface/50 border border-border rounded p-3">
+          <span class="text-accent">start</span> → identify<br/>
+          identify → <span class="text-indigo">challenge_password</span><br/>
+          challenge_password → <span class="text-text-secondary">mfa_check</span><br/>
+          mfa_check → <span class="text-success">grant</span>
+        </div>
+      </div>
+
+      <!-- WASM Plugins -->
+      <div class="feature-card bg-bg p-6 sm:p-8 group">
+        <h3 class="font-display font-bold text-lg mb-4">WASM Plugins</h3>
+        <p class="text-sm text-text-secondary mb-5">
+          Extend every hook with WebAssembly components.
+          Write plugins in Rust, Go, Python — anything that compiles to WASM.
+        </p>
+        <div class="font-mono text-xs bg-surface/50 border border-border rounded p-3 overflow-x-auto">
+          <pre class="text-text-secondary"><code><span class="text-indigo">fn</span> <span class="text-accent">on_authenticate</span>(
+  ctx: &amp;Context
+) -&gt; Result&lt;Action&gt; {'{'}<br/>  <span class="text-text-secondary">// your logic here</span><br/>{'}'}</code></pre>
+        </div>
+      </div>
+
+      <!-- Admin UI -->
+      <div class="feature-card bg-bg p-6 sm:p-8 group">
+        <h3 class="font-display font-bold text-lg mb-4">Admin UI</h3>
+        <p class="text-sm text-text-secondary mb-5">
+          Built-in reactive admin dashboard powered by Leptos.
+          Manage realms, clients, users, and flows — no separate deployment.
+        </p>
+        <div class="border border-border rounded bg-surface/50 p-3">
+          <div class="flex items-center gap-1.5 mb-2">
+            <span class="w-2 h-2 rounded-full bg-danger"></span>
+            <span class="w-2 h-2 rounded-full bg-amber-400"></span>
+            <span class="w-2 h-2 rounded-full bg-success"></span>
+            <span class="text-[10px] font-mono text-text-secondary ml-2">admin / realms / acme</span>
+          </div>
+          <div class="grid grid-cols-3 gap-1 text-[10px] font-mono text-text-secondary">
+            <div class="bg-bg rounded px-2 py-1.5 border border-border">Users <span class="text-accent">24</span></div>
+            <div class="bg-bg rounded px-2 py-1.5 border border-border">Clients <span class="text-accent">8</span></div>
+            <div class="bg-bg rounded px-2 py-1.5 border border-border">Flows <span class="text-accent">3</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Kubernetes Native — spans 2 cols -->
+      <div class="feature-card md:col-span-2 bg-bg p-6 sm:p-8 group">
+        <div class="flex items-start justify-between mb-4">
+          <h3 class="font-display font-bold text-lg">Kubernetes Native</h3>
+          <span class="text-xs font-mono text-text-secondary bg-surface px-2 py-0.5 rounded border border-border">deploy</span>
+        </div>
+        <p class="text-sm text-text-secondary mb-6 max-w-md">
+          Single static binary. Helm chart included. Health checks, graceful shutdown,
+          and structured logging built in.
+        </p>
+        <div class="font-mono text-xs bg-surface/50 border border-border rounded p-3">
+          <span class="text-text-secondary">$</span> <span class="text-text">helm install geonosis oci://ghcr.io/hosnian-prime/charts/geonosis \</span><br/>
+          <span class="text-text-secondary pl-4">--set</span> <span class="text-accent">replicaCount=3</span> <span class="text-text">\</span><br/>
+          <span class="text-text-secondary pl-4">--set</span> <span class="text-accent">storage.type=postgres</span>
+        </div>
+      </div>
+
+      <!-- Audit -->
+      <div class="feature-card bg-bg p-6 sm:p-8 group">
+        <h3 class="font-display font-bold text-lg mb-4">Audit Trail</h3>
+        <p class="text-sm text-text-secondary mb-5">
+          Every authentication event is logged. Structured JSON output,
+          ready for your SIEM pipeline.
+        </p>
+        <div class="font-mono text-[10px] bg-surface/50 border border-border rounded p-3 text-text-secondary overflow-x-auto">
+          {'{"event":"login","realm":"acme",'}<br/>
+          {'  "user":"ada@acme.test",'}<br/>
+          {'  "result":"success","ts":"..."}'}
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .feature-card {
+    transition: border-color 0.2s ease;
+    position: relative;
+  }
+  .feature-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: var(--color-accent);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+  .feature-card:hover::before {
+    opacity: 1;
+  }
+</style>

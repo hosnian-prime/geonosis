@@ -8,14 +8,14 @@ external IdP and linked (or created) as local Geonosis users.
 
 ## Prerequisites
 
-- A running realm `acme` with `frontend_url` set (recipe 07).
+- A running realm `master` with `frontend_url` set (recipe 07).
 - OAuth credentials from each provider:
   - **Google**: Cloud Console → APIs → Credentials → OAuth 2.0
     Client ID. Set authorized redirect URI to
-    `https://geonosis.example.com/realms/acme/broker/google/endpoint`.
+    `https://geonosis.example.com/realms/master/broker/google/endpoint`.
   - **GitHub**: Settings → Developer settings → OAuth Apps.
     Set callback URL to
-    `https://geonosis.example.com/realms/acme/broker/github/endpoint`.
+    `https://geonosis.example.com/realms/master/broker/github/endpoint`.
 
 ## Steps
 
@@ -25,7 +25,7 @@ external IdP and linked (or created) as local Geonosis users.
 
    ```sh
    geoctl idps create \
-     --realm acme \
+     --realm master \
      --alias google \
      --display-name "Google" \
      --kind oidc \
@@ -44,8 +44,8 @@ external IdP and linked (or created) as local Geonosis users.
 2. **Store the client secret.**
 
    ```sh
-   geoctl secrets put --realm acme --name GOOGLE_CLIENT_SECRET --value "$SECRET"
-   geoctl idps patch --realm acme --alias google \
+   geoctl secrets put --realm master --name GOOGLE_CLIENT_SECRET --value "$SECRET"
+   geoctl idps patch --realm master --alias google \
      --config-secret-ref GOOGLE_CLIENT_SECRET
    ```
 
@@ -66,7 +66,7 @@ first-party `spi-github` plugin wraps it.
 
    ```sh
    geoctl idps create \
-     --realm acme \
+     --realm master \
      --alias github \
      --display-name "GitHub" \
      --kind oidc \
@@ -83,8 +83,8 @@ first-party `spi-github` plugin wraps it.
 2. **Store the client secret.**
 
    ```sh
-   geoctl secrets put --realm acme --name GITHUB_CLIENT_SECRET --value "$SECRET"
-   geoctl idps patch --realm acme --alias github \
+   geoctl secrets put --realm master --name GITHUB_CLIENT_SECRET --value "$SECRET"
+   geoctl idps patch --realm master --alias github \
      --config-secret-ref GITHUB_CLIENT_SECRET
    ```
 
@@ -106,7 +106,7 @@ created. This is safer than auto-create because:
 For enterprise (trusted) IdPs, switch to `Trust-IdP`:
 
 ```sh
-geoctl idps patch --realm acme --alias google \
+geoctl idps patch --realm master --alias google \
   --first-login-flow first-broker-login-trust
 ```
 
@@ -114,8 +114,8 @@ geoctl idps patch --realm acme --alias google \
 
 ```sh
 # Open in browser:
-open "https://geonosis.example.com/realms/acme/protocol/openid-connect/auth?\
-client_id=acme-web&response_type=code&redirect_uri=http://127.0.0.1:8888/callback&scope=openid"
+open "https://geonosis.example.com/realms/master/protocol/openid-connect/auth?\
+client_id=master-web&response_type=code&redirect_uri=http://127.0.0.1:8888/callback&scope=openid"
 ```
 
 The login page should show the two social buttons. After clicking
@@ -123,7 +123,7 @@ Google and completing login, the resulting `id_token` carries the
 Google user's mapped claims under the Geonosis `sub`.
 
 ```sh
-geoctl users get --realm acme --user ada.google | jq '.federation'
+geoctl users get --realm master --user ada.google | jq '.federation'
 ```
 
 Shows `null` (no federation link — broker links are separate from

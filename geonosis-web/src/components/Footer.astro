@@ -1,0 +1,87 @@
+---
+const resources = [
+  { label: 'Documentation', href: '#quickstart' },
+  { label: 'API Reference', href: '#architecture' },
+  { label: 'Changelog', href: 'https://github.com/hosnian-prime/geonosis/releases' },
+];
+
+const community = [
+  { label: 'GitHub Discussions', href: 'https://github.com/hosnian-prime/geonosis/discussions' },
+  { label: 'Discord', href: '#' },
+  { label: 'Twitter / X', href: '#' },
+];
+---
+
+<footer class="border-t border-border/50 bg-surface/30">
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-16">
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-10">
+
+      <!-- Brand -->
+      <div>
+        <div class="flex items-center gap-2 mb-3">
+          <svg width="20" height="20" viewBox="0 0 32 32" fill="none" class="text-accent">
+            <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2" />
+            <circle cx="16" cy="16" r="6" fill="currentColor" opacity="0.3" />
+            <circle cx="16" cy="16" r="3" fill="currentColor" />
+          </svg>
+          <span class="font-display font-bold text-sm">Geonosis</span>
+        </div>
+        <p class="text-sm text-text-secondary leading-relaxed max-w-xs">
+          Identity management,<br />reimagined in Rust.
+        </p>
+      </div>
+
+      <!-- Resources -->
+      <div>
+        <h4 class="font-mono text-xs text-text-secondary uppercase tracking-wider mb-4">Resources</h4>
+        <ul class="space-y-2">
+          {resources.map(({ label, href }) => (
+            <li>
+              <a href={href} class="text-sm text-text-secondary hover:text-text transition-colors">
+                {label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <!-- Community -->
+      <div>
+        <h4 class="font-mono text-xs text-text-secondary uppercase tracking-wider mb-4">Community</h4>
+        <ul class="space-y-2">
+          {community.map(({ label, href }) => (
+            <li>
+              <a
+                href={href}
+                target={href.startsWith('http') ? '_blank' : undefined}
+                rel={href.startsWith('http') ? 'noopener noreferrer' : undefined}
+                class="text-sm text-text-secondary hover:text-text transition-colors"
+              >
+                {label}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+
+    <!-- Bottom bar -->
+    <div class="mt-12 pt-6 border-t border-border/30 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-text-secondary font-mono">
+      <span>Apache 2.0 &middot; &copy; {new Date().getFullYear()} Geonosis Contributors</span>
+      <div class="flex items-center gap-1.5">
+        <span>Built with</span>
+        <!-- Ferris mini -->
+        <svg width="16" height="12" viewBox="0 0 120 80" class="text-accent">
+          <ellipse cx="60" cy="50" rx="50" ry="30" fill="currentColor" opacity="0.8" />
+          <circle cx="42" cy="40" r="5" fill="white" />
+          <circle cx="78" cy="40" r="5" fill="white" />
+          <circle cx="43" cy="41" r="2.5" fill="#0B0E17" />
+          <circle cx="79" cy="41" r="2.5" fill="#0B0E17" />
+          <path d="M20 35 Q10 25 5 35" stroke="currentColor" stroke-width="3" fill="none" />
+          <path d="M100 35 Q110 25 115 35" stroke="currentColor" stroke-width="3" fill="none" />
+        </svg>
+        <span>Rust</span>
+      </div>
+    </div>
+  </div>
+</footer>

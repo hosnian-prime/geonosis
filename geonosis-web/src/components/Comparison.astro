@@ -1,0 +1,63 @@
+---
+const features = [
+  { name: 'Language', geonosis: 'Rust', keycloak: 'Java', auth0: '— (SaaS)', ory: 'Go' },
+  { name: 'Memory (idle)', geonosis: '~5 MB', keycloak: '~512 MB', auth0: '—', ory: '~30 MB' },
+  { name: 'WASM Plugins', geonosis: true, keycloak: false, auth0: false, ory: false },
+  { name: 'OIDC / OAuth', geonosis: true, keycloak: true, auth0: true, ory: true },
+  { name: 'SAML IdP', geonosis: true, keycloak: true, auth0: true, ory: false },
+  { name: 'LDAP Federation', geonosis: true, keycloak: true, auth0: true, ory: false },
+  { name: 'Flow Engine', geonosis: 'Graph DSL', keycloak: 'XML / GUI', auth0: 'Rules', ory: '—' },
+  { name: 'Admin UI', geonosis: 'Built-in', keycloak: 'Standalone', auth0: 'Dashboard', ory: '—' },
+  { name: 'Self-hosted', geonosis: true, keycloak: true, auth0: false, ory: true },
+  { name: 'License', geonosis: 'Apache 2.0', keycloak: 'Apache 2.0', auth0: 'Proprietary', ory: 'Apache 2.0' },
+];
+
+function renderCell(value: string | boolean) {
+  if (typeof value === 'boolean') {
+    return value
+      ? '<svg class="w-4 h-4 text-success mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 13l4 4L19 7"/></svg>'
+      : '<svg class="w-4 h-4 text-text-secondary/30 mx-auto" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+  }
+  return value;
+}
+---
+
+<section id="compare" class="py-24 sm:py-32 border-t border-border/50" data-animate>
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+
+    <div class="max-w-xl mb-16" data-animate-child>
+      <div class="flex items-center gap-2 mb-4">
+        <span class="h-px w-8 bg-accent"></span>
+        <span class="text-xs font-mono text-accent tracking-widest uppercase">Compare</span>
+      </div>
+      <h2 class="font-display font-bold text-3xl sm:text-4xl tracking-tight">
+        How Geonosis stacks up.
+      </h2>
+    </div>
+
+    <div class="overflow-x-auto -mx-4 px-4" data-animate-child>
+      <table class="w-full min-w-[600px] text-sm">
+        <thead>
+          <tr class="border-b border-border">
+            <th class="text-left py-3 pr-4 font-mono text-xs text-text-secondary font-normal">Feature</th>
+            <th class="py-3 px-4 font-mono text-xs font-bold text-accent text-center border-x border-border/30 bg-accent/5">Geonosis</th>
+            <th class="py-3 px-4 font-mono text-xs text-text-secondary font-normal text-center">Keycloak</th>
+            <th class="py-3 px-4 font-mono text-xs text-text-secondary font-normal text-center">Auth0</th>
+            <th class="py-3 px-4 font-mono text-xs text-text-secondary font-normal text-center">Ory Hydra</th>
+          </tr>
+        </thead>
+        <tbody>
+          {features.map((row) => (
+            <tr class="border-b border-border/30 hover:bg-surface/30 transition-colors">
+              <td class="py-3 pr-4 text-text-secondary">{row.name}</td>
+              <td class="py-3 px-4 text-center font-mono text-xs border-x border-border/30 bg-accent/5 text-text" set:html={renderCell(row.geonosis)} />
+              <td class="py-3 px-4 text-center font-mono text-xs text-text-secondary" set:html={renderCell(row.keycloak)} />
+              <td class="py-3 px-4 text-center font-mono text-xs text-text-secondary" set:html={renderCell(row.auth0)} />
+              <td class="py-3 px-4 text-center font-mono text-xs text-text-secondary" set:html={renderCell(row.ory)} />
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>

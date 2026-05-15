@@ -104,7 +104,7 @@ Geonosis generate them. Two paths, both v0.2:
    GCP `ImportJob`) and persists a `KeyMaterial` row with
    `state=Active`. Verification public part is also stored as a
    JWK.
-2. **CLI upload.** `geoctl keys import --realm acme --pem signing.pem
+2. **CLI upload.** `geoctl keys import --realm master --pem signing.pem
    --alg RS256` does the same thing without UI.
 
 Important invariants enforced on import:

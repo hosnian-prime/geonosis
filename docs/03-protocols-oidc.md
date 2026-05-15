@@ -94,14 +94,14 @@ should pass FAPI 1 Baseline.
 
 ```json
 {
-  "iss": "https://geonosis.example.com/realms/acme",
+  "iss": "https://geonosis.example.com/realms/master",
   "sub": "01HJ...ULID",
-  "aud": "acme-web",
+  "aud": "master-web",
   "exp": 1700000300,
   "iat": 1700000000,
   "auth_time": 1700000000,
   "nonce": "...",
-  "azp": "acme-web",
+  "azp": "master-web",
   "amr": ["pwd", "otp"],
   "acr": "1",
   "sid": "01HJ...session-ulid",
@@ -262,7 +262,7 @@ Cached in process; invalidated when realm config or keys change.
 
 ```jsonc
 {
-  "issuer": "https://geonosis.example.com/realms/acme",
+  "issuer": "https://geonosis.example.com/realms/master",
   "authorization_endpoint": ".../auth",
   "token_endpoint": ".../token",
   "userinfo_endpoint": ".../userinfo",

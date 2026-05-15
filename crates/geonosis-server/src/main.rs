@@ -47,8 +47,8 @@ struct Args {
     #[arg(long, env = "GEONOSIS_AUDIT_WEBHOOK_URLS", default_value = "")]
     audit_webhook_urls: String,
 
-    /// One-shot quickstart bootstrap. Provisions realm `acme` + demo
-    /// users + the `acme-web` OIDC client per
+    /// One-shot quickstart bootstrap. Provisions realm `master` + demo
+    /// users + the `master-web` OIDC client per
     /// `docs/21-dx-package.md`. Idempotent. **NEVER** set in
     /// production — the production Helm chart in `deploy/helm/`
     /// does not.

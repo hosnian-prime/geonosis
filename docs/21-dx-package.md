@@ -94,7 +94,7 @@ server binary:
 use geonosis_verify::{Verifier, VerifierConfig};
 
 let verifier = Verifier::builder()
-    .issuer("https://geonosis.example.com/realms/acme")
+    .issuer("https://geonosis.example.com/realms/master")
     .audience("my-resource-api")
     .cache_jwks(Duration::from_secs(900))
     .build()

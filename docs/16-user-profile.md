@@ -49,7 +49,7 @@ them).
 Operators add custom attributes via the admin UI or the API:
 
 ```yaml
-# PUT /admin/v1/realms/acme/user-profile
+# PUT /admin/v1/realms/master/user-profile
 attributes:
   - name: username
     display_name: "${username}"            # i18n key

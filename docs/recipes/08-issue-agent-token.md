@@ -9,8 +9,8 @@ in the `act` chain per RFC 8693.
 
 ## Prerequisites
 
-- A running realm `acme` with user `ada`.
-- A confidential OAuth client `acme-web` with
+- A running realm `master` with user `ada`.
+- A confidential OAuth client `master-web` with
   `grants.token_exchange = true`.
 - `jq` + `openssl` + `curl`.
 
@@ -30,7 +30,7 @@ in the `act` chain per RFC 8693.
 
    ```sh
    geoctl agents create \
-     --realm acme \
+     --realm master \
      --alias summary-bot \
      --display-name "Weekly Summary Bot" \
      --kind assistant \
@@ -60,7 +60,7 @@ in the `act` chain per RFC 8693.
    {
      "iss": "summary-bot",
      "sub": "summary-bot",
-     "aud": "https://geonosis.example.com/realms/acme",
+     "aud": "https://geonosis.example.com/realms/master",
      "iat": 1700000000,
      "exp": 1700000300,
      "geo:agent": {
@@ -79,8 +79,8 @@ in the `act` chain per RFC 8693.
 5. **Exchange.**
 
    ```sh
-   curl -fsS https://geonosis.example.com/realms/acme/protocol/openid-connect/token \
-     -u acme-web:$CLIENT_SECRET \
+   curl -fsS https://geonosis.example.com/realms/master/protocol/openid-connect/token \
+     -u master-web:$CLIENT_SECRET \
      -d grant_type=urn:ietf:params:oauth:grant-type:token-exchange \
      -d subject_token=$SUBJECT_TOKEN \
      -d subject_token_type=urn:ietf:params:oauth:token-type:access_token \
@@ -143,7 +143,7 @@ if (isAgent && claims["geo:agent"]?.capabilities?.includes("tool:read-files")) {
 If `ada` notices the bot misbehaving:
 
 ```sh
-geoctl agents revoke --realm acme --alias summary-bot
+geoctl agents revoke --realm master --alias summary-bot
 ```
 
 Within ~30 s (agent cache TTL), all pods reject the actor token.

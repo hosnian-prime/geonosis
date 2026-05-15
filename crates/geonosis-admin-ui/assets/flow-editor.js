@@ -91,6 +91,12 @@
     attachToolbar(state);
     attachJsonSync(state);
 
+    // Center the flow in the viewport on first load.
+    if (GnFlow.fitToView) {
+        // Small delay so the SVG dimensions are resolved.
+        setTimeout(function () { GnFlow.fitToView(state); }, 50);
+    }
+
     status(state.root, "");
 
     // ---- Node drag ----------------------------------------------------
@@ -160,10 +166,10 @@
                 var form = document.getElementById("gn-flow-json-form");
                 if (view === "canvas") {
                     if (viewport) viewport.style.display = "";
-                    if (form) form.classList.remove("gn-flow-json--active");
+                    if (form) { form.style.display = "none"; form.classList.remove("gn-flow-json--active"); }
                 } else {
                     if (viewport) viewport.style.display = "none";
-                    if (form) form.classList.add("gn-flow-json--active");
+                    if (form) { form.style.display = ""; form.classList.add("gn-flow-json--active"); }
                 }
             });
         });
@@ -213,8 +219,11 @@
                     if (GnFlow.addNode) GnFlow.addNode(st, item.dataset.nodeKind);
                 });
             });
-            // Close menu on outside click
+            // Close menu on outside click or Escape
             document.addEventListener("click", function () { nodeMenu.hidden = true; });
+            document.addEventListener("keydown", function (ev) {
+                if (ev.key === "Escape") nodeMenu.hidden = true;
+            });
         }
     }
 
@@ -329,7 +338,10 @@
                     status(st.root, "Saved.");
                     mirrorToTextarea(st);
                 } else {
-                    status(st.root, "Save failed: HTTP " + r.status, true);
+                    r.text().then(function (body) {
+                        var detail = body ? body.slice(0, 200) : "";
+                        status(st.root, "Save failed (HTTP " + r.status + "): " + detail, true);
+                    });
                 }
             })
             .catch(function (e) { status(st.root, "Save failed: " + e.message, true); })

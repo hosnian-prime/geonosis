@@ -160,27 +160,41 @@
             }
         });
     }
-    GnFlow.rerouteEdge = rerouteEdge;
+    // Only register if layout module hasn't already — layout has a smarter version.
+    if (!GnFlow.rerouteEdge) GnFlow.rerouteEdge = rerouteEdge;
 
     // ===================================================================
     // renderNode — create SVG DOM for a single node
     // ===================================================================
 
+    function kindTag(node) {
+        var k = node.kind;
+        if (!k) return "";
+        if (typeof k === "string") return k;
+        return k.kind || "";
+    }
+
     function renderNode(state, node) {
         var layout = node.layout || { x: 0, y: 0 };
+        var tag = kindTag(node);
         var g = document.createElementNS(NS, "g");
         g.classList.add("gn-flow-node");
         g.setAttribute("data-flow-node", "true");
         g.setAttribute("data-node-id", node.id);
-        g.setAttribute("data-kind", node.kind || "");
+        g.setAttribute("data-kind", tag);
         g.setAttribute("transform", "translate(" + layout.x + ", " + layout.y + ")");
+        g.setAttribute("tabindex", "0");
+        g.setAttribute("role", "group");
+        g.setAttribute("aria-label", (node.display_name || tag) + " (" + tag + ")");
 
         // Background rect
         var rect = document.createElementNS(NS, "rect");
         rect.classList.add("gn-flow-node__bg");
+        rect.setAttribute("x", "0");
+        rect.setAttribute("y", "0");
         rect.setAttribute("width", BOX_W);
         rect.setAttribute("height", BOX_H);
-        rect.setAttribute("rx", 8);
+        rect.setAttribute("rx", "10");
         g.appendChild(rect);
 
         // Title text
@@ -189,7 +203,8 @@
         title.setAttribute("x", BOX_W / 2);
         title.setAttribute("y", (BOX_H * 0.38).toFixed(1));
         title.setAttribute("text-anchor", "middle");
-        title.textContent = node.display_name || capitalize(node.kind || "node");
+        title.setAttribute("dominant-baseline", "central");
+        title.textContent = node.display_name || capitalize(tag);
         g.appendChild(title);
 
         // Meta / kind label
@@ -198,7 +213,8 @@
         meta.setAttribute("x", BOX_W / 2);
         meta.setAttribute("y", (BOX_H * 0.70).toFixed(1));
         meta.setAttribute("text-anchor", "middle");
-        meta.textContent = node.kind || "";
+        meta.setAttribute("dominant-baseline", "central");
+        meta.textContent = tag + " \u00b7 " + (node.requirement || "required");
         g.appendChild(meta);
 
         // In-port (top center)
@@ -207,6 +223,7 @@
         portIn.setAttribute("cx", BOX_W / 2);
         portIn.setAttribute("cy", 0);
         portIn.setAttribute("r", 6);
+        portIn.setAttribute("data-port", "in");
         g.appendChild(portIn);
 
         // Out-port (bottom center)
@@ -215,6 +232,7 @@
         portOut.setAttribute("cx", BOX_W / 2);
         portOut.setAttribute("cy", BOX_H);
         portOut.setAttribute("r", 6);
+        portOut.setAttribute("data-port", "out");
         g.appendChild(portOut);
 
         // Register in state and append to the nodes layer.
@@ -229,6 +247,7 @@
         return g;
     }
     GnFlow.renderNode = renderNode;
+    GnFlow.kindTag = kindTag;
 
     // ===================================================================
     // renderEdge — create SVG DOM for a single edge
@@ -248,21 +267,21 @@
         var path = document.createElementNS(NS, "path");
         path.classList.add("gn-flow-edge__path");
         path.setAttribute("d", d);
-        path.setAttribute("fill", "none");
+        path.setAttribute("marker-end", "url(#gn-flow-arrow)");
         g.appendChild(path);
 
         // Invisible wider hit area for click/hover
         var hit = document.createElementNS(NS, "path");
         hit.classList.add("gn-flow-edge__hit");
         hit.setAttribute("d", d);
-        hit.setAttribute("fill", "none");
         g.appendChild(hit);
 
         // Condition label at the midpoint
         var label = document.createElementNS(NS, "text");
         label.classList.add("gn-flow-edge__label");
         label.setAttribute("text-anchor", "middle");
-        label.textContent = edge.condition || "";
+        label.setAttribute("dominant-baseline", "central");
+        label.textContent = edgeOnLabel(edge);
         // Position the label roughly at the curve midpoint.
         var fromG = state.nodeGroups.get(edge.from);
         var toG = state.nodeGroups.get(edge.to);
@@ -359,16 +378,30 @@
     // ===================================================================
 
     function addNode(state, kind) {
+        // Prevent duplicate start/success/failure terminal nodes.
+        var terminals = ["start", "success", "failure"];
+        if (terminals.indexOf(kind) !== -1) {
+            var exists = state.flow.nodes.some(function (n) {
+                return kindTag(n) === kind;
+            });
+            if (exists) {
+                if (typeof GnFlow.status === "function") {
+                    GnFlow.status("A " + kind + " node already exists.", true);
+                }
+                return null;
+            }
+        }
+
         var id = ulid();
         var factory = NODE_DEFAULTS[kind];
-        var config = factory ? factory() : { kind: kind };
+        var kindObj = factory ? factory() : { kind: kind };
 
         var node = {
             id: id,
-            kind: kind,
             display_name: capitalize(kind),
+            kind: kindObj,
             requirement: "required",
-            config: config,
+            config: {},
             layout: {
                 x: (state.viewW || 1920) / 2 - BOX_W / 2,
                 y: (state.viewH || 1080) / 2 - BOX_H / 2,
@@ -377,6 +410,11 @@
 
         state.flow.nodes.push(node);
         renderNode(state, node);
+
+        // Auto-set flow.start when the first Start node is created.
+        if (kind === "start" && !state.flow.start) {
+            state.flow.start = id;
+        }
 
         // Trigger auto-layout if the layout module is loaded.
         if (typeof GnFlow.autoLayout === "function") {
@@ -392,7 +430,9 @@
     // deleteNode — remove a node and all its connected edges
     // ===================================================================
 
-    function deleteNode(state, nodeId) {
+    function deleteNode(state, nodeId, skipConfirm) {
+        if (!skipConfirm && !confirm("Delete this node and all its edges?")) return;
+
         // Remove edges connected to this node.
         var edgesToRemove = state.flow.edges.filter(function (e) {
             return e.from === nodeId || e.to === nodeId;
@@ -414,9 +454,12 @@
         if (g && g.parentNode) g.parentNode.removeChild(g);
         state.nodeGroups.delete(nodeId);
 
-        // Clear start reference if this was the start node.
+        // If deleted node was the start, pick the next Start-kind node.
         if (state.flow.start === nodeId) {
-            state.flow.start = null;
+            var nextStart = state.flow.nodes.find(function (n) {
+                return kindTag(n) === "start";
+            });
+            state.flow.start = nextStart ? nextStart.id : null;
         }
 
         deselect(state);
@@ -428,16 +471,25 @@
     // addEdge — connect two nodes
     // ===================================================================
 
+    function edgeOnLabel(edge) {
+        var on = edge.on;
+        if (!on) return "otherwise";
+        if (typeof on === "string") return on;
+        if (on.status) return "status";
+        return "otherwise";
+    }
+    GnFlow.edgeOnLabel = edgeOnLabel;
+
     function addEdge(state, fromId, toId, condition) {
         condition = condition || "otherwise";
 
         // Check for duplicate.
         var dup = state.flow.edges.some(function (e) {
-            return e.from === fromId && e.to === toId && e.condition === condition;
+            return e.from === fromId && e.to === toId;
         });
         if (dup) return null;
 
-        var edge = { from: fromId, to: toId, condition: condition };
+        var edge = { from: fromId, to: toId, on: condition, guard: {} };
         state.flow.edges.push(edge);
         renderEdge(state, edge);
         mirrorToTextarea(state);
@@ -449,7 +501,8 @@
     // deleteEdge — remove all edges from `fromId` to `toId`
     // ===================================================================
 
-    function deleteEdge(state, fromId, toId) {
+    function deleteEdge(state, fromId, toId, skipConfirm) {
+        if (!skipConfirm && !confirm("Delete this edge?")) return;
         state.flow.edges = state.flow.edges.filter(function (e) {
             return !(e.from === fromId && e.to === toId);
         });

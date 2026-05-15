@@ -8,7 +8,7 @@ under `kid`); zero requests are dropped during the rollover.
 
 ## Prerequisites
 
-- A running realm `acme`.
+- A running realm `master`.
 - The current Active key has been Active long enough that you're
   comfortable demoting it.
 
@@ -17,7 +17,7 @@ under `kid`); zero requests are dropped during the rollover.
 1. **Check the current state.**
 
    ```sh
-   geoctl keys list --realm acme
+   geoctl keys list --realm master
    ```
 
    Should show one or more entries; one of them has
@@ -26,7 +26,7 @@ under `kid`); zero requests are dropped during the rollover.
 2. **Generate the new key + promote.**
 
    ```sh
-   geoctl keys rotate --realm acme --usage sig --alg RS256
+   geoctl keys rotate --realm master --usage sig --alg RS256
    ```
 
    This single transaction:
@@ -43,7 +43,7 @@ under `kid`); zero requests are dropped during the rollover.
 3. **Verify both keys are in JWKS.**
 
    ```sh
-   curl -fsS http://localhost:8080/realms/acme/protocol/openid-connect/jwks | jq '.keys | length'
+   curl -fsS http://localhost:8080/realms/master/protocol/openid-connect/jwks | jq '.keys | length'
    ```
 
    Should be at least 2 (the new Active + the PreviousActive).
@@ -64,7 +64,7 @@ under `kid`); zero requests are dropped during the rollover.
    After the grace window:
 
    ```sh
-   geoctl keys disable --realm acme --kid $OLD_KID
+   geoctl keys disable --realm master --kid $OLD_KID
    ```
 
    Sets `state: Disabled`. The key drops out of JWKS; any token
@@ -80,7 +80,7 @@ echo "$OLD_TOKEN" | cut -d. -f1 | base64 -d | jq .kid
 
 # Still verifies against JWKS:
 curl -fsS -H "Authorization: Bearer $OLD_TOKEN" \
-  http://localhost:8080/realms/acme/protocol/openid-connect/userinfo
+  http://localhost:8080/realms/master/protocol/openid-connect/userinfo
 
 # Returns 200 with userinfo.
 
@@ -90,7 +90,7 @@ echo "$NEW_TOKEN" | cut -d. -f1 | base64 -d | jq .kid
 
 # Also verifies.
 curl -fsS -H "Authorization: Bearer $NEW_TOKEN" \
-  http://localhost:8080/realms/acme/protocol/openid-connect/userinfo
+  http://localhost:8080/realms/master/protocol/openid-connect/userinfo
 ```
 
 ## Emergency rotation (suspected compromise)
@@ -100,13 +100,13 @@ grace window**. Instead:
 
 ```sh
 # 1. Rotate (Step 2 above).
-geoctl keys rotate --realm acme --usage sig --alg RS256
+geoctl keys rotate --realm master --usage sig --alg RS256
 
 # 2. Disable the old key IMMEDIATELY.
-geoctl keys disable --realm acme --kid $OLD_KID --force
+geoctl keys disable --realm master --kid $OLD_KID --force
 
 # 3. Revoke all sessions in the realm.
-geoctl sessions revoke-all --realm acme --reason "key compromise"
+geoctl sessions revoke-all --realm master --reason "key compromise"
 ```
 
 Every user re-authenticates on their next request. Audit:

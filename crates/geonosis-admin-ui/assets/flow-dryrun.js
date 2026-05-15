@@ -29,9 +29,9 @@
 
     /** Banner classes per terminal status. */
     var TERMINAL_CLASS = {
-        success:    "gn-flow-dryrun__banner--success",
-        failure:    "gn-flow-dryrun__banner--failure",
-        incomplete: "gn-flow-dryrun__banner--incomplete",
+        success:    "gn-flow-dryrun__result--success",
+        failure:    "gn-flow-dryrun__result--failure",
+        incomplete: "gn-flow-dryrun__result--incomplete",
     };
 
     /** Banner text per terminal status. */
@@ -313,7 +313,7 @@
                 '<div class="gn-flow-dryrun__grid">' +
                     field("Username",             "username",    "alice") +
                     field("User ID",              "user_id",     "01H...") +
-                    field("Client ID",            "client_id",   "acme-web") +
+                    field("Client ID",            "client_id",   "master-web") +
                     field("AMR (comma-separated)", "amr",        "pwd, otp") +
                     fieldNumber("Authn Level",    "authn_level", "0") +
                 '</div>' +
@@ -463,7 +463,7 @@
                 var k = keyInput.value.trim();
                 var v = valInput.value.trim();
                 if (k) {
-                    locals[k] = v;
+                    try { locals[k] = JSON.parse(v); } catch (_) { locals[k] = v; }
                     hasLocals = true;
                 }
             }
@@ -554,7 +554,7 @@
         circle.setAttribute("fill", "#2563eb");
 
         var text = document.createElementNS(ns, "text");
-        text.setAttribute("class", "gn-flow-node__step");
+        text.setAttribute("class", "gn-flow-node__step-num");
         text.setAttribute("x", cx);
         text.setAttribute("y", cy + 1);
         text.setAttribute("text-anchor", "middle");
@@ -570,7 +570,7 @@
 
     /** Remove step-number badge elements from a node group. */
     function removeStepBadge(g) {
-        g.querySelectorAll(".gn-flow-node__step-bg, .gn-flow-node__step")
+        g.querySelectorAll(".gn-flow-node__step-bg, .gn-flow-node__step-num")
             .forEach(function (el) { el.remove(); });
     }
 
@@ -604,7 +604,7 @@
         var el = document.querySelector("[data-dryrun-result]");
         if (!el) return;
         el.innerHTML =
-            '<div class="gn-flow-dryrun__banner gn-flow-dryrun__banner--failure">' +
+            '<div class="gn-flow-dryrun__result gn-flow-dryrun__result--failure">' +
             escapeHtml(message) + "</div>";
         el.hidden = false;
     }

@@ -156,7 +156,7 @@ The parent obtains its own token first (normal login). Then the
 client requests an exchange:
 
 ```http
-POST /realms/acme/protocol/openid-connect/token
+POST /realms/master/protocol/openid-connect/token
 Authorization: Basic <client_id:client_secret>
 Content-Type: application/x-www-form-urlencoded
 

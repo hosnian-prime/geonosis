@@ -10,7 +10,7 @@ can't express.
 ## Prerequisites
 
 - Rust ≥ 1.83 with `wasm32-wasip2` target.
-- A running realm `acme` with organizations configured.
+- A running realm `master` with organizations configured.
 - Familiarity with recipe 04 (custom authenticator) — the build
   pipeline is the same.
 
@@ -108,7 +108,7 @@ can't express.
 
    ```sh
    geoctl spi install \
-     --realm acme \
+     --realm master \
      --interface geonosis:mapper@0.1.0 \
      --alias tenant-tier \
      --module target/wasm32-wasip2/release/geonosis_mapper_tenant_tier.wasm \
@@ -123,8 +123,8 @@ can't express.
 
    ```sh
    geoctl clients mapper-add \
-     --realm acme \
-     --client acme-web \
+     --realm master \
+     --client master-web \
      --mapper-urn wasm:tenant-tier:mapper \
      --config '{
        "tier_attribute": "subscription_tier",
@@ -182,8 +182,8 @@ Returns the claims the mapper would produce — no server needed.
 ## Troubleshooting
 
 - **Claim missing** — mapper may not be bound to the client.
-  Check `geoctl clients mapper-list --realm acme --client
-  acme-web`.
+  Check `geoctl clients mapper-list --realm master --client
+  master-web`.
 - **`quarantined` after upload** — mapper crashed or exceeded
   fuel. Default fuel for mappers is 50 M (200 ms wall-clock). Check logs
   for the panic message.

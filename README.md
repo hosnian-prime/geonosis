@@ -26,14 +26,14 @@ stack starts Postgres 16 and the server with
 `GEONOSIS_BOOTSTRAP_QUICKSTART=1`, which provisions:
 
 - Realm `acme`
-- End-user `ada@acme.test` / `ada-pw`
-- Admin user `admin@acme.test` / `admin-pw`
-- OIDC client `acme-web` (public, redirect `http://127.0.0.1:8888/callback`)
+- End-user `ada@master.test` / `ada-pw`
+- Admin user `admin@master.test` / `admin-pw`
+- OIDC client `master-web` (public, redirect `http://127.0.0.1:8888/callback`)
 
 Verify discovery:
 
 ```sh
-curl -fsS http://localhost:8080/realms/acme/.well-known/openid-configuration | jq .
+curl -fsS http://localhost:8080/realms/master/.well-known/openid-configuration | jq .
 ```
 
 Stop + reset:

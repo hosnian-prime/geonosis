@@ -4,9 +4,9 @@
 #   - postgres:16 on 5432 (ephemeral; `docker compose down -v` wipes it)
 #   - geonosis-server on 8080 with `GEONOSIS_BOOTSTRAP_QUICKSTART=1`
 #
-# The bootstrap path creates realm `acme` + users `ada@acme.test`
-# (pw `ada-pw`) and `admin@acme.test` (pw `admin-pw`) + client
-# `acme-web` with redirect `http://127.0.0.1:8888/callback`. See
+# The bootstrap path creates realm `master` + users `ada@master.test`
+# (pw `ada-pw`) and `admin@master.test` (pw `admin-pw`) + client
+# `master-web` with redirect `http://127.0.0.1:8888/callback`. See
 # `docs/recipes/01-quickstart-docker.md` for the full 5-minute walk-
 # through and the 3 verification curl commands.
 #

@@ -9,7 +9,7 @@ blocks the `admin:write` scope entirely.
 
 ## Prerequisites
 
-- A running realm `acme` with users and the `partner-app` client.
+- A running realm `master` with users and the `partner-app` client.
 - An organization `customer-co` (recipe 09).
 
 ## Steps
@@ -19,7 +19,7 @@ blocks the `admin:write` scope entirely.
 1. **Enable consent on the client.**
 
    ```sh
-   geoctl clients patch --realm acme --client partner-app \
+   geoctl clients patch --realm master --client partner-app \
      --consent '{
        "consent_required": true,
        "display_on_consent_screen": true,
@@ -38,11 +38,11 @@ blocks the `admin:write` scope entirely.
    granting, not raw OAuth scope strings:
 
    ```sh
-   geoctl scopes upsert --realm acme --scope profile \
+   geoctl scopes upsert --realm master --scope profile \
      --display-name "Your name and profile picture" \
      --description "Read your display name, avatar, and locale"
 
-   geoctl scopes upsert --realm acme --scope email \
+   geoctl scopes upsert --realm master --scope email \
      --display-name "Your email address" \
      --description "Read your email address and verification status"
    ```
@@ -50,7 +50,7 @@ blocks the `admin:write` scope entirely.
 3. **Test the consent flow.**
 
    ```sh
-   open "https://geonosis.example.com/realms/acme/protocol/openid-connect/auth?\
+   open "https://geonosis.example.com/realms/master/protocol/openid-connect/auth?\
    client_id=partner-app&response_type=code&scope=openid+profile+email&\
    redirect_uri=https://partner.example.com/callback"
    ```
@@ -68,7 +68,7 @@ blocks the `admin:write` scope entirely.
    curl -fsS -X POST \
      -H "Authorization: Bearer $ADMIN_TOKEN" \
      -H "Content-Type: application/json" \
-     https://geonosis.example.com/admin/v1/realms/acme/orgs/customer-co/consent-policies \
+     https://geonosis.example.com/admin/v1/realms/master/orgs/customer-co/consent-policies \
      -d '{
        "client_id": "partner-app",
        "mode": "OrgPreApproved",
@@ -93,7 +93,7 @@ blocks the `admin:write` scope entirely.
    curl -fsS -X POST \
      -H "Authorization: Bearer $ADMIN_TOKEN" \
      -H "Content-Type: application/json" \
-     https://geonosis.example.com/admin/v1/realms/acme/orgs/customer-co/consent-policies \
+     https://geonosis.example.com/admin/v1/realms/master/orgs/customer-co/consent-policies \
      -d '{
        "client_id": "internal-dashboard",
        "mode": "OrgManaged",
@@ -112,23 +112,23 @@ blocks the `admin:write` scope entirely.
 
 ```sh
 # List consent grants for a user:
-geoctl users consents --realm acme --user ada | jq
+geoctl users consents --realm master --user ada | jq
 
 # List org consent policies:
 curl -fsS -H "Authorization: Bearer $ADMIN_TOKEN" \
-  https://geonosis.example.com/admin/v1/realms/acme/orgs/customer-co/consent-policies | jq
+  https://geonosis.example.com/admin/v1/realms/master/orgs/customer-co/consent-policies | jq
 ```
 
 ## Revoking consent
 
 ```sh
 # User-initiated (or admin on behalf):
-geoctl users consent-revoke --realm acme --user ada --client partner-app
+geoctl users consent-revoke --realm master --user ada --client partner-app
 
 # Org-admin bulk revoke for all members:
 curl -fsS -X DELETE \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
-  https://geonosis.example.com/admin/v1/realms/acme/orgs/customer-co/consent-grants/GRANT_ID
+  https://geonosis.example.com/admin/v1/realms/master/orgs/customer-co/consent-grants/GRANT_ID
 ```
 
 On revocation, existing **refresh tokens** for the revoked

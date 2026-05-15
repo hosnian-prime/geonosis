@@ -116,7 +116,7 @@ tokens have the right `issuer` value.
 
    ```sh
    geoctl realm patch --realm master --frontend-url https://geonosis.example.com
-   geoctl realm patch --realm acme   --frontend-url https://geonosis.example.com
+   geoctl realm patch --realm master   --frontend-url https://geonosis.example.com
    ```
 
    (Or set them via the admin UI under Realm settings → General.)
@@ -131,10 +131,10 @@ tokens have the right `issuer` value.
 ## Verifying
 
 ```sh
-curl -fsSL https://geonosis.example.com/realms/acme/.well-known/openid-configuration | jq .issuer
+curl -fsSL https://geonosis.example.com/realms/master/.well-known/openid-configuration | jq .issuer
 ```
 
-Expected: `"https://geonosis.example.com/realms/acme"`.
+Expected: `"https://geonosis.example.com/realms/master"`.
 
 Cert is valid:
 

@@ -1,0 +1,53 @@
+---
+const audiences = [
+  {
+    num: '01',
+    title: 'Startups',
+    desc: 'Fast integration. Open source. No vendor lock-in.',
+  },
+  {
+    num: '02',
+    title: 'Enterprise',
+    desc: 'SAML, LDAP federation. Audit trail. Compliance-ready.',
+  },
+  {
+    num: '03',
+    title: 'Platform Engineers',
+    desc: 'Kubernetes-native. Helm chart. Extend everything with WASM.',
+  },
+];
+---
+
+<section class="py-24 sm:py-32 border-t border-border/50" data-animate>
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+
+    <div class="max-w-xl mb-16">
+      <div class="flex items-center gap-2 mb-4">
+        <span class="h-px w-8 bg-accent"></span>
+        <span class="text-xs font-mono text-accent tracking-widest uppercase">Who it's for</span>
+      </div>
+      <h2 class="font-display font-bold text-3xl sm:text-4xl tracking-tight">
+        Built for builders.
+      </h2>
+    </div>
+
+    <div class="space-y-0 max-w-2xl">
+      {audiences.map((item, i) => (
+        <div class:list={[
+          'group flex items-start gap-6 py-8',
+          i < audiences.length - 1 && 'border-b border-border/30'
+        ]}>
+          <span class="font-mono text-3xl text-border group-hover:text-accent/40 transition-colors shrink-0 w-12">
+            {item.num}
+          </span>
+          <div>
+            <h3 class="font-display font-bold text-xl group-hover:text-accent transition-colors">
+              {item.title}
+            </h3>
+            <p class="text-sm text-text-secondary mt-1">{item.desc}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

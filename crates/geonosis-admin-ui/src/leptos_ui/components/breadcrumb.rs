@@ -1,4 +1,4 @@
-//! Breadcrumb trail — the "Realms › acme › Clients › acme-web"
+//! Breadcrumb trail — the "Realms › master › Clients › master-web"
 //! navigation chip strip rendered on every detail page per
 //! `docs/08-admin-ui.md` §1.1.
 //!

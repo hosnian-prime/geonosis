@@ -70,7 +70,7 @@ header is bold.
 Sidebar is sticky on desktop; on mobile (< 768 px) it collapses into
 a hamburger-triggered slide-over drawer.
 
-**Breadcrumbs** — `Realms > acme > Clients > acme-web`. Every detail
+**Breadcrumbs** — `Realms > master > Clients > master-web`. Every detail
 page shows its position in the hierarchy.
 
 ### 1.2  Sidebar groups

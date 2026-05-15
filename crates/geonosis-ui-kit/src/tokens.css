@@ -1483,6 +1483,11 @@ h1, h2, h3, h4 { margin: 0; }
     z-index: 10;
     cursor: pointer;
     pointer-events: auto;
+    transition: inset-inline-end var(--gn-transition-base);
+}
+/* Shift minimap left when side panel is open */
+.gn-flow-canvas:has(.gn-flow-panel:not([hidden])) .gn-flow-minimap {
+    inset-inline-end: 336px;
 }
 
 /* --- Noscript / JSON fallback ------------------------------- */

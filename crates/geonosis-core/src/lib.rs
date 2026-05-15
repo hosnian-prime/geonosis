@@ -46,6 +46,7 @@ pub use realm::{
     AcrLevel, AcrPolicy, AcrRequirement, BruteForcePolicy, EventConfig, LocalizationPolicy,
     LoginSettings, OtpPolicy, PasswordPolicy, PasswordPolicyReport, PasswordRule, Realm,
     RegistrationPolicy, SessionPolicy, ThemeBinding, TokenPolicy, WebauthnPolicy,
+    MASTER_REALM_SLUG,
 };
 pub use role::{CompositeRoles, Role};
 pub use scope::{Scope, ScopeName};

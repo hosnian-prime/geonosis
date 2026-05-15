@@ -31,19 +31,19 @@ hand — all in under 5 minutes.
      `GEONOSIS_BOOTSTRAP_QUICKSTART=1` set
 
    The bootstrap step creates:
-   - Realm `acme` with default flows + ACR policy.
-   - Admin user `admin@acme.test` / `admin-pw`.
-   - End-user `ada@acme.test` / `ada-pw`.
-   - Public client `acme-web` with redirect URI
+   - Realm `master` with default flows + ACR policy.
+   - Admin user `admin@master.test` / `admin-pw`.
+   - End-user `ada@master.test` / `ada-pw`.
+   - Public client `master-web` with redirect URI
      `http://127.0.0.1:8888/callback`.
 
 3. **Verify the discovery endpoint.**
 
    ```sh
-   curl -fsS http://localhost:8080/realms/acme/.well-known/openid-configuration | jq .issuer
+   curl -fsS http://localhost:8080/realms/master/.well-known/openid-configuration | jq .issuer
    ```
 
-   Expected: `"http://localhost:8080/realms/acme"`.
+   Expected: `"http://localhost:8080/realms/master"`.
 
 4. **Run a one-shot auth code grant.**
 
@@ -52,7 +52,7 @@ hand — all in under 5 minutes.
    ```sh
    docker run --rm --network host \
      ghcr.io/hosnian-prime/geonosis-quickstart-helper:latest \
-     login --user ada@acme.test --pw ada-pw --realm acme --client acme-web
+     login --user ada@master.test --pw ada-pw --realm master --client master-web
    ```
 
    The helper drives the browser flow programmatically and prints
@@ -64,17 +64,17 @@ hand — all in under 5 minutes.
    echo "$ID_TOKEN" | cut -d. -f2 | base64 -d | jq
    ```
 
-   Expected claims include `iss`, `sub`, `aud=acme-web`, and
+   Expected claims include `iss`, `sub`, `aud=master-web`, and
    `preferred_username=ada`.
 
 ## Verifying
 
 ```sh
 curl -fsS -H "Authorization: Bearer $ACCESS_TOKEN" \
-  http://localhost:8080/realms/acme/protocol/openid-connect/userinfo | jq
+  http://localhost:8080/realms/master/protocol/openid-connect/userinfo | jq
 ```
 
-Returns `{"sub":"...","email":"ada@acme.test","email_verified":true}`.
+Returns `{"sub":"...","email":"ada@master.test","email_verified":true}`.
 
 ## Troubleshooting
 
@@ -87,7 +87,7 @@ Returns `{"sub":"...","email":"ada@acme.test","email_verified":true}`.
   set this flag (see [`11-deployment-k8s.md`](../11-deployment-k8s.md)).
 - **`unverified email blocks login`** — the bootstrap pre-verifies
   user emails. If yours doesn't, run `geoctl users verify-email
-  --realm acme --user ada@acme.test`.
+  --realm master --user ada@master.test`.
 
 ## See also
 

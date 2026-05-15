@@ -2,14 +2,14 @@
 
 ## What you'll have at the end
 
-Realm `acme` hosts a customer Organization `customer-co` with its
+Realm `master` hosts a customer Organization `customer-co` with its
 own branding, a claimed-and-verified domain `customer-co.example`,
 its first members invited by email, and a corporate Okta IdP
 bound for SSO.
 
 ## Prerequisites
 
-- A running realm `acme` with `organizations_enabled = true`
+- A running realm `master` with `organizations_enabled = true`
   (default).
 - Realm SMTP server configured (for invitation emails).
 
@@ -19,7 +19,7 @@ bound for SSO.
 
    ```sh
    geoctl orgs create \
-     --realm acme \
+     --realm master \
      --alias customer-co \
      --display-name "Customer Co." \
      --description "Our first paying customer" \
@@ -33,7 +33,7 @@ bound for SSO.
 2. **Claim the domain.**
 
    ```sh
-   geoctl orgs domain-add --realm acme --alias customer-co --domain customer-co.example
+   geoctl orgs domain-add --realm master --alias customer-co --domain customer-co.example
    ```
 
    Returns a verification token. Add a DNS TXT record:
@@ -45,7 +45,7 @@ bound for SSO.
    Then trigger verification:
 
    ```sh
-   geoctl orgs domain-verify --realm acme --alias customer-co --domain customer-co.example
+   geoctl orgs domain-verify --realm master --alias customer-co --domain customer-co.example
    ```
 
    Audit event: `org.domain.verified`. The domain is now eligible
@@ -57,7 +57,7 @@ bound for SSO.
    email to be automatically offered membership in `customer-co`:
 
    ```sh
-   geoctl orgs policy --realm acme --alias customer-co \
+   geoctl orgs policy --realm master --alias customer-co \
      --auto-join-on-domain-match
    ```
 
@@ -69,7 +69,7 @@ bound for SSO.
 
    ```sh
    geoctl orgs idp-bind \
-     --realm acme \
+     --realm master \
      --alias customer-co \
      --idp okta-customer-co \
      --set-as-default
@@ -81,16 +81,16 @@ bound for SSO.
 5. **Define org-level roles.**
 
    ```sh
-   geoctl orgs role-create --realm acme --alias customer-co --name owner
-   geoctl orgs role-create --realm acme --alias customer-co --name billing
-   geoctl orgs role-create --realm acme --alias customer-co --name member
+   geoctl orgs role-create --realm master --alias customer-co --name owner
+   geoctl orgs role-create --realm master --alias customer-co --name billing
+   geoctl orgs role-create --realm master --alias customer-co --name member
    ```
 
 6. **Invite the first members.**
 
    ```sh
    geoctl orgs invite \
-     --realm acme \
+     --realm master \
      --alias customer-co \
      --email cto@customer-co.example \
      --roles owner,billing \
@@ -104,7 +104,7 @@ bound for SSO.
 ## Verifying
 
 ```sh
-geoctl orgs get --realm acme --alias customer-co --field members | jq
+geoctl orgs get --realm master --alias customer-co --field members | jq
 ```
 
 Lists members with roles + join state.
@@ -133,7 +133,7 @@ URL parameter, or a member-selection page when neither is set.
 If a customer breaches terms:
 
 ```sh
-geoctl orgs patch --realm acme --alias customer-co --enabled=false
+geoctl orgs patch --realm master --alias customer-co --enabled=false
 ```
 
 Logins from members are blocked at the flow's start node with
@@ -146,7 +146,7 @@ error `org_suspended`. Re-enable with `--enabled=true`.
   _geonosis-challenge.customer-co.example` to confirm.
 - **Auto-join offers the wrong org** — a verified domain can only
   belong to one org at a time; check for collisions with
-  `geoctl orgs domain-list --realm acme`.
+  `geoctl orgs domain-list --realm master`.
 - **Invitation email never arrives** — check realm SMTP config
   + audit log for `org.invitation.sent`. If sent but not delivered,
   it's a deliverability problem on your side.

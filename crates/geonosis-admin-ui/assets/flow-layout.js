@@ -137,11 +137,14 @@
 
             _groups.forEach(function (g) {
                 var path = g.querySelector(".gn-flow-edge__path");
+                var hit = g.querySelector(".gn-flow-edge__hit");
                 if (!path) return;
 
                 if (sections && sections.length) {
                     // Orthogonal path from ELK sections.
-                    path.setAttribute("d", GnFlow.buildEdgePath(sections));
+                    var d = GnFlow.buildEdgePath(sections);
+                    path.setAttribute("d", d);
+                    if (hit) hit.setAttribute("d", d);
 
                     // Position label at midpoint of longest segment.
                     var label = g.querySelector(".gn-flow-edge__label");
@@ -165,13 +168,9 @@
 
         // 7. Mirror changes to the JSON textarea ─────────────────────
 
-        if (typeof mirrorToTextarea === "function") {
-            mirrorToTextarea(state);
-        } else if (typeof window.mirrorToTextarea === "function") {
-            window.mirrorToTextarea(state);
+        if (typeof GnFlow.mirrorToTextarea === "function") {
+            GnFlow.mirrorToTextarea(state);
         } else {
-            // The function may be scoped inside flow-editor.js; try to
-            // sync by finding and updating the textarea directly.
             syncTextarea(state);
         }
     };
@@ -202,25 +201,10 @@
         var groups = state.edgeGroups.get(key);
         if (!groups || !groups.length) return;
 
-        // Check for cached ELK sections first.
-        var sections =
-            state._elkEdgeSections && state._elkEdgeSections.get(key);
-
+        // During drag, ELK sections are stale — always use Bezier fallback.
+        // ELK sections are only valid right after autoLayout completes.
         groups.forEach(function (g) {
-            if (sections && sections.length) {
-                var path = g.querySelector(".gn-flow-edge__path");
-                if (path) {
-                    path.setAttribute("d", GnFlow.buildEdgePath(sections));
-                }
-                var label = g.querySelector(".gn-flow-edge__label");
-                if (label) {
-                    var labelPos = findLabelPosition(sections);
-                    label.setAttribute("x", labelPos.x.toFixed(1));
-                    label.setAttribute("y", (labelPos.y - 6).toFixed(1));
-                }
-            } else {
-                rerouteSingleEdge(state, fromId, toId, g);
-            }
+            rerouteSingleEdge(state, fromId, toId, g);
         });
     };
 
@@ -359,6 +343,8 @@
         var d = GnFlow.buildBezierPath(fx, fy, tx, ty, boxW, boxH);
         var path = g.querySelector(".gn-flow-edge__path");
         if (path) path.setAttribute("d", d);
+        var hit = g.querySelector(".gn-flow-edge__hit");
+        if (hit) hit.setAttribute("d", d);
 
         // Position the label at the vertical midpoint.
         var label = g.querySelector(".gn-flow-edge__label");

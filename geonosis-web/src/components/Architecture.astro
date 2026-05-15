@@ -1,0 +1,130 @@
+---
+---
+
+<section id="architecture" class="py-24 sm:py-32 border-t border-border/50" data-animate>
+  <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+
+    <div class="max-w-xl mb-16" data-animate-child>
+      <div class="flex items-center gap-2 mb-4">
+        <span class="h-px w-8 bg-accent"></span>
+        <span class="text-xs font-mono text-accent tracking-widest uppercase">Architecture</span>
+      </div>
+      <h2 class="font-display font-bold text-3xl sm:text-4xl tracking-tight">
+        How it all connects.
+      </h2>
+      <p class="mt-4 text-text-secondary text-sm">
+        A single binary that handles discovery, authentication flows, token issuance, and admin — no sidecars, no microservice sprawl.
+      </p>
+    </div>
+
+    <!-- Architecture diagram — vertical on mobile, horizontal on desktop -->
+    <div data-animate-child>
+      <!-- Desktop: horizontal flow -->
+      <div class="hidden sm:flex items-center gap-4 overflow-x-auto py-4">
+        <!-- Client -->
+        <div class="shrink-0 border border-border rounded-md bg-surface px-4 py-3 text-center">
+          <span class="block text-xs font-mono text-text-secondary mb-1">external</span>
+          <span class="block text-sm font-display font-bold">Client App</span>
+        </div>
+
+        <svg class="shrink-0 text-accent" width="40" height="12" viewBox="0 0 40 12"><path d="M0 6h32M28 2l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+
+        <!-- Server -->
+        <div class="shrink-0 border border-accent/30 rounded-md bg-accent/5 p-4 min-w-[320px]">
+          <span class="block text-xs font-mono text-accent mb-3">geonosis-server</span>
+          <div class="grid grid-cols-3 gap-2">
+            <div class="border border-border rounded bg-bg px-3 py-2 text-center">
+              <span class="block text-[10px] font-mono text-text-secondary">Protocol</span>
+              <span class="block text-xs font-mono text-text mt-0.5">OIDC / OAuth</span>
+            </div>
+            <div class="border border-border rounded bg-bg px-3 py-2 text-center">
+              <span class="block text-[10px] font-mono text-text-secondary">Engine</span>
+              <span class="block text-xs font-mono text-accent mt-0.5">Flow DSL</span>
+            </div>
+            <div class="border border-border rounded bg-bg px-3 py-2 text-center">
+              <span class="block text-[10px] font-mono text-text-secondary">Plugins</span>
+              <span class="block text-xs font-mono text-indigo mt-0.5">WASM SPI</span>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2 mt-2">
+            <div class="border border-border rounded bg-bg px-3 py-2 text-center">
+              <span class="block text-[10px] font-mono text-text-secondary">Realm</span>
+              <span class="block text-xs font-mono text-text mt-0.5">Multi-tenant</span>
+            </div>
+            <div class="border border-border rounded bg-bg px-3 py-2 text-center">
+              <span class="block text-[10px] font-mono text-text-secondary">Admin</span>
+              <span class="block text-xs font-mono text-text mt-0.5">Leptos UI</span>
+            </div>
+          </div>
+        </div>
+
+        <svg class="shrink-0 text-accent" width="40" height="12" viewBox="0 0 40 12"><path d="M0 6h32M28 2l4 4-4 4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+
+        <!-- Storage -->
+        <div class="shrink-0 border border-border rounded-md bg-surface px-4 py-3 text-center">
+          <span class="block text-xs font-mono text-text-secondary mb-1">storage</span>
+          <span class="block text-sm font-display font-bold">Postgres</span>
+          <span class="block text-[10px] font-mono text-text-secondary mt-1">+ Redis cache</span>
+        </div>
+      </div>
+
+      <!-- Mobile: vertical flow -->
+      <div class="flex sm:hidden flex-col items-center gap-0">
+        <div class="w-full border border-border rounded-md bg-surface px-4 py-3 text-center">
+          <span class="block text-xs font-mono text-text-secondary mb-1">external</span>
+          <span class="block text-sm font-display font-bold">Client App</span>
+        </div>
+
+        <svg class="text-accent my-1" width="12" height="28" viewBox="0 0 12 28"><path d="M6 0v20M2 16l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+
+        <div class="w-full border border-accent/30 rounded-md bg-accent/5 p-4">
+          <span class="block text-xs font-mono text-accent mb-3">geonosis-server</span>
+          <div class="grid grid-cols-3 gap-1.5">
+            <div class="border border-border rounded bg-bg px-2 py-1.5 text-center">
+              <span class="block text-[10px] font-mono text-text-secondary">Protocol</span>
+              <span class="block text-[11px] font-mono text-text mt-0.5">OIDC</span>
+            </div>
+            <div class="border border-border rounded bg-bg px-2 py-1.5 text-center">
+              <span class="block text-[10px] font-mono text-text-secondary">Engine</span>
+              <span class="block text-[11px] font-mono text-accent mt-0.5">Flow DSL</span>
+            </div>
+            <div class="border border-border rounded bg-bg px-2 py-1.5 text-center">
+              <span class="block text-[10px] font-mono text-text-secondary">Plugins</span>
+              <span class="block text-[11px] font-mono text-indigo mt-0.5">WASM</span>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-1.5 mt-1.5">
+            <div class="border border-border rounded bg-bg px-2 py-1.5 text-center">
+              <span class="block text-[10px] font-mono text-text-secondary">Realm</span>
+              <span class="block text-[11px] font-mono text-text mt-0.5">Multi-tenant</span>
+            </div>
+            <div class="border border-border rounded bg-bg px-2 py-1.5 text-center">
+              <span class="block text-[10px] font-mono text-text-secondary">Admin</span>
+              <span class="block text-[11px] font-mono text-text mt-0.5">Leptos UI</span>
+            </div>
+          </div>
+        </div>
+
+        <svg class="text-accent my-1" width="12" height="28" viewBox="0 0 12 28"><path d="M6 0v20M2 16l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+
+        <div class="w-full border border-border rounded-md bg-surface px-4 py-3 text-center">
+          <span class="block text-xs font-mono text-text-secondary mb-1">storage</span>
+          <span class="block text-sm font-display font-bold">Postgres</span>
+          <span class="block text-[10px] font-mono text-text-secondary mt-1">+ Redis cache</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Federation side note -->
+    <div class="mt-8 flex items-start gap-3 border border-border rounded-md bg-surface/50 p-4 max-w-lg" data-animate-child>
+      <span class="text-accent text-sm mt-0.5">+</span>
+      <div>
+        <span class="text-sm font-display font-bold">Federation</span>
+        <p class="text-xs text-text-secondary mt-1">
+          SAML 2.0 IdP, LDAP directory sync, and external OIDC provider brokering
+          — all pluggable per realm.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,248 @@
+---
+---
+
+<div class="planet-wrapper relative w-full aspect-square max-w-md mx-auto">
+  <canvas id="planet-canvas" class="w-full h-full"></canvas>
+  <!-- Atmosphere glow (CSS) -->
+  <div class="planet-glow absolute inset-[-15%] rounded-full pointer-events-none"></div>
+</div>
+
+<style>
+  .planet-glow {
+    background: radial-gradient(
+      circle at 35% 40%,
+      transparent 30%,
+      rgba(255, 94, 26, 0.08) 45%,
+      rgba(255, 94, 26, 0.15) 50%,
+      rgba(255, 60, 10, 0.06) 60%,
+      transparent 70%
+    );
+    filter: blur(8px);
+  }
+</style>
+
+<script>
+  import gsap from 'gsap';
+
+  const canvas = document.getElementById('planet-canvas') as HTMLCanvasElement;
+  const ctx = canvas.getContext('2d')!;
+
+  // High DPI
+  function resize() {
+    const rect = canvas.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio, 2);
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // ─── Noise functions ───
+  // Permutation table
+  const perm = new Uint8Array(512);
+  const p = [151,160,137,91,90,15,131,13,201,95,96,53,194,233,7,225,140,36,103,30,69,142,8,99,37,240,21,10,23,190,6,148,247,120,234,75,0,26,197,62,94,252,219,203,117,35,11,32,57,177,33,88,237,149,56,87,174,20,125,136,171,168,68,175,74,165,71,134,139,48,27,166,77,146,158,231,83,111,229,122,60,211,133,230,220,105,92,41,55,46,245,40,244,102,143,54,65,25,63,161,1,216,80,73,209,76,132,187,208,89,18,169,200,196,135,130,116,188,159,86,164,100,109,198,173,186,3,64,52,217,226,250,124,123,5,202,38,147,118,126,255,82,85,212,207,206,59,227,47,16,58,17,182,189,28,42,223,183,170,213,119,248,152,2,44,154,163,70,221,153,101,155,167,43,172,9,129,22,39,253,19,98,108,110,79,113,224,232,178,185,112,104,218,246,97,228,251,34,242,193,238,210,144,12,191,179,162,241,81,51,145,235,249,14,239,107,49,192,214,31,181,199,106,157,184,84,204,176,115,121,50,45,127,4,150,254,138,236,205,93,222,114,67,29,24,72,243,141,128,195,78,66,215,61,156,180];
+  for (let i = 0; i < 256; i++) { perm[i] = perm[i + 256] = p[i]; }
+
+  function grad(hash: number, x: number, y: number, z: number): number {
+    const h = hash & 15;
+    const u = h < 8 ? x : y;
+    const v = h < 4 ? y : h === 12 || h === 14 ? x : z;
+    return ((h & 1) === 0 ? u : -u) + ((h & 2) === 0 ? v : -v);
+  }
+
+  function perlin(x: number, y: number, z: number): number {
+    const X = Math.floor(x) & 255;
+    const Y = Math.floor(y) & 255;
+    const Z = Math.floor(z) & 255;
+    x -= Math.floor(x); y -= Math.floor(y); z -= Math.floor(z);
+    const u = x * x * x * (x * (x * 6 - 15) + 10);
+    const v = y * y * y * (y * (y * 6 - 15) + 10);
+    const w = z * z * z * (z * (z * 6 - 15) + 10);
+    const A = perm[X] + Y, AA = perm[A] + Z, AB = perm[A + 1] + Z;
+    const B = perm[X + 1] + Y, BA = perm[B] + Z, BB = perm[B + 1] + Z;
+    return (
+      lerp(w,
+        lerp(v,
+          lerp(u, grad(perm[AA], x, y, z), grad(perm[BA], x - 1, y, z)),
+          lerp(u, grad(perm[AB], x, y - 1, z), grad(perm[BB], x - 1, y - 1, z))
+        ),
+        lerp(v,
+          lerp(u, grad(perm[AA + 1], x, y, z - 1), grad(perm[BA + 1], x - 1, y, z - 1)),
+          lerp(u, grad(perm[AB + 1], x, y - 1, z - 1), grad(perm[BB + 1], x - 1, y - 1, z - 1))
+        )
+      )
+    );
+  }
+
+  function lerp(t: number, a: number, b: number) { return a + t * (b - a); }
+
+  function fbm(x: number, y: number, z: number, octaves: number): number {
+    let value = 0, amplitude = 0.5, frequency = 1;
+    for (let i = 0; i < octaves; i++) {
+      value += amplitude * perlin(x * frequency, y * frequency, z * frequency);
+      frequency *= 2.1;
+      amplitude *= 0.47;
+    }
+    return value;
+  }
+
+  // ─── Planet colors ───
+  const colors = [
+    [40, 18, 8],     // deep canyon
+    [85, 40, 16],    // dark rock
+    [150, 82, 32],   // sandstone
+    [200, 110, 40],  // dusty orange
+    [235, 150, 60],  // sunlit peak
+    [160, 60, 24],   // reddish dust
+  ];
+
+  function getTerrainColor(height: number): [number, number, number] {
+    const stops = [0, 0.2, 0.4, 0.6, 0.78, 0.92];
+    let i = 0;
+    for (; i < stops.length - 1; i++) {
+      if (height < stops[i + 1]) break;
+    }
+    i = Math.min(i, colors.length - 2);
+    const t = (height - stops[i]) / (stops[i + 1] - stops[i]);
+    const c0 = colors[i], c1 = colors[i + 1];
+    return [
+      c0[0] + t * (c1[0] - c0[0]),
+      c0[1] + t * (c1[1] - c0[1]),
+      c0[2] + t * (c1[2] - c0[2]),
+    ];
+  }
+
+  // ─── Render state ───
+  const state = { rotation: 0 };
+
+  function renderPlanet() {
+    const w = canvas.getBoundingClientRect().width;
+    const h = canvas.getBoundingClientRect().height;
+    const cx = w / 2;
+    const cy = h / 2;
+    const radius = Math.min(w, h) * 0.4;
+
+    ctx.clearRect(0, 0, w, h);
+
+    // ImageData for pixel-level control
+    const dpr = Math.min(window.devicePixelRatio, 2);
+    const imgW = Math.ceil(w * dpr);
+    const imgH = Math.ceil(h * dpr);
+    const imageData = ctx.createImageData(imgW, imgH);
+    const data = imageData.data;
+
+    const radiusPx = radius * dpr;
+    const cxPx = cx * dpr;
+    const cyPx = cy * dpr;
+
+    // Light direction (from top-right)
+    const lx = 0.6, ly = -0.3, lz = 0.74;
+    const lLen = Math.sqrt(lx * lx + ly * ly + lz * lz);
+    const lightX = lx / lLen, lightY = ly / lLen, lightZ = lz / lLen;
+
+    for (let py = 0; py < imgH; py++) {
+      for (let px = 0; px < imgW; px++) {
+        const dx = px - cxPx;
+        const dy = py - cyPx;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        if (dist > radiusPx + 2) continue;
+
+        const idx = (py * imgW + px) * 4;
+
+        if (dist > radiusPx) {
+          // Anti-alias edge
+          const alpha = Math.max(0, 1 - (dist - radiusPx) / 2);
+          data[idx + 3] = alpha * 255;
+          continue;
+        }
+
+        // Sphere normal from 2D position
+        const nx = dx / radiusPx;
+        const ny = dy / radiusPx;
+        const nzSq = 1 - nx * nx - ny * ny;
+        if (nzSq < 0) continue;
+        const nz = Math.sqrt(nzSq);
+
+        // Spherical coords for texture sampling
+        const theta = Math.atan2(nx, nz) + state.rotation;
+        const phi = Math.asin(ny);
+        const u = theta / Math.PI;
+        const v = phi / (Math.PI / 2);
+
+        // Terrain noise (FBM)
+        const n = fbm(u * 3, v * 3, 0.5, 6) * 0.5 + 0.5;
+        const detail = perlin(u * 12, v * 12, state.rotation * 0.3) * 0.15;
+        const height = Math.max(0, Math.min(1, n + detail));
+
+        // Color
+        let [r, g, b] = getTerrainColor(height);
+
+        // Lighting
+        const NdotL = nx * lightX + ny * lightY + nz * lightZ;
+        const diffuse = Math.max(NdotL, 0);
+        const ambient = 0.12;
+        const wrap = Math.max(NdotL * 0.5 + 0.5, 0);
+        const light = ambient + diffuse * 0.7 + wrap * 0.15;
+
+        // Specular
+        const hx = lightX, hy = lightY, hz = lightZ + 1;
+        const hLen = Math.sqrt(hx * hx + hy * hy + hz * hz);
+        const NdotH = (nx * hx + ny * hy + nz * hz) / hLen;
+        const spec = Math.pow(Math.max(NdotH, 0), 20) * 0.2;
+
+        r = r * light + spec * 255;
+        g = g * light + spec * 200;
+        b = b * light + spec * 150;
+
+        // Fresnel rim atmosphere
+        const fresnel = Math.pow(1 - nz, 3.5);
+        r += fresnel * 255 * 0.4;
+        g += fresnel * 120 * 0.4;
+        b += fresnel * 40 * 0.4;
+
+        // Edge softness
+        const edgeFade = dist / radiusPx;
+        const edgeDarken = edgeFade > 0.92 ? 1 - (edgeFade - 0.92) / 0.08 : 1;
+
+        data[idx] = Math.min(255, r * edgeDarken);
+        data[idx + 1] = Math.min(255, g * edgeDarken);
+        data[idx + 2] = Math.min(255, b * edgeDarken);
+        data[idx + 3] = 255;
+      }
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+
+    // Draw atmosphere glow ring on top
+    const gradient = ctx.createRadialGradient(cx, cy, radius * 0.95, cx, cy, radius * 1.15);
+    gradient.addColorStop(0, 'rgba(255, 94, 26, 0.25)');
+    gradient.addColorStop(0.5, 'rgba(255, 60, 10, 0.1)');
+    gradient.addColorStop(1, 'rgba(255, 40, 5, 0)');
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * 1.15, 0, Math.PI * 2);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+  }
+
+  // ─── GSAP Animation ───
+  renderPlanet();
+
+  // Slow continuous rotation
+  gsap.to(state, {
+    rotation: Math.PI * 2,
+    duration: 90,
+    repeat: -1,
+    ease: 'none',
+    onUpdate: renderPlanet,
+  });
+
+  // Entrance animation — opacity only, no scale to avoid "double planet" effect
+  gsap.from('.planet-wrapper', {
+    opacity: 0,
+    duration: 1.6,
+    ease: 'power2.out',
+    delay: 0.4,
+  });
+</script>

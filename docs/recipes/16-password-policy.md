@@ -2,20 +2,20 @@
 
 ## What you'll have at the end
 
-Realm `acme` enforces a password policy aligned with **NIST
+Realm `master` enforces a password policy aligned with **NIST
 800-63B** recommendations: minimum length, breach-list check, no
 forced rotation, no arbitrary complexity rules.
 
 ## Prerequisites
 
-- A running realm `acme`.
+- A running realm `master`.
 
 ## Steps
 
 1. **Set the password policy.**
 
    ```sh
-   geoctl realm patch --realm acme --password-policy '{
+   geoctl realm patch --realm master --password-policy '{
      "rules": [
        {"MinLength": 8},
        {"MaxLength": 128},
@@ -55,7 +55,7 @@ forced rotation, no arbitrary complexity rules.
    lookup:
 
    ```sh
-   geoctl realm patch --realm acme --password-policy-add \
+   geoctl realm patch --realm master --password-policy-add \
      '{"PasswordBlacklist": {"source": "HaveIBeenPwned"}}'
    ```
 
@@ -70,7 +70,7 @@ forced rotation, no arbitrary complexity rules.
 
    ```sh
    # For 2 GiB pods (e.g. edge deployment):
-   geoctl realm patch --realm acme --password-policy-update \
+   geoctl realm patch --realm master --password-policy-update \
      '{"Argon2idCost": {"memory_kib": 32768, "iterations": 4, "parallelism": 2}}'
    ```
 
@@ -85,15 +85,15 @@ forced rotation, no arbitrary complexity rules.
 
 ```sh
 # Try a weak password:
-geoctl users credential-set --realm acme --user ada --kind password --value "password"
+geoctl users credential-set --realm master --user ada --kind password --value "password"
 # → error: password matches breached password list
 
 # Try the user's own username:
-geoctl users credential-set --realm acme --user ada --kind password --value "ada"
+geoctl users credential-set --realm master --user ada --kind password --value "ada"
 # → error: password must not match username
 
 # Set a strong password:
-geoctl users credential-set --realm acme --user ada --kind password --value "correct-horse-battery-staple"
+geoctl users credential-set --realm master --user ada --kind password --value "correct-horse-battery-staple"
 # → success (if not in breach list)
 ```
 
