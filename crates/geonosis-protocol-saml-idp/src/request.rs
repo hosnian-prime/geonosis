@@ -96,14 +96,12 @@ pub fn parse_authn_request(xml_bytes: &[u8]) -> Result<ParsedAuthnRequest, Parse
                     }
                 }
             }
-            Ok(Event::Text(e)) => {
-                if in_issuer {
-                    if let Some(ref mut s) = current_text {
-                        s.push_str(
-                            &e.unescape()
-                                .map_err(|err| ParseError::Xml(format!("text decode: {err}")))?,
-                        );
-                    }
+            Ok(Event::Text(e)) if in_issuer => {
+                if let Some(ref mut s) = current_text {
+                    s.push_str(
+                        &e.unescape()
+                            .map_err(|err| ParseError::Xml(format!("text decode: {err}")))?,
+                    );
                 }
             }
             Ok(Event::End(e)) => {

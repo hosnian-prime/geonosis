@@ -122,7 +122,7 @@ pub struct DraftOrgAssignment {
 /// extracted (preferred_username, email, etc).
 pub fn apply_all(bindings: &[MapperBinding], assertion: &BrokerAssertion, draft: &mut DraftUser) {
     let mut sorted: Vec<&MapperBinding> = bindings.iter().collect();
-    sorted.sort_by(|a, b| a.priority.cmp(&b.priority));
+    sorted.sort_by_key(|a| a.priority);
     for binding in sorted {
         apply_one(&binding.kind, assertion, draft);
     }
