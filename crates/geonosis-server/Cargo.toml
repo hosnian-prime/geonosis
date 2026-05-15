@@ -17,6 +17,9 @@ path = "src/main.rs"
 [lib]
 path = "src/lib.rs"
 
+[features]
+test-fixtures = ["dep:ed25519-dalek", "dep:pkcs8", "dep:rand"]
+
 [dependencies]
 geonosis-core = { path = "../geonosis-core" }
 geonosis-crypto = { path = "../geonosis-crypto" }
@@ -65,9 +68,14 @@ blake3.workspace = true
 futures.workspace = true
 parking_lot.workspace = true
 
+# Optional deps used only by test_fixtures (enabled via test-fixtures feature)
+ed25519-dalek = { workspace = true, optional = true }
+pkcs8 = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }
+
 [dev-dependencies]
-tokio.workspace = true
-ed25519-dalek.workspace = true
-pkcs8.workspace = true
-rand.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 flate2.workspace = true
+
+# Self-reference to enable test-fixtures feature for integration tests.
+geonosis-server = { path = ".", features = ["test-fixtures"] }

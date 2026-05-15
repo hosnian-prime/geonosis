@@ -1162,11 +1162,39 @@ h1, h2, h3, h4 { margin: 0; }
     touch-action: none;
     user-select: none;
 }
+/* --- Node --- */
 .gn-flow-node { cursor: grab; }
 .gn-flow-node--dragging { cursor: grabbing; }
+.gn-flow-node__bg {
+    fill: var(--gn-color-bg-elev);
+    stroke: var(--gn-color-border);
+    stroke-width: 1.5;
+}
 .gn-flow-node:focus-visible .gn-flow-node__bg {
     stroke: var(--gn-color-accent);
     stroke-width: 2;
+}
+.gn-flow-node__title {
+    fill: var(--gn-color-text);
+    font-size: 13px;
+    font-weight: var(--gn-font-weight-semibold);
+}
+.gn-flow-node__meta {
+    fill: var(--gn-color-text-muted);
+    font-size: 11px;
+}
+/* --- Edge --- */
+.gn-flow-edge__path {
+    fill: none;
+    stroke: var(--gn-color-accent);
+    stroke-width: 2;
+}
+.gn-flow-edge__label {
+    fill: var(--gn-color-text-muted);
+    font-size: 11px;
+}
+#gn-flow-arrow path {
+    fill: var(--gn-color-accent);
 }
 .gn-flow-canvas__note {
     color: var(--gn-color-text-muted);

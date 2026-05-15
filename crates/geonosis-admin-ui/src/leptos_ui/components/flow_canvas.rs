@@ -226,7 +226,7 @@ pub fn FlowCanvas(
                         markerHeight="8"
                         orient="auto-start-reverse"
                     >
-                        <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--gn-color-accent, #5b8cff)"/>
+                        <path d="M 0 0 L 10 5 L 0 10 z"/>
                     </marker>
                 </defs>
                 <g class="gn-flow-canvas__edges" data-flow-layer="edges">
@@ -245,9 +245,6 @@ pub fn FlowCanvas(
                                 <path
                                     class="gn-flow-edge__path"
                                     d=path
-                                    fill="none"
-                                    stroke="var(--gn-color-accent, #5b8cff)"
-                                    stroke-width="2"
                                     marker-end="url(#gn-flow-arrow)"
                                 />
                                 <text
@@ -256,8 +253,6 @@ pub fn FlowCanvas(
                                     y=label_y.to_string()
                                     text-anchor="middle"
                                     dominant-baseline="central"
-                                    font-size="11"
-                                    fill="var(--gn-color-text-muted, #9aa3b2)"
                                 >
                                     {label}
                                 </text>
@@ -289,9 +284,6 @@ pub fn FlowCanvas(
                                     width=BOX_W.to_string()
                                     height=BOX_H.to_string()
                                     rx="10"
-                                    fill="var(--gn-color-bg-elev, #161a23)"
-                                    stroke="var(--gn-color-border, #232735)"
-                                    stroke-width="1.5"
                                 />
                                 <text
                                     class="gn-flow-node__title"
@@ -299,9 +291,6 @@ pub fn FlowCanvas(
                                     y=title_y
                                     text-anchor="middle"
                                     dominant-baseline="central"
-                                    font-size="13"
-                                    font-weight="600"
-                                    fill="var(--gn-color-text, #f4f5f8)"
                                 >
                                     {n.display_name.clone()}
                                 </text>
@@ -311,8 +300,6 @@ pub fn FlowCanvas(
                                     y=meta_y
                                     text-anchor="middle"
                                     dominant-baseline="central"
-                                    font-size="11"
-                                    fill="var(--gn-color-text-muted, #9aa3b2)"
                                 >
                                     {format!("{} · {}", kind, n.requirement_label)}
                                 </text>

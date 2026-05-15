@@ -27,6 +27,10 @@ pub struct AdminState {
     /// Public base URL (e.g. `https://geonosis.example`) for issuer
     /// validation when verifying bearer tokens.
     pub public_base_url: Url,
+    /// BLAKE3-keyed hash key for client secret hashing. Shared with
+    /// the OIDC token endpoint so secrets created by the admin API
+    /// are verifiable at the token endpoint.
+    pub client_secret_hash_key: [u8; 32],
 }
 
 impl AdminState {
@@ -40,6 +44,7 @@ impl AdminState {
             Arc::new(Publisher::new(vec![])),
             Arc::new(SoftwareKms::new(MasterKey::generate())),
             Url::parse("http://localhost:8080").unwrap(),
+            [0u8; 32],
         )
     }
 
@@ -52,6 +57,7 @@ impl AdminState {
         audit: Arc<Publisher>,
         kms: Arc<SoftwareKms>,
         public_base_url: Url,
+        client_secret_hash_key: [u8; 32],
     ) -> Result<Self, AdminError> {
         let i18n = Arc::new(I18n::load_embedded().map_err(|e| AdminError::I18n(e.to_string()))?);
         let theme = Arc::new(TemplateOverlay::new());
@@ -62,6 +68,7 @@ impl AdminState {
             audit,
             kms,
             public_base_url,
+            client_secret_hash_key,
         })
     }
 }

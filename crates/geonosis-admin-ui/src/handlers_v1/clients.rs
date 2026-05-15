@@ -11,6 +11,8 @@ use axum::Json;
 use serde::Deserialize;
 
 use geonosis_audit::Target;
+use serde::Serialize;
+
 use geonosis_core::id::ClientId;
 use geonosis_core::{
     AccessTokenType, Client, ClientAuthMethod, ClientKind, ConsentPolicy, FlowBinding, GrantPolicy,
@@ -21,6 +23,20 @@ use crate::audit_emit;
 
 use crate::handlers_v1::extractors::realm_by_slug;
 use crate::state::{AdminError, AdminState};
+
+/// Response for client creation. Wraps the full `Client` and includes
+/// the one-time `client_secret` for confidential / service-account
+/// clients. The plaintext secret is **never** persisted — only the
+/// BLAKE3-keyed hash is stored. Callers must capture this value on
+/// creation; it cannot be retrieved later.
+#[derive(Serialize)]
+pub struct CreateClientResponse {
+    #[serde(flatten)]
+    pub client: Client,
+    /// One-time plaintext secret. `None` for public / bearer-only clients.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_secret: Option<String>,
+}
 
 #[derive(Debug, Deserialize)]
 pub struct CreateClientRequest {
@@ -65,7 +81,7 @@ pub async fn create(
     State(state): State<Arc<AdminState>>,
     Path(slug): Path<String>,
     Json(req): Json<CreateClientRequest>,
-) -> Result<Json<Client>, AdminError> {
+) -> Result<Json<CreateClientResponse>, AdminError> {
     let realm = realm_by_slug(&state, &slug).await?;
     let now = chrono::Utc::now();
     let kind = req.kind;
@@ -118,6 +134,27 @@ pub async fn create(
         .create_client(client.clone())
         .await
         .map_err(AdminError::from)?;
+
+    // Auto-generate a client_secret for confidential-like clients.
+    // The plaintext is returned once; only the BLAKE3-keyed hash is
+    // persisted. Matches Keycloak's create-client behaviour.
+    let client_secret = match kind {
+        ClientKind::Confidential | ClientKind::ServiceAccount | ClientKind::ScimClient => {
+            let secret = geonosis_crypto::random::random_token();
+            let hash = hex::encode(geonosis_crypto::hash::token_hash(
+                &state.client_secret_hash_key,
+                secret.as_bytes(),
+            ));
+            state
+                .storage
+                .store_client_secret_hash(realm.id, client.id, hash)
+                .await
+                .map_err(AdminError::from)?;
+            Some(secret)
+        }
+        _ => None,
+    };
+
     audit_emit::emit(
         &state,
         client.realm_id,
@@ -125,7 +162,10 @@ pub async fn create(
         Some(Target::Client { id: client.id }),
         serde_json::json!({ "client_id": client.client_id, "kind": format!("{:?}", client.kind) }),
     );
-    Ok(Json(client))
+    Ok(Json(CreateClientResponse {
+        client,
+        client_secret,
+    }))
 }
 
 pub async fn get(

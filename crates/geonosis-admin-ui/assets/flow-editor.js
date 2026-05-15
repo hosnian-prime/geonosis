@@ -358,8 +358,7 @@
             line.setAttribute("y1", from.y);
             line.setAttribute("x2", to.x);
             line.setAttribute("y2", to.y);
-            line.setAttribute("stroke", "var(--gn-color-accent, #5b8cff)");
-            line.setAttribute("stroke-width", "2");
+            line.classList.add("gn-flow-edge__path");
             svg.appendChild(line);
         }
         for (const n of nodes) {
@@ -371,15 +370,13 @@
             rect.setAttribute("width", 120);
             rect.setAttribute("height", 44);
             rect.setAttribute("rx", 8);
-            rect.setAttribute("fill", "var(--gn-color-bg-elev, #161a23)");
-            rect.setAttribute("stroke", "var(--gn-color-border, #232735)");
+            rect.classList.add("gn-flow-node__bg");
             svg.appendChild(rect);
             const text = document.createElementNS(ns, "text");
             text.setAttribute("x", p.x);
             text.setAttribute("y", p.y + 5);
             text.setAttribute("text-anchor", "middle");
-            text.setAttribute("fill", "var(--gn-color-text, #f4f5f8)");
-            text.setAttribute("font-size", "12");
+            text.classList.add("gn-flow-node__title");
             text.textContent = n.display_name || nodeKindLabel(n.kind);
             svg.appendChild(text);
         }

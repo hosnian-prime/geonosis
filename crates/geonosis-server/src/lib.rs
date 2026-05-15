@@ -25,3 +25,6 @@ pub mod token_verify;
 
 pub use app::router;
 pub use state::AppState;
+
+#[cfg(any(test, feature = "test-fixtures"))]
+pub mod test_fixtures;

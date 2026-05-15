@@ -61,6 +61,10 @@ test-admin-api: ## Run admin API integration tests
 test-admin-smoke: ## Run admin API smoke test only
 	$(CARGO) test --package geonosis-admin-ui --test smoke
 
+.PHONY: test-cross-boundary
+test-cross-boundary: ## Run cross-boundary integration tests (admin → protocol)
+	$(CARGO) test --package geonosis-server --test cross_boundary
+
 .PHONY: check
 check: ## cargo check on the entire workspace
 	$(CARGO) check --workspace
