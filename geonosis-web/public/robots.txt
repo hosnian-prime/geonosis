@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://hosnian-prime.github.io/geonosis/sitemap.xml
