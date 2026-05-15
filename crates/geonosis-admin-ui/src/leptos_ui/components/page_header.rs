@@ -1,31 +1,25 @@
-//! Shared page header: breadcrumb + title + optional subtitle.
+//! Page header — title + optional subtitle + right-aligned action
+//! buttons, rendered above every list / detail page.
 //!
-//! Captures the pattern every CRUD page repeats:
-//!
-//! ```ignore
-//! <nav class="gn-breadcrumb"><a href="..">"← Realm"</a></nav>
-//! <h1>"Page title"</h1>
-//! <p class="gn-subtitle">"description"</p>
-//! ```
-//!
-//! v0.1 hardcodes the back-link label to "← Realm" because every
-//! existing sub-page returns to the realm detail. Once the admin UI
-//! gains nested sub-pages (e.g. org-detail → members), the prop
-//! widens to a typed `BackLink { label, href }`.
+//! The action slot accepts an `AnyView` so pages can build whatever
+//! buttons they want at call time (single CTA, button row, etc.)
+//! without the component needing to know the row layout.
 
 use leptos::prelude::*;
 
 #[component]
 pub fn PageHeader(
-    title: &'static str,
-    #[prop(optional)] back_href: Option<String>,
-    #[prop(optional)] subtitle: Option<&'static str>,
+    title: String,
+    #[prop(default = None)] subtitle: Option<String>,
+    #[prop(default = None)] actions: Option<AnyView>,
 ) -> impl IntoView {
     view! {
-        {back_href.map(|href| view! {
-            <nav class="gn-breadcrumb"><a href=href>"← Realm"</a></nav>
-        })}
-        <h1>{title}</h1>
-        {subtitle.map(|s| view! { <p class="gn-subtitle">{s}</p> })}
+        <header class="gn-page-header">
+            <div class="gn-page-header__text">
+                <h1 class="gn-page-title">{title}</h1>
+                {subtitle.map(|s| view! { <p class="gn-page-subtitle">{s}</p> })}
+            </div>
+            {actions.map(|a| view! { <div class="gn-page-header__actions">{a}</div> })}
+        </header>
     }
 }
