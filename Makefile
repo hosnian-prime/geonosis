@@ -46,8 +46,20 @@ release: ## Build release binaries
 	$(CARGO) build --workspace --release
 
 .PHONY: test
-test: ## Run the workspace test suite
+test: ## Run the workspace test suite (unit tests)
 	$(CARGO) test --workspace --lib
+
+.PHONY: test-all
+test-all: ## Run all tests (unit + integration)
+	$(CARGO) test --workspace
+
+.PHONY: test-admin-api
+test-admin-api: ## Run admin API integration tests
+	$(CARGO) test --package geonosis-admin-ui --test '*'
+
+.PHONY: test-admin-smoke
+test-admin-smoke: ## Run admin API smoke test only
+	$(CARGO) test --package geonosis-admin-ui --test smoke
 
 .PHONY: check
 check: ## cargo check on the entire workspace

@@ -226,14 +226,14 @@ pub fn FlowCanvas(
                         markerHeight="8"
                         orient="auto-start-reverse"
                     >
-                        <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--gn-color-accent, #4f8cff)"/>
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--gn-color-accent, #5b8cff)"/>
                     </marker>
                 </defs>
                 <g class="gn-flow-canvas__edges" data-flow-layer="edges">
                     {edges.into_iter().map(|e| {
                         let from = node_index.get(&e.from);
                         let to = node_index.get(&e.to);
-                        let (path, midx, midy) = edge_path_for(from, to);
+                        let (path, midx, _midy, label_y) = edge_path_for(from, to);
                         let from_id = e.from.clone();
                         let to_id = e.to.clone();
                         let label = e.on_label.clone();
@@ -246,17 +246,18 @@ pub fn FlowCanvas(
                                     class="gn-flow-edge__path"
                                     d=path
                                     fill="none"
-                                    stroke="var(--gn-color-accent, #4f8cff)"
+                                    stroke="var(--gn-color-accent, #5b8cff)"
                                     stroke-width="2"
                                     marker-end="url(#gn-flow-arrow)"
                                 />
                                 <text
                                     class="gn-flow-edge__label"
                                     x=midx.to_string()
-                                    y=midy.to_string()
+                                    y=label_y.to_string()
                                     text-anchor="middle"
+                                    dominant-baseline="central"
                                     font-size="11"
-                                    fill="var(--gn-color-fg-muted, #8a93a6)"
+                                    fill="var(--gn-color-text-muted, #9aa3b2)"
                                 >
                                     {label}
                                 </text>
@@ -266,9 +267,9 @@ pub fn FlowCanvas(
                 </g>
                 <g class="gn-flow-canvas__nodes" data-flow-layer="nodes">
                     {nodes.into_iter().map(|n| {
-                        let cx = (n.x + BOX_W / 2.0).to_string();
-                        let title_y = (n.y + 22.0).to_string();
-                        let meta_y = (n.y + 40.0).to_string();
+                        let cx = (BOX_W / 2.0).to_string();
+                        let title_y = (BOX_H * 0.36).to_string();
+                        let meta_y = (BOX_H * 0.72).to_string();
                         let kind = n.kind_label.clone();
                         view! {
                             <g
@@ -288,8 +289,8 @@ pub fn FlowCanvas(
                                     width=BOX_W.to_string()
                                     height=BOX_H.to_string()
                                     rx="10"
-                                    fill="var(--gn-color-surface-2, #161a22)"
-                                    stroke="var(--gn-color-border, #2a2f3b)"
+                                    fill="var(--gn-color-bg-elev, #161a23)"
+                                    stroke="var(--gn-color-border, #232735)"
                                     stroke-width="1.5"
                                 />
                                 <text
@@ -297,9 +298,10 @@ pub fn FlowCanvas(
                                     x=cx.clone()
                                     y=title_y
                                     text-anchor="middle"
+                                    dominant-baseline="central"
                                     font-size="13"
                                     font-weight="600"
-                                    fill="var(--gn-color-fg, #f5f5f7)"
+                                    fill="var(--gn-color-text, #f4f5f8)"
                                 >
                                     {n.display_name.clone()}
                                 </text>
@@ -308,8 +310,9 @@ pub fn FlowCanvas(
                                     x=cx
                                     y=meta_y
                                     text-anchor="middle"
+                                    dominant-baseline="central"
                                     font-size="11"
-                                    fill="var(--gn-color-fg-muted, #8a93a6)"
+                                    fill="var(--gn-color-text-muted, #9aa3b2)"
                                 >
                                     {format!("{} · {}", kind, n.requirement_label)}
                                 </text>
@@ -343,7 +346,7 @@ pub fn FlowCanvas(
 /// is missing from the layout — this only happens for malformed
 /// graphs that wouldn't have compiled, but the canvas still has to
 /// render *something* so the operator can find the bad edge.
-fn edge_path_for(from: Option<&FlowCanvasNode>, to: Option<&FlowCanvasNode>) -> (String, f32, f32) {
+fn edge_path_for(from: Option<&FlowCanvasNode>, to: Option<&FlowCanvasNode>) -> (String, f32, f32, f32) {
     let (fx, fy) = match from {
         Some(n) => (n.x + BOX_W / 2.0, n.y + BOX_H),
         None => (VIEW_W / 2.0, VIEW_H * 0.25),
@@ -362,7 +365,10 @@ fn edge_path_for(from: Option<&FlowCanvasNode>, to: Option<&FlowCanvasNode>) -> 
         my = mid_y,
     );
     let midx = (fx + tx) / 2.0;
-    (path, midx, mid_y)
+    // Offset label 14px above the curve midpoint so it doesn't overlap
+    // the path stroke.
+    let label_y = mid_y - 14.0;
+    (path, midx, mid_y, label_y)
 }
 
 #[cfg(test)]
@@ -517,10 +523,11 @@ mod tests {
             x: 400.0,
             y: 200.0,
         };
-        let (path, mx, my) = edge_path_for(Some(&from), Some(&to));
+        let (path, mx, my, ly) = edge_path_for(Some(&from), Some(&to));
         assert!(path.starts_with("M "));
         assert!(path.contains(" C "));
         assert!(mx.is_finite());
         assert!(my.is_finite());
+        assert!(ly < my, "label should be above curve midpoint");
     }
 }

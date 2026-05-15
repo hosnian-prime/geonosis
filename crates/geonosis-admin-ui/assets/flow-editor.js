@@ -220,14 +220,14 @@
         const my = (fy + ty) / 2;
         const d = `M ${fx.toFixed(1)} ${fy.toFixed(1)} C ${fx.toFixed(1)} ${my.toFixed(1)}, ${tx.toFixed(1)} ${my.toFixed(1)}, ${tx.toFixed(1)} ${ty.toFixed(1)}`;
         const midx = ((fx + tx) / 2).toFixed(1);
-        const midy = my.toFixed(1);
+        const labelY = (my - 14).toFixed(1);
         groups.forEach((g) => {
             const path = g.querySelector(".gn-flow-edge__path");
             if (path) path.setAttribute("d", d);
             const label = g.querySelector(".gn-flow-edge__label");
             if (label) {
                 label.setAttribute("x", midx);
-                label.setAttribute("y", midy);
+                label.setAttribute("y", labelY);
             }
         });
     }
@@ -358,7 +358,7 @@
             line.setAttribute("y1", from.y);
             line.setAttribute("x2", to.x);
             line.setAttribute("y2", to.y);
-            line.setAttribute("stroke", "#4f8cff");
+            line.setAttribute("stroke", "var(--gn-color-accent, #5b8cff)");
             line.setAttribute("stroke-width", "2");
             svg.appendChild(line);
         }
@@ -371,14 +371,14 @@
             rect.setAttribute("width", 120);
             rect.setAttribute("height", 44);
             rect.setAttribute("rx", 8);
-            rect.setAttribute("fill", "#161a22");
-            rect.setAttribute("stroke", "#2a2f3b");
+            rect.setAttribute("fill", "var(--gn-color-bg-elev, #161a23)");
+            rect.setAttribute("stroke", "var(--gn-color-border, #232735)");
             svg.appendChild(rect);
             const text = document.createElementNS(ns, "text");
             text.setAttribute("x", p.x);
             text.setAttribute("y", p.y + 5);
             text.setAttribute("text-anchor", "middle");
-            text.setAttribute("fill", "#f5f5f7");
+            text.setAttribute("fill", "var(--gn-color-text, #f4f5f8)");
             text.setAttribute("font-size", "12");
             text.textContent = n.display_name || nodeKindLabel(n.kind);
             svg.appendChild(text);

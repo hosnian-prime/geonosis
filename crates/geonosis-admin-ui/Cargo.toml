@@ -43,5 +43,12 @@ parking_lot.workspace = true
 url.workspace = true
 
 [dev-dependencies]
-tokio.workspace = true
-tower.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tower = { workspace = true, features = ["util"] }
+serde_json.workspace = true
+chrono.workspace = true
+geonosis-core = { path = "../geonosis-core" }
+geonosis-storage = { path = "../geonosis-storage" }
+geonosis-broker = { path = "../geonosis-broker" }
+geonosis-crypto = { path = "../geonosis-crypto" }
+axum.workspace = true
