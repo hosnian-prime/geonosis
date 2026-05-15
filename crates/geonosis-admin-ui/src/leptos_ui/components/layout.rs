@@ -9,7 +9,7 @@
 
 use leptos::prelude::*;
 
-use crate::leptos_ui::components::chrome::{Header, ProfileContext, RealmChoice, Sidebar, BOOT_SCRIPT};
+use crate::leptos_ui::components::chrome::{Header, ProfileContext, RealmChoice, Sidebar};
 
 #[component]
 pub fn AdminLayout(
@@ -42,8 +42,9 @@ pub fn AdminLayout(
                 <meta name="viewport" content="width=device-width,initial-scale=1"/>
                 <title>{full_title}</title>
                 <link rel="stylesheet" href="/static/admin.css"/>
-                <script inner_html=BOOT_SCRIPT></script>
-                <script src="/static/admin-chrome.js" defer="defer"></script>
+                // Loaded synchronously: the theme-bootstrap IIFE in the
+                // script applies `data-theme` before <body> renders.
+                <script src="/static/admin-chrome.js"></script>
             </head>
             <body>
                 <div class="gn-shell">
