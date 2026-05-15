@@ -133,3 +133,124 @@
         init();
     }
 })();
+
+// ---- Toast notification system -----------------------------------
+//
+// Global, available on every admin page via `window.GnToast`.
+//
+// API:
+//   GnToast.success(title, message?)
+//   GnToast.warning(title, message?)
+//   GnToast.error(title, message?)
+//   GnToast.info(title, message?)
+//   GnToast.show({ kind, title, message?, duration? })
+//
+// Toasts stack bottom-right, newest at bottom. Auto-dismiss after
+// `duration` ms (default 4s for success/info, 8s for warning/error).
+// Warning and error toasts show a "Copy" button. All show a close "×".
+
+(function () {
+    "use strict";
+
+    var DEFAULTS = {
+        success: { duration: 4000, icon: "\u2713" },
+        info:    { duration: 4000, icon: "\u2139" },
+        warning: { duration: 8000, icon: "\u26A0" },
+        error:   { duration: 8000, icon: "\u2717" },
+    };
+
+    var container = null;
+
+    function ensureContainer() {
+        if (container && document.body.contains(container)) return;
+        container = document.createElement("div");
+        container.className = "gn-toast-container";
+        container.setAttribute("aria-live", "polite");
+        container.setAttribute("aria-label", "Notifications");
+        document.body.appendChild(container);
+    }
+
+    function esc(s) {
+        var d = document.createElement("div");
+        d.appendChild(document.createTextNode(s || ""));
+        return d.innerHTML;
+    }
+
+    function show(opts) {
+        var kind = opts.kind || "info";
+        var title = opts.title || "";
+        var message = opts.message || "";
+        var cfg = DEFAULTS[kind] || DEFAULTS.info;
+        var duration = opts.duration != null ? opts.duration : cfg.duration;
+
+        ensureContainer();
+
+        var el = document.createElement("div");
+        el.className = "gn-toast gn-toast--" + kind;
+        el.setAttribute("role", "status");
+
+        var hasCopy = kind === "warning" || kind === "error";
+        var copyText = (title + (message ? "\n" + message : "")).trim();
+
+        el.innerHTML =
+            '<span class="gn-toast__icon" aria-hidden="true">' + esc(cfg.icon) + "</span>" +
+            '<div class="gn-toast__body">' +
+                (title ? '<div class="gn-toast__title">' + esc(title) + "</div>" : "") +
+                (message ? '<div class="gn-toast__msg">' + esc(message) + "</div>" : "") +
+            "</div>" +
+            '<div class="gn-toast__actions">' +
+                (hasCopy ? '<button class="gn-toast__btn gn-toast__btn--copy" data-gn-toast-copy>Copy</button>' : "") +
+                '<button class="gn-toast__btn gn-toast__btn--close" data-gn-toast-close aria-label="Dismiss">\u00D7</button>' +
+            "</div>";
+
+        // Close button
+        el.querySelector("[data-gn-toast-close]").addEventListener("click", function () {
+            dismiss(el);
+        });
+
+        // Copy button
+        var copyBtn = el.querySelector("[data-gn-toast-copy]");
+        if (copyBtn) {
+            copyBtn.addEventListener("click", function () {
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(copyText).then(function () {
+                        copyBtn.textContent = "Copied!";
+                        setTimeout(function () { copyBtn.textContent = "Copy"; }, 1500);
+                    });
+                }
+            });
+        }
+
+        container.appendChild(el);
+
+        // Auto-dismiss
+        if (duration > 0) {
+            var timer = setTimeout(function () { dismiss(el); }, duration);
+            el._gnTimer = timer;
+            // Pause on hover
+            el.addEventListener("mouseenter", function () { clearTimeout(el._gnTimer); });
+            el.addEventListener("mouseleave", function () {
+                el._gnTimer = setTimeout(function () { dismiss(el); }, duration);
+            });
+        }
+    }
+
+    function dismiss(el) {
+        if (el._gnDismissed) return;
+        el._gnDismissed = true;
+        clearTimeout(el._gnTimer);
+        el.classList.add("gn-toast--leaving");
+        el.addEventListener("animationend", function () {
+            if (el.parentNode) el.parentNode.removeChild(el);
+        });
+    }
+
+    // Public API
+    window.GnToast = {
+        show: show,
+        success: function (title, message) { show({ kind: "success", title: title, message: message }); },
+        warning: function (title, message) { show({ kind: "warning", title: title, message: message }); },
+        error:   function (title, message) { show({ kind: "error",   title: title, message: message }); },
+        info:    function (title, message) { show({ kind: "info",    title: title, message: message }); },
+    };
+})();

@@ -175,6 +175,13 @@
      */
     GnFlow.showTrace = function showTrace(state, report) {
         state.dryRunOverlay = report;
+        var termLabel = report.terminal === "success" ? "Success" :
+                        report.terminal === "failure" ? "Failure" : "Incomplete";
+        if (window.GnToast) {
+            var fn = report.terminal === "success" ? GnToast.success :
+                     report.terminal === "failure" ? GnToast.warning : GnToast.info;
+            fn("Dry-run: " + termLabel, report.steps ? report.steps.length + " steps traced" : "");
+        }
 
         // --- Result banner -------------------------------------------
 
@@ -607,6 +614,7 @@
             '<div class="gn-flow-dryrun__result gn-flow-dryrun__result--failure">' +
             escapeHtml(message) + "</div>";
         el.hidden = false;
+        if (window.GnToast) GnToast.error("Dry-run failed", message);
     }
 
     // ── Utilities ────────────────────────────────────────────────────

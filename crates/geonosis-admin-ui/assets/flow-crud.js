@@ -385,9 +385,7 @@
                 return kindTag(n) === kind;
             });
             if (exists) {
-                if (typeof GnFlow.status === "function") {
-                    GnFlow.status("A " + kind + " node already exists.", true);
-                }
+                if (window.GnToast) GnToast.warning("Duplicate node", "A " + kind + " node already exists in this flow.");
                 return null;
             }
         }
@@ -422,6 +420,7 @@
         }
 
         mirrorToTextarea(state);
+        if (window.GnToast) GnToast.info("Node added", capitalize(kind) + " node created.");
         return id;
     }
     GnFlow.addNode = addNode;
@@ -464,6 +463,7 @@
 
         deselect(state);
         mirrorToTextarea(state);
+        if (window.GnToast) GnToast.info("Node deleted");
     }
     GnFlow.deleteNode = deleteNode;
 

@@ -34,6 +34,7 @@
     GnFlow.autoLayout = async function autoLayout(state) {
         if (typeof window.ELK !== "function") {
             console.warn("[gn-flow-layout] ELK not loaded; skipping auto-layout.");
+            if (window.GnToast) GnToast.warning("Layout engine not loaded", "elk.min.js failed to load.");
             return;
         }
 
@@ -85,6 +86,7 @@
             layoutResult = await elk.layout(graph);
         } catch (err) {
             console.error("[gn-flow-layout] ELK layout failed:", err);
+            if (window.GnToast) GnToast.error("Auto-layout failed", err.message || String(err));
             return;
         }
 

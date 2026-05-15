@@ -336,15 +336,20 @@
             .then(function (r) {
                 if (r.ok || r.redirected) {
                     status(st.root, "Saved.");
+                    if (window.GnToast) GnToast.success("Flow saved");
                     mirrorToTextarea(st);
                 } else {
                     r.text().then(function (body) {
-                        var detail = body ? body.slice(0, 200) : "";
-                        status(st.root, "Save failed (HTTP " + r.status + "): " + detail, true);
+                        var detail = body ? body.slice(0, 300) : "";
+                        status(st.root, "Save failed", true);
+                        if (window.GnToast) GnToast.error("Save failed (HTTP " + r.status + ")", detail);
                     });
                 }
             })
-            .catch(function (e) { status(st.root, "Save failed: " + e.message, true); })
+            .catch(function (e) {
+                status(st.root, "Save failed", true);
+                if (window.GnToast) GnToast.error("Save failed", e.message);
+            })
             .finally(function () { button.disabled = false; });
     }
 
