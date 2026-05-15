@@ -368,6 +368,96 @@ pub async fn seed_password_grant_client(state: &AppState, client_id: &str) -> St
     secret
 }
 
+// ---------------------------------------------------------------------------
+// Config update helpers
+// ---------------------------------------------------------------------------
+
+/// Update the realm's token policy via a closure.
+pub async fn update_realm_token_policy(state: &AppState, f: impl FnOnce(&mut TokenPolicy)) {
+    let mut realm = state.storage.get_realm_by_slug("acme").await.unwrap();
+    f(&mut realm.token_policy);
+    realm.updated_at = Utc::now();
+    state.storage.update_realm(realm).await.unwrap();
+}
+
+/// Replace the realm's password policy rules.
+pub async fn update_realm_password_policy(
+    state: &AppState,
+    rules: Vec<geonosis_core::PasswordRule>,
+) {
+    let mut realm = state.storage.get_realm_by_slug("acme").await.unwrap();
+    realm.password_policy.rules = rules;
+    realm.updated_at = Utc::now();
+    state.storage.update_realm(realm).await.unwrap();
+}
+
+/// Update the realm's brute force policy via a closure.
+pub async fn update_realm_brute_force(
+    state: &AppState,
+    f: impl FnOnce(&mut geonosis_core::BruteForcePolicy),
+) {
+    let mut realm = state.storage.get_realm_by_slug("acme").await.unwrap();
+    f(&mut realm.brute_force);
+    realm.updated_at = Utc::now();
+    state.storage.update_realm(realm).await.unwrap();
+}
+
+/// Update the realm's session policy via a closure.
+pub async fn update_realm_session_policy(
+    state: &AppState,
+    f: impl FnOnce(&mut SessionPolicy),
+) {
+    let mut realm = state.storage.get_realm_by_slug("acme").await.unwrap();
+    f(&mut realm.session_policy);
+    realm.updated_at = Utc::now();
+    state.storage.update_realm(realm).await.unwrap();
+}
+
+/// Update the realm's login settings via a closure.
+pub async fn update_realm_login_settings(
+    state: &AppState,
+    f: impl FnOnce(&mut geonosis_core::LoginSettings),
+) {
+    let mut realm = state.storage.get_realm_by_slug("acme").await.unwrap();
+    f(&mut realm.login);
+    realm.updated_at = Utc::now();
+    state.storage.update_realm(realm).await.unwrap();
+}
+
+/// Update a client's grant policy by client_id string.
+pub async fn update_client_grants(
+    state: &AppState,
+    client_id: &str,
+    f: impl FnOnce(&mut geonosis_core::GrantPolicy),
+) {
+    let realm = state.storage.get_realm_by_slug("acme").await.unwrap();
+    let mut client = state
+        .storage
+        .get_client_by_client_id(realm.id, client_id)
+        .await
+        .unwrap();
+    f(&mut client.grants);
+    client.updated_at = Utc::now();
+    state.storage.update_client(client).await.unwrap();
+}
+
+/// Disable/enable a client by client_id string.
+pub async fn set_client_enabled(state: &AppState, client_id: &str, enabled: bool) {
+    let realm = state.storage.get_realm_by_slug("acme").await.unwrap();
+    let mut client = state
+        .storage
+        .get_client_by_client_id(realm.id, client_id)
+        .await
+        .unwrap();
+    client.enabled = enabled;
+    client.updated_at = Utc::now();
+    state.storage.update_client(client).await.unwrap();
+}
+
+// ---------------------------------------------------------------------------
+// Seed helpers
+// ---------------------------------------------------------------------------
+
 /// Seed a user with a password. Returns the user.
 pub async fn seed_user_with_password(
     state: &AppState,

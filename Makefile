@@ -65,6 +65,14 @@ test-admin-smoke: ## Run admin API smoke test only
 test-cross-boundary: ## Run cross-boundary integration tests (admin → protocol)
 	$(CARGO) test --package geonosis-server --test cross_boundary
 
+.PHONY: test-config-behavior
+test-config-behavior: ## Run config behavioral specification tests
+	$(CARGO) test --package geonosis-server --test config_behavior
+
+.PHONY: test-config-gaps
+test-config-gaps: ## Run config tests including ignored gaps (some will fail)
+	$(CARGO) test --package geonosis-server --test config_behavior -- --include-ignored
+
 .PHONY: check
 check: ## cargo check on the entire workspace
 	$(CARGO) check --workspace
@@ -88,7 +96,7 @@ clean: ## Remove cargo build artefacts
 ### Local dev quickstart
 .PHONY: compose-up
 compose-up: ## Start the quickstart stack (postgres + server + bootstrap realm)
-	$(COMPOSE) -f $(COMPOSE_FILE) up -d
+	$(COMPOSE) -f $(COMPOSE_FILE) up -d --build
 	@echo "Waiting for /-/ready…"
 	@for i in $$(seq 1 30); do \
 	  if curl -fsS http://localhost:8080/-/ready >/dev/null 2>&1; then \
