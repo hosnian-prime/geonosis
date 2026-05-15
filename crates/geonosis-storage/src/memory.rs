@@ -1681,7 +1681,7 @@ impl Storage for MemoryStorage {
             .filter(|s| s.realm_id == realm)
             .cloned()
             .collect();
-        rows.sort_by(|a, b| b.last_seen_at.cmp(&a.last_seen_at));
+        rows.sort_by_key(|r| std::cmp::Reverse(r.last_seen_at));
         rows.truncate(limit);
         Ok(rows)
     }

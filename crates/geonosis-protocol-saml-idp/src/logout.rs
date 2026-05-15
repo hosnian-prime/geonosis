@@ -76,15 +76,12 @@ pub fn parse_logout_request(xml_bytes: &[u8]) -> Result<ParsedLogoutRequest, Log
                     current = Some(String::new());
                 }
             }
-            Ok(Event::Text(e)) => {
-                if in_issuer || in_name_id || in_session_index {
-                    if let Some(ref mut s) = current {
-                        s.push_str(
-                            &e.unescape().map_err(|err| {
-                                LogoutParseError::Xml(format!("text decode: {err}"))
-                            })?,
-                        );
-                    }
+            Ok(Event::Text(e)) if in_issuer || in_name_id || in_session_index => {
+                if let Some(ref mut s) = current {
+                    s.push_str(
+                        &e.unescape()
+                            .map_err(|err| LogoutParseError::Xml(format!("text decode: {err}")))?,
+                    );
                 }
             }
             Ok(Event::End(e)) => {

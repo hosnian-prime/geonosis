@@ -132,7 +132,7 @@ impl ProviderRegistry {
         let v = guard.by_iface.entry(key).or_default();
         v.push(binding);
         // Stable-sort by descending priority — higher first.
-        v.sort_by(|a, b| b.priority.cmp(&a.priority));
+        v.sort_by_key(|x| std::cmp::Reverse(x.priority));
     }
 
     /// Per `docs/07-spi-wasm.md` §"Provider registry + built-ins-as-
@@ -172,7 +172,7 @@ impl ProviderRegistry {
             return;
         }
         v.push(binding);
-        v.sort_by(|a, b| b.priority.cmp(&a.priority));
+        v.sort_by_key(|x| std::cmp::Reverse(x.priority));
     }
 
     pub fn list(&self, realm: RealmId, interface: &WitInterfaceName) -> Vec<ProviderBinding> {
