@@ -1,0 +1,207 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" fill="none">
+  <defs>
+    <!-- Planet base: dark metallic city-world -->
+    <radialGradient id="c-base" cx="0.40" cy="0.35" r="0.68" fx="0.38" fy="0.32">
+      <stop offset="0%"   stop-color="#8ca8c8"/>
+      <stop offset="20%"  stop-color="#5a7a9e"/>
+      <stop offset="45%"  stop-color="#3a5878"/>
+      <stop offset="70%"  stop-color="#1e3450"/>
+      <stop offset="100%" stop-color="#0a1628"/>
+    </radialGradient>
+
+    <!-- Day-side warm light from the star -->
+    <radialGradient id="c-day" cx="0.28" cy="0.28" r="0.45">
+      <stop offset="0%"   stop-color="#d4c8b0" stop-opacity="0.35"/>
+      <stop offset="50%"  stop-color="#a09080" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#a09080" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Night-side darkness -->
+    <radialGradient id="c-night" cx="0.75" cy="0.70" r="0.50">
+      <stop offset="0%"   stop-color="#040a14" stop-opacity="0"/>
+      <stop offset="40%"  stop-color="#040a14" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#020610" stop-opacity="0.75"/>
+    </radialGradient>
+
+    <!-- Specular highlight -->
+    <radialGradient id="c-spec" cx="0.32" cy="0.26" r="0.22">
+      <stop offset="0%"   stop-color="#e8e4f0" stop-opacity="0.28"/>
+      <stop offset="100%" stop-color="#e8e4f0" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Atmosphere rim -->
+    <radialGradient id="c-atmo" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="80%"  stop-color="#6ca0d0" stop-opacity="0"/>
+      <stop offset="92%"  stop-color="#6ca0d0" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#4a80b0" stop-opacity="0.03"/>
+    </radialGradient>
+
+    <!-- City glow warm -->
+    <radialGradient id="c-glow-w" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%"   stop-color="#f0d890" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#f0d890" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- City glow cool -->
+    <radialGradient id="c-glow-c" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%"   stop-color="#90c8f0" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#90c8f0" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Planet clip -->
+    <clipPath id="c-clip">
+      <circle cx="60" cy="60" r="32"/>
+    </clipPath>
+
+    <!-- Subtle metallic noise -->
+    <filter id="c-noise" x="-5%" y="-5%" width="110%" height="110%">
+      <feTurbulence type="fractalNoise" baseFrequency="1.8" numOctaves="3" seed="13" result="n"/>
+      <feColorMatrix type="saturate" values="0" in="n" result="gn"/>
+      <feBlend in="SourceGraphic" in2="gn" mode="soft-light"/>
+    </filter>
+
+    <!-- Glow filter for city lights -->
+    <filter id="c-light-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="0.6" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- ===== PLANET SPHERE ===== -->
+  <circle cx="60" cy="60" r="32" fill="url(#c-base)" filter="url(#c-noise)"/>
+
+  <!-- ===== CITY GRID PATTERN (day side — subtle metallic lines) ===== -->
+  <g clip-path="url(#c-clip)" opacity="0.12">
+    <!-- Horizontal city bands -->
+    <line x1="28" y1="36" x2="72" y2="36" stroke="#90a8c0" stroke-width="0.3"/>
+    <line x1="30" y1="40" x2="78" y2="40" stroke="#90a8c0" stroke-width="0.25"/>
+    <line x1="30" y1="44" x2="84" y2="44" stroke="#90a8c0" stroke-width="0.3"/>
+    <line x1="29" y1="48" x2="88" y2="48" stroke="#90a8c0" stroke-width="0.25"/>
+    <line x1="28" y1="52" x2="90" y2="52" stroke="#90a8c0" stroke-width="0.3"/>
+    <line x1="28" y1="56" x2="92" y2="56" stroke="#90a8c0" stroke-width="0.25"/>
+    <line x1="28" y1="60" x2="92" y2="60" stroke="#90a8c0" stroke-width="0.3"/>
+    <line x1="29" y1="64" x2="91" y2="64" stroke="#90a8c0" stroke-width="0.25"/>
+    <line x1="29" y1="68" x2="90" y2="68" stroke="#90a8c0" stroke-width="0.3"/>
+    <line x1="30" y1="72" x2="88" y2="72" stroke="#90a8c0" stroke-width="0.25"/>
+    <line x1="31" y1="76" x2="84" y2="76" stroke="#90a8c0" stroke-width="0.3"/>
+    <line x1="33" y1="80" x2="78" y2="80" stroke="#90a8c0" stroke-width="0.25"/>
+    <line x1="36" y1="84" x2="72" y2="84" stroke="#90a8c0" stroke-width="0.3"/>
+    <!-- Vertical city bands (curved to follow sphere) -->
+    <path d="M40,30 Q38,60 40,90" stroke="#90a8c0" stroke-width="0.25" fill="none"/>
+    <path d="M46,29 Q43,60 46,91" stroke="#90a8c0" stroke-width="0.3" fill="none"/>
+    <path d="M52,28 Q49,60 52,92" stroke="#90a8c0" stroke-width="0.25" fill="none"/>
+    <path d="M58,28 Q56,60 58,92" stroke="#90a8c0" stroke-width="0.3" fill="none"/>
+    <path d="M64,28 Q63,60 64,92" stroke="#90a8c0" stroke-width="0.25" fill="none"/>
+    <path d="M70,29 Q70,60 70,91" stroke="#90a8c0" stroke-width="0.3" fill="none"/>
+    <path d="M76,30 Q77,60 76,90" stroke="#90a8c0" stroke-width="0.25" fill="none"/>
+    <path d="M82,33 Q84,60 82,87" stroke="#90a8c0" stroke-width="0.3" fill="none"/>
+  </g>
+
+  <!-- ===== CITY LIGHTS — NIGHT SIDE (right/bottom) ===== -->
+  <g clip-path="url(#c-clip)" filter="url(#c-light-glow)">
+    <!-- Dense city cluster — Senate district area -->
+    <g opacity="0.85">
+      <rect x="70" y="50" width="1.2" height="0.6" fill="#f0d890" rx="0.2"/>
+      <rect x="72" y="49" width="0.8" height="0.5" fill="#ffe8a0" rx="0.2"/>
+      <rect x="74" y="51" width="1.0" height="0.5" fill="#f0d080" rx="0.2"/>
+      <rect x="71" y="53" width="1.4" height="0.6" fill="#ffe8a0" rx="0.2"/>
+      <rect x="73" y="52" width="0.9" height="0.5" fill="#f0d890" rx="0.2"/>
+      <rect x="75" y="50" width="0.7" height="0.4" fill="#e8c878" rx="0.1"/>
+      <rect x="76" y="53" width="1.1" height="0.5" fill="#f0d080" rx="0.2"/>
+      <rect x="69" y="55" width="1.3" height="0.5" fill="#ffe8a0" rx="0.2"/>
+      <rect x="72" y="55" width="0.8" height="0.4" fill="#f0d890" rx="0.2"/>
+      <rect x="74" y="54" width="1.0" height="0.5" fill="#e8c878" rx="0.2"/>
+      <rect x="77" y="55" width="0.6" height="0.4" fill="#f0d080" rx="0.1"/>
+    </g>
+
+    <!-- Secondary clusters -->
+    <g opacity="0.75">
+      <!-- Upper night region -->
+      <rect x="72" y="42" width="0.9" height="0.4" fill="#90c8f0" rx="0.1"/>
+      <rect x="74" y="43" width="1.1" height="0.5" fill="#a0d0f0" rx="0.2"/>
+      <rect x="76" y="41" width="0.7" height="0.4" fill="#90c8f0" rx="0.1"/>
+      <rect x="78" y="44" width="0.8" height="0.4" fill="#80b8e0" rx="0.1"/>
+      <rect x="73" y="45" width="1.0" height="0.5" fill="#a0d0f0" rx="0.2"/>
+
+      <!-- Mid-lower night -->
+      <rect x="68" y="62" width="1.1" height="0.5" fill="#f0d890" rx="0.2"/>
+      <rect x="70" y="63" width="0.8" height="0.4" fill="#ffe8a0" rx="0.1"/>
+      <rect x="72" y="61" width="1.2" height="0.5" fill="#e8c878" rx="0.2"/>
+      <rect x="75" y="62" width="0.7" height="0.4" fill="#f0d080" rx="0.1"/>
+      <rect x="74" y="64" width="0.9" height="0.4" fill="#ffe8a0" rx="0.1"/>
+      <rect x="77" y="63" width="0.6" height="0.3" fill="#f0d890" rx="0.1"/>
+
+      <!-- Lower clusters -->
+      <rect x="65" y="70" width="0.9" height="0.4" fill="#90c8f0" rx="0.1"/>
+      <rect x="67" y="71" width="1.0" height="0.5" fill="#a0d0f0" rx="0.2"/>
+      <rect x="70" y="69" width="0.7" height="0.4" fill="#80b8e0" rx="0.1"/>
+      <rect x="63" y="72" width="0.8" height="0.4" fill="#90c8f0" rx="0.1"/>
+      <rect x="69" y="72" width="0.6" height="0.3" fill="#a0d0f0" rx="0.1"/>
+    </g>
+
+    <!-- Scattered individual lights -->
+    <g opacity="0.6">
+      <circle cx="80" cy="48" r="0.3" fill="#f0d890"/>
+      <circle cx="82" cy="52" r="0.25" fill="#90c8f0"/>
+      <circle cx="79" cy="58" r="0.35" fill="#ffe8a0"/>
+      <circle cx="81" cy="60" r="0.2" fill="#a0d0f0"/>
+      <circle cx="78" cy="66" r="0.3" fill="#f0d080"/>
+      <circle cx="83" cy="56" r="0.2" fill="#90c8f0"/>
+      <circle cx="76" y="68" r="0.25" fill="#e8c878"/>
+      <circle cx="80" cy="64" r="0.2" fill="#ffe8a0"/>
+      <circle cx="84" cy="54" r="0.15" fill="#a0d0f0"/>
+      <circle cx="71" cy="76" r="0.25" fill="#f0d890"/>
+      <circle cx="67" cy="78" r="0.2" fill="#90c8f0"/>
+      <circle cx="62" cy="80" r="0.3" fill="#ffe8a0"/>
+    </g>
+
+    <!-- Traffic lane light streaks -->
+    <g opacity="0.3" stroke-linecap="round">
+      <line x1="70" y1="48" x2="76" y2="50" stroke="#f0d890" stroke-width="0.25"/>
+      <line x1="72" y1="56" x2="78" y2="58" stroke="#90c8f0" stroke-width="0.2"/>
+      <line x1="68" y1="60" x2="74" y2="62" stroke="#f0d080" stroke-width="0.25"/>
+      <line x1="74" y1="66" x2="79" y2="64" stroke="#a0d0f0" stroke-width="0.2"/>
+      <line x1="66" y1="68" x2="72" y2="70" stroke="#f0d890" stroke-width="0.2"/>
+    </g>
+  </g>
+
+  <!-- ===== DAY-SIDE CITY STRUCTURES (subtle raised areas) ===== -->
+  <g clip-path="url(#c-clip)" opacity="0.08">
+    <!-- Skyscraper district silhouettes -->
+    <rect x="38" y="46" width="2" height="6" fill="#b0c8e0" rx="0.3"/>
+    <rect x="41" y="44" width="1.5" height="8" fill="#a0b8d0" rx="0.3"/>
+    <rect x="43" y="47" width="1.8" height="5" fill="#b0c8e0" rx="0.3"/>
+    <rect x="36" y="50" width="2.2" height="4" fill="#a0b8d0" rx="0.3"/>
+    <rect x="45" y="45" width="1.3" height="7" fill="#b0c8e0" rx="0.3"/>
+    <!-- Senate dome hint -->
+    <circle cx="50" cy="54" r="2.5" fill="#c0d0e0" opacity="0.5"/>
+    <rect x="48" y="54" width="4" height="1.5" fill="#b0c8e0" rx="0.3"/>
+    <!-- Jedi Temple spires -->
+    <rect x="44" y="56" width="0.8" height="4" fill="#b0c8e0" rx="0.2"/>
+    <rect x="46" y="55" width="1" height="5.5" fill="#a0b8d0" rx="0.2"/>
+    <rect x="48" y="56" width="0.8" height="4" fill="#b0c8e0" rx="0.2"/>
+    <rect x="45" y="57" width="0.6" height="3" fill="#c0d0e0" rx="0.2"/>
+    <rect x="47" y="54" width="0.6" height="6" fill="#c0d0e0" rx="0.2"/>
+  </g>
+
+  <!-- ===== OVERLAYS ===== -->
+  <!-- Day-side warmth -->
+  <circle cx="60" cy="60" r="32" fill="url(#c-day)"/>
+  <!-- Night-side shadow -->
+  <circle cx="60" cy="60" r="32" fill="url(#c-night)"/>
+  <!-- Specular highlight -->
+  <circle cx="60" cy="60" r="32" fill="url(#c-spec)"/>
+  <!-- Atmosphere rim -->
+  <circle cx="60" cy="60" r="34" fill="url(#c-atmo)"/>
+
+  <!-- ===== ORBITING SHIPS (tiny details) ===== -->
+  <g opacity="0.35">
+    <polygon points="22,48 24,47 24,49" fill="#c0d0e0"/>
+    <polygon points="96,68 98,67 98,69" fill="#c0d0e0"/>
+    <circle cx="18" cy="62" r="0.4" fill="#a0b8d0"/>
+    <circle cx="100" cy="55" r="0.3" fill="#a0b8d0"/>
+  </g>
+</svg>

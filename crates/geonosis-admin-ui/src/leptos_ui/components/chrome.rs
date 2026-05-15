@@ -63,7 +63,7 @@ pub fn Header(
                 </svg>
             </button>
             <a class="gn-brand" href="/admin/realms">
-                <span class="gn-brand__mark">"G"</span>
+                <img class="gn-brand__mark" src="/static/logo.svg" alt="" width="28" height="28"/>
                 <span>"Geonosis"</span>
             </a>
             <div class="gn-header__spacer"></div>

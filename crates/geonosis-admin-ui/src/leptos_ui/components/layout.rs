@@ -41,6 +41,7 @@ pub fn AdminLayout(
                 <meta charset="utf-8"/>
                 <meta name="viewport" content="width=device-width,initial-scale=1"/>
                 <title>{full_title}</title>
+                <link rel="icon" type="image/svg+xml" href="/static/favicon.svg"/>
                 <link rel="stylesheet" href="/static/admin.css"/>
                 // Loaded synchronously: the theme-bootstrap IIFE in the
                 // script applies `data-theme` before <body> renders.

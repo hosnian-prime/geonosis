@@ -39,6 +39,9 @@ pub fn router(state: AdminState) -> Router {
     let public_routes = Router::new()
         .route("/static/admin.css", get(handlers::admin_css))
         .route("/static/admin-chrome.js", get(handlers::admin_chrome_js))
+        .route("/static/logo.svg", get(handlers::admin_logo_svg))
+        .route("/static/favicon.svg", get(handlers::admin_favicon_svg))
+        .route("/favicon.svg", get(handlers::admin_favicon_svg))
         .route(
             "/static/flow-editor.js",
             get(handlers::admin_flow_editor_js),

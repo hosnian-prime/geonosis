@@ -233,14 +233,9 @@ img, svg { display: block; max-width: 100%; }
     width: 28px;
     height: 28px;
     border-radius: var(--gn-radius-sm);
-    background: linear-gradient(135deg, var(--gn-color-accent), #b14fff);
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    color: white;
-    font-weight: var(--gn-font-weight-bold);
-    font-size: 14px;
-    box-shadow: var(--gn-shadow-xs);
+    display: block;
+    object-fit: contain;
+    flex-shrink: 0;
 }
 
 .gn-header__spacer { flex: 1 1 auto; }
@@ -1111,9 +1106,8 @@ h1, h2, h3, h4 { margin: 0; }
     margin-block-end: var(--gn-space-6);
 }
 .gn-login-brand .gn-brand__mark {
-    width: 48px;
-    height: 48px;
-    font-size: 22px;
+    width: 56px;
+    height: 56px;
 }
 .gn-login-title {
     font-size: var(--gn-font-size-xl);

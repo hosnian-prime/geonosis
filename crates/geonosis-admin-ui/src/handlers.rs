@@ -42,6 +42,22 @@ pub async fn admin_chrome_js() -> Response {
         .into_response()
 }
 
+/// `/static/logo.svg` — Geonosis planet logo.
+pub async fn admin_logo_svg() -> Response {
+    let body = crate::assets::AdminAssets::get("logo.svg")
+        .map(|f| f.data.into_owned())
+        .unwrap_or_default();
+    ([(header::CONTENT_TYPE, "image/svg+xml")], body).into_response()
+}
+
+/// `/static/favicon.svg` — browser tab icon.
+pub async fn admin_favicon_svg() -> Response {
+    let body = crate::assets::AdminAssets::get("favicon.svg")
+        .map(|f| f.data.into_owned())
+        .unwrap_or_default();
+    ([(header::CONTENT_TYPE, "image/svg+xml")], body).into_response()
+}
+
 /// `/static/flow-editor.js` — hand-rolled hydrator for the flow editor.
 pub async fn admin_flow_editor_js() -> Response {
     let body = crate::assets::AdminAssets::get("flow-editor.js")
@@ -85,6 +101,7 @@ async fn login_page_inner(
                 meta charset="utf-8";
                 meta name="viewport" content="width=device-width,initial-scale=1";
                 title { "Sign in · Geonosis" }
+                link rel="icon" type="image/svg+xml" href="/static/favicon.svg";
                 link rel="stylesheet" href="/static/admin.css";
                 // Loaded synchronously so the theme bootstrap IIFE in
                 // the script applies `data-theme` before the body
@@ -95,7 +112,7 @@ async fn login_page_inner(
                 div class="gn-login-page" {
                     div class="gn-login-card" {
                         div class="gn-login-brand" {
-                            span class="gn-brand__mark" { "G" }
+                            img class="gn-brand__mark" src="/static/logo.svg" alt="" width="56" height="56";
                             h1 class="gn-login-title" { "Geonosis" }
                         }
                         p class="gn-login-subtitle" { "Sign in to the admin console" }
