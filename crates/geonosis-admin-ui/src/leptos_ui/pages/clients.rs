@@ -170,8 +170,7 @@ pub fn ClientDetailPage(
         .iter()
         .filter(|(key, _)| {
             // Hide the SAML tab unless the client is SAML.
-            !(*key == "saml"
-                && !matches!(client.kind, ClientKind::SamlServiceProvider))
+            *key != "saml" || matches!(client.kind, ClientKind::SamlServiceProvider)
         })
         .map(|(k, label)| {
             TabItem::new(
@@ -460,11 +459,13 @@ fn tab_saml(c: Client) -> impl IntoView {
                 "SAML SP configuration in raw JSON. Inline form lands in v0.2."
             </p>
             <pre class="gn-json">{pretty}</pre>
-        }.into_any()
+        }
+        .into_any()
     } else {
         view! {
             <Alert message="This client is not a SAML SP.".into() kind=AlertKind::Info/>
-        }.into_any()
+        }
+        .into_any()
     }
 }
 
@@ -475,7 +476,8 @@ fn tab_auth_keys(c: Client) -> impl IntoView {
                 title="No client auth keys registered".into()
                 description="Upload a JWK to enable private_key_jwt client authentication.".into()
             />
-        }.into_any()
+        }
+        .into_any()
     } else {
         view! {
             <ListTable headers=vec!["Key (JWKS entry)"]>
@@ -483,7 +485,8 @@ fn tab_auth_keys(c: Client) -> impl IntoView {
                     <tr><td data-label="Key"><code class="gn-mono">{k.clone()}</code></td></tr>
                 }).collect_view()}
             </ListTable>
-        }.into_any()
+        }
+        .into_any()
     }
 }
 

@@ -205,14 +205,25 @@ pub fn OrgDetailPage(
         ]);
     let tab_items = ORG_TABS
         .iter()
-        .map(|(k, l)| TabItem::new(*k, *l, format!("/admin/realms/{realm_slug}/orgs/{alias}?tab={k}")))
+        .map(|(k, l)| {
+            TabItem::new(
+                *k,
+                *l,
+                format!("/admin/realms/{realm_slug}/orgs/{alias}?tab={k}"),
+            )
+        })
         .collect::<Vec<_>>();
     let panel = match active_tab.as_str() {
         "general" => render_general(realm_slug.clone(), data.org.clone()).into_any(),
         "branding" => render_branding(realm_slug.clone(), data.org.clone()).into_any(),
-        "domains" => render_domains(realm_slug.clone(), alias.clone(), data.domains.clone()).into_any(),
+        "domains" => {
+            render_domains(realm_slug.clone(), alias.clone(), data.domains.clone()).into_any()
+        }
         "members" => render_members(data.members.clone()).into_any(),
-        "invitations" => render_invitations(realm_slug.clone(), alias.clone(), data.invitations.clone()).into_any(),
+        "invitations" => {
+            render_invitations(realm_slug.clone(), alias.clone(), data.invitations.clone())
+                .into_any()
+        }
         "roles" => render_org_roles(data.roles.clone()).into_any(),
         "idps" => render_idps(data.idp_bindings.clone()).into_any(),
         "consent" => render_consent(data.consent_policies.clone()).into_any(),
@@ -231,7 +242,11 @@ fn render_general(realm_slug: String, o: Organization) -> impl IntoView {
     let action = format!("/admin/realms/{realm_slug}/orgs/{}/general", o.alias);
     let desc = o.description.clone().unwrap_or_default();
     let default_idp = o.default_idp_alias.clone().unwrap_or_default();
-    let redirect = o.redirect_url.as_ref().map(|u| u.to_string()).unwrap_or_default();
+    let redirect = o
+        .redirect_url
+        .as_ref()
+        .map(|u| u.to_string())
+        .unwrap_or_default();
     view! {
         <form method="post" action=action class="gn-form">
             <Field label="Alias".into() name="alias".into()>
@@ -260,7 +275,11 @@ fn render_general(realm_slug: String, o: Organization) -> impl IntoView {
 fn render_branding(realm_slug: String, o: Organization) -> impl IntoView {
     let action = format!("/admin/realms/{realm_slug}/orgs/{}/branding", o.alias);
     let b: &OrganizationBranding = &o.branding;
-    let logo = b.logo_url.as_ref().map(|u| u.to_string()).unwrap_or_default();
+    let logo = b
+        .logo_url
+        .as_ref()
+        .map(|u| u.to_string())
+        .unwrap_or_default();
     let color = b.primary_color.clone().unwrap_or_default();
     let theme = b.theme.clone().unwrap_or_default();
     view! {
@@ -288,7 +307,8 @@ fn render_domains(realm_slug: String, alias: String, rows: Vec<OrgDomainRow>) ->
         view! {
             <EmptyState title="No domains".into()
                 description="Add a domain to enable email-based auto-join.".into()/>
-        }.into_any()
+        }
+        .into_any()
     } else {
         let realm = realm_slug.to_string();
         let alias_owned = alias.to_string();
@@ -345,7 +365,8 @@ fn render_members(rows: Vec<OrgMemberRow>) -> impl IntoView {
         view! {
             <EmptyState title="No members yet".into()
                 description="Invite members from the Invitations tab.".into()/>
-        }.into_any()
+        }
+        .into_any()
     } else {
         view! {
             <ListTable headers=vec!["User", "Email", "Roles", "State", "Joined"]>
@@ -430,7 +451,7 @@ fn render_org_roles(rows: Vec<OrgRoleRow>) -> impl IntoView {
         view! {
             <ListTable headers=vec!["Name", "Description", "Permissions", "Built-in"]>
                 {rows.iter().map(|r| {
-                    let perms = r.permissions.iter().map(|p| permission_label(p)).collect::<Vec<_>>().join(", ");
+                    let perms = r.permissions.iter().map(permission_label).collect::<Vec<_>>().join(", ");
                     let badge = if r.built_in {
                         view! { <Badge label="built-in".into() kind=BadgeKind::Info/> }.into_any()
                     } else {
@@ -466,7 +487,8 @@ fn render_idps(rows: Vec<OrgIdpRow>) -> impl IntoView {
                     </tr>
                 }).collect_view()}
             </ListTable>
-        }.into_any()
+        }
+        .into_any()
     }
 }
 

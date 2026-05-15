@@ -63,7 +63,11 @@ pub fn Textarea(
     #[prop(default = 4)] rows: u32,
     #[prop(default = false)] code: bool,
 ) -> impl IntoView {
-    let class = if code { "gn-textarea gn-textarea--code" } else { "gn-textarea" };
+    let class = if code {
+        "gn-textarea gn-textarea--code"
+    } else {
+        "gn-textarea"
+    };
     view! {
         <textarea
             class=class

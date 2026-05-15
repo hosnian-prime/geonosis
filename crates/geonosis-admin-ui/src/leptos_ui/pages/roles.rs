@@ -154,7 +154,13 @@ pub fn RoleDetailPage(
         ]);
     let tab_items = ROLE_TABS
         .iter()
-        .map(|(k, l)| TabItem::new(*k, *l, format!("/admin/realms/{realm_slug}/roles/{name}?tab={k}")))
+        .map(|(k, l)| {
+            TabItem::new(
+                *k,
+                *l,
+                format!("/admin/realms/{realm_slug}/roles/{name}?tab={k}"),
+            )
+        })
         .collect::<Vec<_>>();
     let panel = match active_tab.as_str() {
         "general" => render_general(realm_slug.clone(), data.clone()).into_any(),
@@ -207,7 +213,8 @@ fn render_composites(d: RoleDetailData) -> impl IntoView {
                     <tr><td data-label="Role"><code>{r.clone()}</code></td></tr>
                 }).collect_view()}
             </ListTable>
-        }.into_any()
+        }
+        .into_any()
     };
     let client_section = if d.composites_client.is_empty() {
         view! { <p class="gn-text-muted">"None."</p> }.into_any()
@@ -221,7 +228,8 @@ fn render_composites(d: RoleDetailData) -> impl IntoView {
                     </tr>
                 }).collect_view()}
             </ListTable>
-        }.into_any()
+        }
+        .into_any()
     };
     view! {
         <div class="gn-stack">
@@ -250,7 +258,8 @@ fn render_users(users: Vec<String>) -> impl IntoView {
                     <tr><td data-label="User"><code>{u.clone()}</code></td></tr>
                 }).collect_view()}
             </ListTable>
-        }.into_any()
+        }
+        .into_any()
     }
 }
 
@@ -267,6 +276,7 @@ fn render_groups(groups: Vec<String>) -> impl IntoView {
                     <tr><td data-label="Group"><code>{g.clone()}</code></td></tr>
                 }).collect_view()}
             </ListTable>
-        }.into_any()
+        }
+        .into_any()
     }
 }

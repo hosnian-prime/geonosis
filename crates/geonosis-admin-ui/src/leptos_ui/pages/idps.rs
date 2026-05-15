@@ -83,7 +83,10 @@ pub fn IdpCreatePage(
         .with_crumbs(vec![
             Crumb::link("Realms", "/admin/realms"),
             Crumb::link(realm_slug.clone(), format!("/admin/realms/{realm_slug}")),
-            Crumb::link("Identity providers", format!("/admin/realms/{realm_slug}/idps")),
+            Crumb::link(
+                "Identity providers",
+                format!("/admin/realms/{realm_slug}/idps"),
+            ),
             Crumb::current("Add"),
         ]);
     let action = format!("/admin/realms/{realm_slug}/idps");
@@ -140,12 +143,21 @@ pub fn IdpDetailPage(
         .with_crumbs(vec![
             Crumb::link("Realms", "/admin/realms"),
             Crumb::link(realm_slug.clone(), format!("/admin/realms/{realm_slug}")),
-            Crumb::link("Identity providers", format!("/admin/realms/{realm_slug}/idps")),
+            Crumb::link(
+                "Identity providers",
+                format!("/admin/realms/{realm_slug}/idps"),
+            ),
             Crumb::current(alias.clone()),
         ]);
     let tab_items = IDP_TABS
         .iter()
-        .map(|(k, l)| TabItem::new(*k, *l, format!("/admin/realms/{realm_slug}/idps/{alias}?tab={k}")))
+        .map(|(k, l)| {
+            TabItem::new(
+                *k,
+                *l,
+                format!("/admin/realms/{realm_slug}/idps/{alias}?tab={k}"),
+            )
+        })
         .collect::<Vec<_>>();
     let panel = match active_tab.as_str() {
         "general" => render_general(realm_slug.clone(), idp.clone()).into_any(),
@@ -217,7 +229,8 @@ fn render_config(i: IdentityProvider) -> impl IntoView {
                     </p>
                     <pre class="gn-json">{body}</pre>
                 </div>
-            }.into_any()
+            }
+            .into_any()
         }
     }
 }

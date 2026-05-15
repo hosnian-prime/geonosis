@@ -8,9 +8,7 @@ use crate::leptos_ui::components::form::{ActionBar, Field, TextInput};
 use crate::leptos_ui::components::list_table::ListTable;
 use crate::leptos_ui::components::page_header::PageHeader;
 use crate::leptos_ui::components::tabs::{TabBar, TabItem};
-use crate::leptos_ui::components::widgets::{
-    Alert, AlertKind, ButtonKind, EmptyState, LinkButton,
-};
+use crate::leptos_ui::components::widgets::{Alert, AlertKind, ButtonKind, EmptyState, LinkButton};
 
 #[derive(Clone, Debug)]
 pub struct GroupRow {
@@ -150,14 +148,21 @@ pub fn GroupDetailPage(
         ]);
     let tab_items = GROUP_TABS
         .iter()
-        .map(|(k, l)| TabItem::new(*k, *l, format!("/admin/realms/{realm_slug}/groups/{id}?tab={k}")))
+        .map(|(k, l)| {
+            TabItem::new(
+                *k,
+                *l,
+                format!("/admin/realms/{realm_slug}/groups/{id}?tab={k}"),
+            )
+        })
         .collect::<Vec<_>>();
     let panel = match active_tab.as_str() {
         "general" => render_general(realm_slug.clone(), data.clone()).into_any(),
         "attributes" => view! {
             <EmptyState title="No attributes".into()
                 description="Attach key-value attributes via the admin API.".into()/>
-        }.into_any(),
+        }
+        .into_any(),
         "roles" => render_roles(data.realm_roles.clone()).into_any(),
         "members" => render_members(data.members.clone()).into_any(),
         _ => view! { <Alert message="Unknown tab.".into() kind=AlertKind::Warning/> }.into_any(),
@@ -193,7 +198,8 @@ fn render_roles(roles: Vec<String>) -> impl IntoView {
         view! {
             <EmptyState title="No roles assigned".into()
                 description="Assign roles to apply them to all current and future members.".into()/>
-        }.into_any()
+        }
+        .into_any()
     } else {
         view! {
             <ListTable headers=vec!["Role"]>
@@ -201,7 +207,8 @@ fn render_roles(roles: Vec<String>) -> impl IntoView {
                     <tr><td data-label="Role"><code>{r.clone()}</code></td></tr>
                 }).collect_view()}
             </ListTable>
-        }.into_any()
+        }
+        .into_any()
     }
 }
 
@@ -210,7 +217,8 @@ fn render_members(members: Vec<String>) -> impl IntoView {
         view! {
             <EmptyState title="No members".into()
                 description="Add users to this group from the user detail page.".into()/>
-        }.into_any()
+        }
+        .into_any()
     } else {
         view! {
             <ListTable headers=vec!["User"]>
@@ -218,6 +226,7 @@ fn render_members(members: Vec<String>) -> impl IntoView {
                     <tr><td data-label="User"><code>{m.clone()}</code></td></tr>
                 }).collect_view()}
             </ListTable>
-        }.into_any()
+        }
+        .into_any()
     }
 }

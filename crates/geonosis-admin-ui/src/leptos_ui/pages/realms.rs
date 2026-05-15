@@ -75,7 +75,10 @@ pub fn RealmsPage(realms: Vec<RealmRow>, ctx: PageContext) -> impl IntoView {
 
 /// `/admin/realms/new` — minimal create form.
 #[component]
-pub fn RealmCreatePage(ctx: PageContext, #[prop(default = None)] error: Option<String>) -> impl IntoView {
+pub fn RealmCreatePage(
+    ctx: PageContext,
+    #[prop(default = None)] error: Option<String>,
+) -> impl IntoView {
     use crate::leptos_ui::components::form::{ActionBar, Field, TextInput, Toggle};
     use crate::leptos_ui::components::widgets::{Alert, AlertKind, LinkButton};
     let ctx = ctx

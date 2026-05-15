@@ -9,9 +9,7 @@ use geonosis_core::User;
 
 use crate::leptos_ui::app::{Page, PageContext};
 use crate::leptos_ui::components::breadcrumb::Crumb;
-use crate::leptos_ui::components::form::{
-    ActionBar, Field, TextInput, Toggle,
-};
+use crate::leptos_ui::components::form::{ActionBar, Field, TextInput, Toggle};
 use crate::leptos_ui::components::list_table::ListTable;
 use crate::leptos_ui::components::page_header::PageHeader;
 use crate::leptos_ui::components::tabs::{TabBar, TabItem};
@@ -205,7 +203,9 @@ pub fn UserDetailPage(
         "roles" => render_roles(data.roles.clone()).into_any(),
         "groups" => render_groups(data.groups.clone()).into_any(),
         "orgs" => render_orgs(data.orgs.clone()).into_any(),
-        "sessions" => render_sessions(realm_slug.clone(), username.clone(), data.sessions.clone()).into_any(),
+        "sessions" => {
+            render_sessions(realm_slug.clone(), username.clone(), data.sessions.clone()).into_any()
+        }
         "consents" => render_consents().into_any(),
         _ => view! { <Alert message="Unknown tab.".into() kind=AlertKind::Warning/> }.into_any(),
     };
@@ -224,8 +224,16 @@ pub fn UserDetailPage(
 fn render_general(realm_slug: String, u: User) -> impl IntoView {
     let username = u.username.clone();
     let email = u.email.clone().unwrap_or_default();
-    let first = u.name.as_ref().and_then(|n| n.given.clone()).unwrap_or_default();
-    let last = u.name.as_ref().and_then(|n| n.family.clone()).unwrap_or_default();
+    let first = u
+        .name
+        .as_ref()
+        .and_then(|n| n.given.clone())
+        .unwrap_or_default();
+    let last = u
+        .name
+        .as_ref()
+        .and_then(|n| n.family.clone())
+        .unwrap_or_default();
     let action = format!("/admin/realms/{realm_slug}/users/{username}/general");
     let required_actions_csv = u
         .required_actions
@@ -272,7 +280,8 @@ fn render_attributes(u: User) -> impl IntoView {
                 title="No custom attributes".into()
                 description="Attach typed key-value attributes via the admin API or the CLI.".into()
             />
-        }.into_any();
+        }
+        .into_any();
     }
     view! {
         <ListTable headers=vec!["Key", "Value", "Type"]>
@@ -357,7 +366,8 @@ fn render_roles(roles: Vec<String>) -> impl IntoView {
                 title="No roles assigned".into()
                 description="Assign realm or client roles to grant this user permissions.".into()
             />
-        }.into_any()
+        }
+        .into_any()
     } else {
         view! {
             <ListTable headers=vec!["Role"]>
@@ -365,7 +375,8 @@ fn render_roles(roles: Vec<String>) -> impl IntoView {
                     <tr><td data-label="Role"><code>{r.clone()}</code></td></tr>
                 }).collect_view()}
             </ListTable>
-        }.into_any()
+        }
+        .into_any()
     }
 }
 
@@ -376,7 +387,8 @@ fn render_groups(groups: Vec<String>) -> impl IntoView {
                 title="Not in any groups".into()
                 description="Adding a user to a group inherits the group's role assignments.".into()
             />
-        }.into_any()
+        }
+        .into_any()
     } else {
         view! {
             <ListTable headers=vec!["Group path"]>
@@ -384,7 +396,8 @@ fn render_groups(groups: Vec<String>) -> impl IntoView {
                     <tr><td data-label="Group"><code>{g.clone()}</code></td></tr>
                 }).collect_view()}
             </ListTable>
-        }.into_any()
+        }
+        .into_any()
     }
 }
 
@@ -403,18 +416,24 @@ fn render_orgs(orgs: Vec<String>) -> impl IntoView {
                     <tr><td data-label="Org"><code>{o.clone()}</code></td></tr>
                 }).collect_view()}
             </ListTable>
-        }.into_any()
+        }
+        .into_any()
     }
 }
 
-fn render_sessions(realm_slug: String, username: String, sessions: Vec<UserSessionRow>) -> impl IntoView {
+fn render_sessions(
+    realm_slug: String,
+    username: String,
+    sessions: Vec<UserSessionRow>,
+) -> impl IntoView {
     if sessions.is_empty() {
         return view! {
             <EmptyState
                 title="No active sessions".into()
                 description="The user is not signed in anywhere right now.".into()
             />
-        }.into_any();
+        }
+        .into_any();
     }
     let realm = realm_slug.to_string();
     let user = username.to_string();
