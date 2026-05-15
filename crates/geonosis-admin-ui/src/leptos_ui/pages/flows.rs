@@ -126,6 +126,12 @@ pub fn FlowEditPage(
                     <button type="submit" class="gn-btn gn-btn--primary">"Save JSON"</button>
                 </div>
             </form>
+            <script src="/static/elk.min.js" defer></script>
+            <script src="/static/flow-viewport.js" defer></script>
+            <script src="/static/flow-layout.js" defer></script>
+            <script src="/static/flow-crud.js" defer></script>
+            <script src="/static/flow-panels.js" defer></script>
+            <script src="/static/flow-dryrun.js" defer></script>
             <script src="/static/flow-editor.js" defer></script>
         </Page>
     }

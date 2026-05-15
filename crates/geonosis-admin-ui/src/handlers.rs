@@ -58,9 +58,9 @@ pub async fn admin_favicon_svg() -> Response {
     ([(header::CONTENT_TYPE, "image/svg+xml")], body).into_response()
 }
 
-/// `/static/flow-editor.js` — hand-rolled hydrator for the flow editor.
-pub async fn admin_flow_editor_js() -> Response {
-    let body = crate::assets::AdminAssets::get("flow-editor.js")
+/// Serve an embedded JS asset with the correct content-type.
+fn js_asset(name: &str) -> Response {
+    let body = crate::assets::AdminAssets::get(name)
         .map(|f| f.data.into_owned())
         .unwrap_or_default();
     (
@@ -71,6 +71,41 @@ pub async fn admin_flow_editor_js() -> Response {
         body,
     )
         .into_response()
+}
+
+/// `/static/flow-editor.js` — orchestrator for the flow editor.
+pub async fn admin_flow_editor_js() -> Response {
+    js_asset("flow-editor.js")
+}
+
+/// `/static/elk.min.js` — vendored ELK graph layout engine.
+pub async fn admin_elk_js() -> Response {
+    js_asset("elk.min.js")
+}
+
+/// `/static/flow-viewport.js` — zoom, pan, minimap.
+pub async fn admin_flow_viewport_js() -> Response {
+    js_asset("flow-viewport.js")
+}
+
+/// `/static/flow-layout.js` — ELK layout integration.
+pub async fn admin_flow_layout_js() -> Response {
+    js_asset("flow-layout.js")
+}
+
+/// `/static/flow-crud.js` — node/edge CRUD operations.
+pub async fn admin_flow_crud_js() -> Response {
+    js_asset("flow-crud.js")
+}
+
+/// `/static/flow-panels.js` — node/edge configuration panels.
+pub async fn admin_flow_panels_js() -> Response {
+    js_asset("flow-panels.js")
+}
+
+/// `/static/flow-dryrun.js` — dry-run integration.
+pub async fn admin_flow_dryrun_js() -> Response {
+    js_asset("flow-dryrun.js")
 }
 
 // ---------------------------------------------------------------------

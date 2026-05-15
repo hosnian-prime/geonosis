@@ -46,6 +46,24 @@ pub fn router(state: AdminState) -> Router {
             "/static/flow-editor.js",
             get(handlers::admin_flow_editor_js),
         )
+        .route("/static/elk.min.js", get(handlers::admin_elk_js))
+        .route(
+            "/static/flow-viewport.js",
+            get(handlers::admin_flow_viewport_js),
+        )
+        .route(
+            "/static/flow-layout.js",
+            get(handlers::admin_flow_layout_js),
+        )
+        .route("/static/flow-crud.js", get(handlers::admin_flow_crud_js))
+        .route(
+            "/static/flow-panels.js",
+            get(handlers::admin_flow_panels_js),
+        )
+        .route(
+            "/static/flow-dryrun.js",
+            get(handlers::admin_flow_dryrun_js),
+        )
         .route(
             "/admin/login",
             get(handlers::login_page).post(handlers::login_submit),

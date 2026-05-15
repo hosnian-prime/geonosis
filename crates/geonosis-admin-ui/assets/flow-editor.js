@@ -1,230 +1,298 @@
-// Geonosis flow editor — hand-rolled vanilla-JS hydrator.
+// Geonosis flow editor — orchestrator.
 //
-// Per `docs/08-admin-ui.md` §"Flow editor (special case)" the editor is
-// the only admin page that requires extensive client-side state. We
-// deliberately do not pull in a graph-editor library: the node set is
-// small + tightly typed, the SVG is server-rendered by the Leptos
-// `FlowCanvas` component, and this script attaches the interactive
-// behaviour (drag-to-reposition + save) on top of that SSR tree.
+// This is the entry point for the flow editor. It initializes shared
+// state and delegates to modular JS files loaded before it:
 //
-// Two render targets coexist during the v0.1 → v0.1.x migration:
+//   elk.min.js       — ELK graph layout engine (vendored)
+//   flow-viewport.js — zoom / pan / minimap
+//   flow-layout.js   — ELK layout integration
+//   flow-crud.js     — node / edge CRUD + selection
+//   flow-panels.js   — configuration side panel
+//   flow-dryrun.js   — dry-run integration
 //
-//   1. `/admin-next/realms/:slug/flows/:alias` — Leptos page that
-//      ships the full SVG inline plus an embedded JSON island via
-//      `<script type="application/json" data-flow-initial>`. We
-//      attach drag handlers + a save button that POSTs the patched
-//      JSON back through the existing form endpoint.
-//
-//   2. `/admin/realms/:slug/flows` — legacy Maud preview page that
-//      fetches the flow from the REST API and draws a read-only
-//      grid. Kept for compatibility while operators migrate; the
-//      legacy code path activates only when the hydrator finds the
-//      Maud-specific `data-realm` + `data-alias` attributes without
-//      the Leptos `data-flow-initial` script tag.
-//
-// No frameworks, no dependencies. Targets evergreen browsers (the
-// only baseline operators run an admin UI on).
+// All modules register on `window.GnFlow`. This file coordinates
+// initialization and owns the drag + save + view-toggle logic that
+// was previously the entire flow-editor.js.
 
 (function () {
     "use strict";
 
-    const root = document.getElementById("gn-flow-canvas");
+    var GnFlow = window.GnFlow || {};
+    window.GnFlow = GnFlow;
+
+    var root = document.getElementById("gn-flow-canvas");
     if (!root) return;
 
-    const initialScript = root.querySelector('script[data-flow-initial="true"]');
-    if (initialScript) {
-        hydrateLeptosCanvas(root, initialScript);
-    } else if (root.dataset.realm && root.dataset.alias) {
-        hydrateLegacyPreview(root);
+    var initialScript = root.querySelector('script[data-flow-initial="true"]');
+    if (!initialScript) return;
+
+    var flow = safeParseJson(initialScript.textContent);
+    if (!flow || !Array.isArray(flow.nodes)) {
+        status(root, "Embedded flow JSON is malformed; switch to JSON view.", true);
+        return;
     }
 
-    // ----- Leptos canvas: drag + save -------------------------------
+    // ---- Shared state -------------------------------------------------
 
-    function hydrateLeptosCanvas(root, initialScript) {
-        const flow = safeParseJson(initialScript.textContent);
-        if (!flow || !Array.isArray(flow.nodes)) {
-            status(root, "Embedded flow JSON is malformed; switch to JSON view.", true);
-            return;
-        }
+    var state = {
+        root: root,
+        flow: flow,
+        svg: root.querySelector("svg.gn-flow-canvas__svg"),
+        view: "canvas",
+        dragging: null,
+        saveAction: root.dataset.saveAction || "",
+        dryrunAction: root.dataset.dryrunAction || "",
+        viewW: parseFloat(root.dataset.viewW) || 1920,
+        viewH: parseFloat(root.dataset.viewH) || 1080,
+        boxW: parseFloat(root.dataset.boxW) || 180,
+        boxH: parseFloat(root.dataset.boxH) || 64,
+        portR: parseFloat(root.dataset.portR) || 6,
+        // Selection state
+        selected: null,
+        // Viewport (managed by flow-viewport.js)
+        viewport: { tx: 0, ty: 0, scale: 1 },
+        // Dry-run (managed by flow-dryrun.js)
+        dryRunActive: false,
+        dryRunOverlay: null,
+        pinnedOutcomes: {},
+        // DOM indexes
+        nodeGroups: new Map(),
+        edgeGroups: new Map(),
+    };
+    if (!state.svg) return;
 
-        const state = {
-            root: root,
-            flow: flow,
-            svg: root.querySelector("svg.gn-flow-canvas__svg"),
-            view: "canvas",
-            dragging: null,
-            saveAction: root.dataset.saveAction || "",
-            viewW: parseFloat(root.dataset.viewW) || 960,
-            viewH: parseFloat(root.dataset.viewH) || 560,
-            boxW: parseFloat(root.dataset.boxW) || 168,
-            boxH: parseFloat(root.dataset.boxH) || 56,
-        };
-        if (!state.svg) return;
+    // Index server-rendered node groups by node ID.
+    state.svg.querySelectorAll('[data-flow-node="true"]').forEach(function (g) {
+        var id = g.dataset.nodeId;
+        if (id) state.nodeGroups.set(id, g);
+    });
 
-        // Index server-rendered node groups by node id so drag handlers
-        // can mutate `transform` in-place without re-rendering.
-        state.nodeGroups = new Map();
-        state.svg.querySelectorAll('[data-flow-node="true"]').forEach((g) => {
-            const id = g.dataset.nodeId;
-            if (id) state.nodeGroups.set(id, g);
-        });
-        // Edge paths are keyed by `from->to` so a node drag can re-route
-        // every adjacent edge in O(deg(node)).
-        state.edgeGroups = new Map();
-        state.svg.querySelectorAll('[data-flow-edge="true"]').forEach((g) => {
-            const key = edgeKey(g.dataset.from, g.dataset.to);
-            if (!state.edgeGroups.has(key)) state.edgeGroups.set(key, []);
-            state.edgeGroups.get(key).push(g);
-        });
+    // Index edge groups by "from->to" key.
+    state.svg.querySelectorAll('[data-flow-edge="true"]').forEach(function (g) {
+        var key = edgeKey(g.dataset.from, g.dataset.to);
+        if (!state.edgeGroups.has(key)) state.edgeGroups.set(key, []);
+        state.edgeGroups.get(key).push(g);
+    });
 
-        attachDragHandlers(state);
-        attachToolbar(state);
-        attachJsonSync(state);
+    // ---- Initialize modules -------------------------------------------
 
-        status(state.root, "");
+    if (GnFlow.initViewport) GnFlow.initViewport(state);
+    if (GnFlow.initCrud) GnFlow.initCrud(state);
+    if (GnFlow.initPanels) GnFlow.initPanels(state);
+    if (GnFlow.initDryRun) GnFlow.initDryRun(state);
+
+    // Run initial auto-layout if nodes have no persisted positions.
+    var hasLayout = state.flow.nodes.some(function (n) { return n.layout; });
+    if (!hasLayout && GnFlow.autoLayout) {
+        GnFlow.autoLayout(state);
     }
 
-    function attachDragHandlers(state) {
-        const handleDown = (ev) => {
-            const target = ev.target.closest('[data-flow-node="true"]');
+    attachDragHandlers(state);
+    attachToolbar(state);
+    attachJsonSync(state);
+
+    status(state.root, "");
+
+    // ---- Node drag ----------------------------------------------------
+
+    function attachDragHandlers(st) {
+        var handleDown = function (ev) {
+            // Don't drag if clicking a port (edge creation handles that).
+            if (ev.target.closest("[data-port]")) return;
+            var target = ev.target.closest('[data-flow-node="true"]');
             if (!target) return;
-            const id = target.dataset.nodeId;
-            const node = state.flow.nodes.find((n) => n.id === id);
+            var id = target.dataset.nodeId;
+            var node = st.flow.nodes.find(function (n) { return n.id === id; });
             if (!node) return;
             ev.preventDefault();
-            const start = svgPoint(state.svg, ev);
-            const layout = node.layout || readTransform(target);
-            state.dragging = {
+            var start = svgPoint(st.svg, ev);
+            var layout = node.layout || readTransform(target);
+            st.dragging = {
                 id: id,
                 target: target,
                 offsetX: start.x - layout.x,
                 offsetY: start.y - layout.y,
             };
             target.classList.add("gn-flow-node--dragging");
-            // Capture moves on the window so a fast pointer release
-            // outside the SVG still ends the drag cleanly.
             window.addEventListener("pointermove", handleMove);
             window.addEventListener("pointerup", handleUp, { once: true });
         };
-        const handleMove = (ev) => {
-            const d = state.dragging;
+
+        var handleMove = function (ev) {
+            var d = st.dragging;
             if (!d) return;
             ev.preventDefault();
-            const p = svgPoint(state.svg, ev);
-            let x = clamp(p.x - d.offsetX, 0, state.viewW - state.boxW);
-            let y = clamp(p.y - d.offsetY, 0, state.viewH - state.boxH);
-            d.target.setAttribute("transform", `translate(${x}, ${y})`);
-            const node = state.flow.nodes.find((n) => n.id === d.id);
+            var p = svgPoint(st.svg, ev);
+            var x = clamp(p.x - d.offsetX, 0, st.viewW - st.boxW);
+            var y = clamp(p.y - d.offsetY, 0, st.viewH - st.boxH);
+            d.target.setAttribute("transform", "translate(" + x + ", " + y + ")");
+            var node = st.flow.nodes.find(function (n) { return n.id === d.id; });
             if (node) node.layout = { x: x, y: y };
-            reroute(state, d.id);
+            reroute(st, d.id);
         };
-        const handleUp = () => {
-            const d = state.dragging;
+
+        var handleUp = function () {
+            var d = st.dragging;
             if (!d) return;
             d.target.classList.remove("gn-flow-node--dragging");
-            state.dragging = null;
+            st.dragging = null;
             window.removeEventListener("pointermove", handleMove);
-            mirrorToTextarea(state);
+            mirrorToTextarea(st);
+            if (GnFlow.updateMinimap) GnFlow.updateMinimap(st);
         };
-        state.svg.addEventListener("pointerdown", handleDown);
+
+        st.svg.addEventListener("pointerdown", handleDown);
     }
 
-    function attachToolbar(state) {
-        state.root.querySelectorAll("[data-flow-view]").forEach((btn) => {
-            btn.addEventListener("click", () => {
-                const view = btn.dataset.flowView;
-                if (view === state.view) return;
-                state.view = view;
-                state.root.querySelectorAll("[data-flow-view]").forEach((b) => {
-                    b.setAttribute(
-                        "aria-pressed",
-                        b.dataset.flowView === view ? "true" : "false"
-                    );
+    // ---- Toolbar ------------------------------------------------------
+
+    function attachToolbar(st) {
+        // Canvas / JSON view toggle
+        st.root.querySelectorAll("[data-flow-view]").forEach(function (btn) {
+            btn.addEventListener("click", function () {
+                var view = btn.dataset.flowView;
+                if (view === st.view) return;
+                st.view = view;
+                st.root.querySelectorAll("[data-flow-view]").forEach(function (b) {
+                    b.setAttribute("aria-pressed", b.dataset.flowView === view ? "true" : "false");
                 });
-                const form = document.getElementById("gn-flow-json-form");
+                var viewport = st.root.querySelector(".gn-flow-canvas__viewport");
+                var form = document.getElementById("gn-flow-json-form");
                 if (view === "canvas") {
-                    state.svg.style.display = "";
+                    if (viewport) viewport.style.display = "";
                     if (form) form.classList.remove("gn-flow-json--active");
                 } else {
-                    state.svg.style.display = "none";
+                    if (viewport) viewport.style.display = "none";
                     if (form) form.classList.add("gn-flow-json--active");
                 }
             });
         });
-        const saveBtn = state.root.querySelector('[data-flow-action="save"]');
+
+        // Save button
+        var saveBtn = st.root.querySelector('[data-flow-action="save"]');
         if (saveBtn) {
-            saveBtn.addEventListener("click", () => save(state, saveBtn));
+            saveBtn.addEventListener("click", function () { save(st, saveBtn); });
+        }
+
+        // Auto Layout button
+        var layoutBtn = st.root.querySelector('[data-flow-action="auto-layout"]');
+        if (layoutBtn) {
+            layoutBtn.addEventListener("click", function () {
+                if (GnFlow.autoLayout) GnFlow.autoLayout(st);
+            });
+        }
+
+        // Zoom buttons
+        var zoomIn = st.root.querySelector('[data-flow-action="zoom-in"]');
+        var zoomOut = st.root.querySelector('[data-flow-action="zoom-out"]');
+        var zoomFit = st.root.querySelector('[data-flow-action="zoom-fit"]');
+        if (zoomIn && GnFlow.zoomIn) zoomIn.addEventListener("click", function () { GnFlow.zoomIn(st); });
+        if (zoomOut && GnFlow.zoomOut) zoomOut.addEventListener("click", function () { GnFlow.zoomOut(st); });
+        if (zoomFit && GnFlow.fitToView) zoomFit.addEventListener("click", function () { GnFlow.fitToView(st); });
+
+        // Dry-run toggle
+        var dryRunBtn = st.root.querySelector('[data-flow-action="dry-run"]');
+        if (dryRunBtn && GnFlow.toggleDryRun) {
+            dryRunBtn.addEventListener("click", function () {
+                GnFlow.toggleDryRun(st);
+                dryRunBtn.setAttribute("aria-pressed", st.dryRunActive ? "true" : "false");
+            });
+        }
+
+        // Add Node dropdown
+        var addNodeBtn = st.root.querySelector('[data-flow-action="add-node"]');
+        var nodeMenu = st.root.querySelector("[data-flow-node-menu]");
+        if (addNodeBtn && nodeMenu) {
+            addNodeBtn.addEventListener("click", function (ev) {
+                ev.stopPropagation();
+                nodeMenu.hidden = !nodeMenu.hidden;
+            });
+            nodeMenu.querySelectorAll("[data-node-kind]").forEach(function (item) {
+                item.addEventListener("click", function () {
+                    nodeMenu.hidden = true;
+                    if (GnFlow.addNode) GnFlow.addNode(st, item.dataset.nodeKind);
+                });
+            });
+            // Close menu on outside click
+            document.addEventListener("click", function () { nodeMenu.hidden = true; });
         }
     }
 
-    /// Keep the JSON textarea in sync with canvas edits so a switch to
-    /// JSON view always shows the freshest graph + "Save JSON" never
-    /// regresses positions an operator just dragged.
-    function attachJsonSync(state) {
-        mirrorToTextarea(state);
-        const textarea = document.getElementById("gn-flow-json-textarea");
+    // ---- JSON sync ----------------------------------------------------
+
+    function attachJsonSync(st) {
+        mirrorToTextarea(st);
+        var textarea = document.getElementById("gn-flow-json-textarea");
         if (!textarea) return;
-        textarea.addEventListener("input", () => {
-            const parsed = safeParseJson(textarea.value);
+        textarea.addEventListener("input", function () {
+            var parsed = safeParseJson(textarea.value);
             if (!parsed) return;
-            state.flow = parsed;
+            st.flow = parsed;
             // Re-stamp node positions from the new JSON.
-            state.flow.nodes.forEach((n) => {
-                const g = state.nodeGroups.get(n.id);
+            st.flow.nodes.forEach(function (n) {
+                var g = st.nodeGroups.get(n.id);
                 if (!g) return;
-                const l = n.layout || readTransform(g);
-                g.setAttribute("transform", `translate(${l.x}, ${l.y})`);
+                var l = n.layout || readTransform(g);
+                g.setAttribute("transform", "translate(" + l.x + ", " + l.y + ")");
             });
-            // Best-effort edge re-route after a JSON edit.
-            state.edgeGroups.forEach((_groups, key) => {
-                const [from, to] = key.split("->");
-                rerouteEdge(state, from, to);
-            });
-        });
-    }
-
-    function mirrorToTextarea(state) {
-        const textarea = document.getElementById("gn-flow-json-textarea");
-        if (!textarea) return;
-        try {
-            textarea.value = JSON.stringify(state.flow, null, 2);
-        } catch (e) {
-            // Leave the textarea as-is; the operator can save manually.
-        }
-    }
-
-    function reroute(state, nodeId) {
-        state.edgeGroups.forEach((_groups, key) => {
-            const [from, to] = key.split("->");
-            if (from === nodeId || to === nodeId) {
-                rerouteEdge(state, from, to);
+            // Re-route all edges.
+            if (GnFlow.rerouteAllEdges) {
+                GnFlow.rerouteAllEdges(st);
+            } else {
+                st.edgeGroups.forEach(function (_groups, key) {
+                    var parts = key.split("->");
+                    rerouteEdge(st, parts[0], parts[1]);
+                });
             }
         });
     }
 
-    function rerouteEdge(state, fromId, toId) {
-        const groups = state.edgeGroups.get(edgeKey(fromId, toId));
+    // ---- Edge re-routing (fallback Bezier) ----------------------------
+
+    function reroute(st, nodeId) {
+        if (GnFlow.rerouteAllEdges) {
+            // Let layout module handle it if available.
+            st.edgeGroups.forEach(function (_groups, key) {
+                var parts = key.split("->");
+                if (parts[0] === nodeId || parts[1] === nodeId) {
+                    GnFlow.rerouteEdge(st, parts[0], parts[1]);
+                }
+            });
+        } else {
+            st.edgeGroups.forEach(function (_groups, key) {
+                var parts = key.split("->");
+                if (parts[0] === nodeId || parts[1] === nodeId) {
+                    rerouteEdge(st, parts[0], parts[1]);
+                }
+            });
+        }
+    }
+
+    function rerouteEdge(st, fromId, toId) {
+        var groups = st.edgeGroups.get(edgeKey(fromId, toId));
         if (!groups || !groups.length) return;
-        const from = state.flow.nodes.find((n) => n.id === fromId);
-        const to = state.flow.nodes.find((n) => n.id === toId);
-        if (!from || !to) return;
-        const fromGroup = state.nodeGroups.get(fromId);
-        const toGroup = state.nodeGroups.get(toId);
+        var fromGroup = st.nodeGroups.get(fromId);
+        var toGroup = st.nodeGroups.get(toId);
         if (!fromGroup || !toGroup) return;
-        const fl = readTransform(fromGroup);
-        const tl = readTransform(toGroup);
-        const fx = fl.x + state.boxW / 2;
-        const fy = fl.y + state.boxH;
-        const tx = tl.x + state.boxW / 2;
-        const ty = tl.y;
-        const my = (fy + ty) / 2;
-        const d = `M ${fx.toFixed(1)} ${fy.toFixed(1)} C ${fx.toFixed(1)} ${my.toFixed(1)}, ${tx.toFixed(1)} ${my.toFixed(1)}, ${tx.toFixed(1)} ${ty.toFixed(1)}`;
-        const midx = ((fx + tx) / 2).toFixed(1);
-        const labelY = (my - 14).toFixed(1);
-        groups.forEach((g) => {
-            const path = g.querySelector(".gn-flow-edge__path");
+        var fl = readTransform(fromGroup);
+        var tl = readTransform(toGroup);
+        var fx = fl.x + st.boxW / 2;
+        var fy = fl.y + st.boxH;
+        var tx = tl.x + st.boxW / 2;
+        var ty = tl.y;
+        var my = (fy + ty) / 2;
+        var d = "M " + fx.toFixed(1) + " " + fy.toFixed(1) +
+                " C " + fx.toFixed(1) + " " + my.toFixed(1) +
+                ", " + tx.toFixed(1) + " " + my.toFixed(1) +
+                ", " + tx.toFixed(1) + " " + ty.toFixed(1);
+        var midx = ((fx + tx) / 2).toFixed(1);
+        var labelY = (my - 14).toFixed(1);
+        groups.forEach(function (g) {
+            var path = g.querySelector(".gn-flow-edge__path");
             if (path) path.setAttribute("d", d);
-            const label = g.querySelector(".gn-flow-edge__label");
+            var hit = g.querySelector(".gn-flow-edge__hit");
+            if (hit) hit.setAttribute("d", d);
+            var label = g.querySelector(".gn-flow-edge__label");
             if (label) {
                 label.setAttribute("x", midx);
                 label.setAttribute("y", labelY);
@@ -232,70 +300,63 @@
         });
     }
 
-    function save(state, button) {
-        if (!state.saveAction) {
-            status(state.root, "No save endpoint configured.", true);
+    // ---- Save ---------------------------------------------------------
+
+    function save(st, button) {
+        if (!st.saveAction) {
+            status(st.root, "No save endpoint configured.", true);
             return;
         }
-        let payload;
+        var payload;
         try {
-            payload = JSON.stringify(state.flow);
+            payload = JSON.stringify(st.flow);
         } catch (e) {
-            status(state.root, "Cannot serialize graph: " + e.message, true);
+            status(st.root, "Cannot serialize graph: " + e.message, true);
             return;
         }
-        const body = new URLSearchParams();
+        var body = new URLSearchParams();
         body.set("definition", payload);
         button.disabled = true;
-        status(state.root, "Saving...");
-        fetch(state.saveAction, {
+        status(st.root, "Saving\u2026");
+        fetch(st.saveAction, {
             method: "POST",
             credentials: "same-origin",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
             body: body.toString(),
         })
-            .then((r) => {
+            .then(function (r) {
                 if (r.ok || r.redirected) {
-                    status(state.root, "Saved.");
-                    mirrorToTextarea(state);
-                } else if (r.status === 200) {
-                    // Server re-rendered the page with a validation
-                    // error inline; surface a short hint and let the
-                    // operator switch to JSON view to read the detail.
-                    status(state.root, "Server rejected save (see JSON view).", true);
+                    status(st.root, "Saved.");
+                    mirrorToTextarea(st);
                 } else {
-                    status(state.root, "Save failed: HTTP " + r.status, true);
+                    status(st.root, "Save failed: HTTP " + r.status, true);
                 }
             })
-            .catch((e) => status(state.root, "Save failed: " + e.message, true))
-            .finally(() => {
-                button.disabled = false;
-            });
+            .catch(function (e) { status(st.root, "Save failed: " + e.message, true); })
+            .finally(function () { button.disabled = false; });
     }
 
-    function status(root, msg, isError) {
-        const el = root.querySelector("[data-flow-status]");
+    // ---- Helpers -------------------------------------------------------
+
+    function status(rt, msg, isError) {
+        var el = rt.querySelector("[data-flow-status]");
         if (!el) return;
         el.textContent = msg || "";
         el.classList.toggle("gn-flow-toolbar__status--error", !!isError);
     }
 
-    // ----- Geometry helpers ----------------------------------------
-
     function svgPoint(svg, ev) {
-        const pt = svg.createSVGPoint();
+        var pt = svg.createSVGPoint();
         pt.x = ev.clientX;
         pt.y = ev.clientY;
-        const ctm = svg.getScreenCTM();
+        var ctm = svg.getScreenCTM();
         if (!ctm) return { x: ev.clientX, y: ev.clientY };
-        const inv = ctm.inverse();
-        const local = pt.matrixTransform(inv);
-        return { x: local.x, y: local.y };
+        return pt.matrixTransform(ctm.inverse());
     }
 
     function readTransform(g) {
-        const t = g.getAttribute("transform") || "";
-        const m = /translate\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)/.exec(t);
+        var t = g.getAttribute("transform") || "";
+        var m = /translate\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*\)/.exec(t);
         if (m) return { x: parseFloat(m[1]), y: parseFloat(m[2]) };
         return { x: 0, y: 0 };
     }
@@ -309,98 +370,22 @@
     }
 
     function safeParseJson(s) {
-        try {
-            return JSON.parse(s);
-        } catch (e) {
-            return null;
-        }
+        try { return JSON.parse(s); } catch (e) { return null; }
     }
 
-    // ----- Legacy Maud preview --------------------------------------
-    //
-    // The pre-Leptos `/admin/realms/:slug/flows` page mounts this same
-    // script via `flow_editor_mount()` and expects a read-only canvas
-    // backed by `/admin/v1/realms/.../flows/...`. We keep the original
-    // behaviour for backward compatibility; the Leptos page above is
-    // the primary editor going forward.
-
-    function hydrateLegacyPreview(node) {
-        const realm = node.dataset.realm;
-        const alias = node.dataset.alias;
-        if (!realm || !alias) return;
-        fetch(
-            `/admin/v1/realms/${encodeURIComponent(realm)}/flows/${encodeURIComponent(alias)}`
-        )
-            .then((r) => r.json())
-            .then((flow) => renderLegacy(node, flow))
-            .catch((e) => {
-                node.textContent = `Failed to load flow: ${e}`;
-            });
+    // Shared mirror function — also used by crud/panels modules.
+    function mirrorToTextarea(st) {
+        var ta = document.getElementById("gn-flow-json-textarea");
+        if (!ta) return;
+        try { ta.value = JSON.stringify(st.flow, null, 2); } catch (e) { /* leave as-is */ }
     }
 
-    function renderLegacy(node, flow) {
-        const ns = "http://www.w3.org/2000/svg";
-        const svg = document.createElementNS(ns, "svg");
-        svg.setAttribute("viewBox", "0 0 800 500");
-        svg.setAttribute("width", "100%");
-        svg.setAttribute("height", "500");
-
-        const nodes = flow.nodes || [];
-        const edges = flow.edges || [];
-        const positions = layoutGrid(nodes);
-
-        for (const e of edges) {
-            const from = positions.get(e.from);
-            const to = positions.get(e.to);
-            if (!from || !to) continue;
-            const line = document.createElementNS(ns, "line");
-            line.setAttribute("x1", from.x);
-            line.setAttribute("y1", from.y);
-            line.setAttribute("x2", to.x);
-            line.setAttribute("y2", to.y);
-            line.classList.add("gn-flow-edge__path");
-            svg.appendChild(line);
-        }
-        for (const n of nodes) {
-            const p = positions.get(n.id);
-            if (!p) continue;
-            const rect = document.createElementNS(ns, "rect");
-            rect.setAttribute("x", p.x - 60);
-            rect.setAttribute("y", p.y - 22);
-            rect.setAttribute("width", 120);
-            rect.setAttribute("height", 44);
-            rect.setAttribute("rx", 8);
-            rect.classList.add("gn-flow-node__bg");
-            svg.appendChild(rect);
-            const text = document.createElementNS(ns, "text");
-            text.setAttribute("x", p.x);
-            text.setAttribute("y", p.y + 5);
-            text.setAttribute("text-anchor", "middle");
-            text.classList.add("gn-flow-node__title");
-            text.textContent = n.display_name || nodeKindLabel(n.kind);
-            svg.appendChild(text);
-        }
-        node.innerHTML = "";
-        node.appendChild(svg);
-    }
-
-    function layoutGrid(nodes) {
-        const positions = new Map();
-        const cols = Math.max(1, Math.ceil(Math.sqrt(nodes.length)));
-        nodes.forEach((n, i) => {
-            const col = i % cols;
-            const row = Math.floor(i / cols);
-            positions.set(n.id, {
-                x: 100 + col * 160,
-                y: 60 + row * 90,
-            });
-        });
-        return positions;
-    }
-
-    function nodeKindLabel(kind) {
-        if (!kind) return "node";
-        if (typeof kind === "string") return kind;
-        return Object.keys(kind)[0] || "node";
-    }
+    // Export shared helpers for other modules.
+    GnFlow.mirrorToTextarea = mirrorToTextarea;
+    GnFlow.svgPoint = svgPoint;
+    GnFlow.readTransform = readTransform;
+    GnFlow.clamp = clamp;
+    GnFlow.edgeKey = edgeKey;
+    GnFlow.status = function (msg, isError) { status(state.root, msg, isError); };
+    GnFlow._state = state;
 })();

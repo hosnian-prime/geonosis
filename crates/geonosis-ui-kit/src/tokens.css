@@ -1134,14 +1134,25 @@ h1, h2, h3, h4 { margin: 0; }
     border-radius: var(--gn-radius-md);
     padding: var(--gn-space-3);
     margin-block-end: var(--gn-space-4);
+    position: relative;
+    overflow: hidden;
 }
+
+/* --- Toolbar ------------------------------------------------ */
 .gn-flow-toolbar {
     display: flex;
     align-items: center;
     gap: var(--gn-space-2);
     flex-wrap: wrap;
+    z-index: 15;
 }
 .gn-flow-toolbar__sep { flex: 1 1 auto; }
+.gn-flow-toolbar__divider {
+    width: 1px;
+    height: 24px;
+    background: var(--gn-color-border);
+    margin-inline: var(--gn-space-1);
+}
 .gn-flow-toolbar__btn[aria-pressed="true"] {
     background: var(--gn-color-accent);
     border-color: var(--gn-color-accent);
@@ -1153,16 +1164,24 @@ h1, h2, h3, h4 { margin: 0; }
     min-block-size: 1.2em;
 }
 .gn-flow-toolbar__status--error { color: var(--gn-color-danger); }
+
+/* --- Viewport wrapper --------------------------------------- */
+.gn-flow-canvas__viewport {
+    position: relative;
+    border-radius: var(--gn-radius-sm);
+    overflow: hidden;
+}
 .gn-flow-canvas__svg {
     inline-size: 100%;
     block-size: auto;
-    aspect-ratio: 12 / 7;
+    aspect-ratio: 16 / 9;
     background: var(--gn-color-bg);
     border-radius: var(--gn-radius-sm);
     touch-action: none;
     user-select: none;
 }
-/* --- Node --- */
+
+/* --- Node --------------------------------------------------- */
 .gn-flow-node { cursor: grab; }
 .gn-flow-node--dragging { cursor: grabbing; }
 .gn-flow-node__bg {
@@ -1183,24 +1202,290 @@ h1, h2, h3, h4 { margin: 0; }
     fill: var(--gn-color-text-muted);
     font-size: 11px;
 }
-/* --- Edge --- */
+
+/* --- Node kind color-coding --------------------------------- */
+.gn-flow-node[data-kind="start"] .gn-flow-node__bg       { stroke: var(--gn-color-accent); }
+.gn-flow-node[data-kind="success"] .gn-flow-node__bg     { stroke: var(--gn-color-success); }
+.gn-flow-node[data-kind="failure"] .gn-flow-node__bg     { stroke: var(--gn-color-danger); }
+.gn-flow-node[data-kind="authenticator"] .gn-flow-node__bg { stroke: var(--gn-color-info); }
+.gn-flow-node[data-kind="broker"] .gn-flow-node__bg      { stroke: var(--gn-color-warning); }
+.gn-flow-node[data-kind="switch"] .gn-flow-node__bg      { stroke: #b14fff; }
+.gn-flow-node[data-kind="render"] .gn-flow-node__bg      { stroke: var(--gn-color-text-muted); }
+.gn-flow-node[data-kind="sub-flow"] .gn-flow-node__bg    { stroke: var(--gn-color-accent-hover); }
+.gn-flow-node[data-kind="action"] .gn-flow-node__bg      { stroke: var(--gn-color-text-subtle); }
+
+/* --- Node selection ----------------------------------------- */
+.gn-flow-node--selected .gn-flow-node__bg {
+    stroke: var(--gn-color-accent);
+    stroke-width: 2.5;
+    filter: drop-shadow(0 0 6px var(--gn-color-accent-ring));
+}
+
+/* --- Ports (edge creation handles) -------------------------- */
+.gn-flow-port {
+    fill: var(--gn-color-bg-elev);
+    stroke: var(--gn-color-border-strong);
+    stroke-width: 1.5;
+    opacity: 0;
+    cursor: crosshair;
+    transition: opacity var(--gn-transition-fast);
+}
+.gn-flow-node:hover .gn-flow-port,
+.gn-flow-port:focus,
+.gn-flow-port--active { opacity: 1; }
+.gn-flow-port:hover {
+    fill: var(--gn-color-accent);
+    stroke: var(--gn-color-accent);
+}
+
+/* --- Edge --------------------------------------------------- */
 .gn-flow-edge__path {
     fill: none;
     stroke: var(--gn-color-accent);
     stroke-width: 2;
 }
+.gn-flow-edge__hit {
+    fill: none;
+    stroke: transparent;
+    stroke-width: 12;
+    cursor: pointer;
+}
 .gn-flow-edge__label {
     fill: var(--gn-color-text-muted);
     font-size: 11px;
 }
+.gn-flow-edge--selected .gn-flow-edge__path {
+    stroke: var(--gn-color-accent-hover);
+    stroke-width: 3;
+}
 #gn-flow-arrow path {
     fill: var(--gn-color-accent);
 }
-.gn-flow-canvas__note {
-    color: var(--gn-color-text-muted);
-    font-size: var(--gn-font-size-sm);
+
+/* --- Side panel --------------------------------------------- */
+.gn-flow-panel {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-end: 0;
+    width: 320px;
+    height: 100%;
+    background: var(--gn-color-bg-alt);
+    border-inline-start: 1px solid var(--gn-color-border);
+    padding: var(--gn-space-4);
+    overflow-y: auto;
+    z-index: 20;
+    box-shadow: var(--gn-shadow-md);
+}
+.gn-flow-panel[hidden] { display: none; }
+.gn-flow-panel__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-block-end: var(--gn-space-4);
+}
+.gn-flow-panel__header h3 {
+    font-size: var(--gn-font-size-base);
+    font-weight: var(--gn-font-weight-semibold);
     margin: 0;
 }
+.gn-flow-panel__close {
+    appearance: none;
+    background: transparent;
+    border: 0;
+    color: var(--gn-color-text-muted);
+    cursor: pointer;
+    font-size: var(--gn-font-size-xl);
+    line-height: 1;
+    padding: var(--gn-space-1);
+}
+.gn-flow-panel__close:hover { color: var(--gn-color-text); }
+.gn-flow-panel__divider {
+    border: none;
+    border-top: 1px solid var(--gn-color-border);
+    margin-block: var(--gn-space-4);
+}
+.gn-flow-panel__body {
+    display: flex;
+    flex-direction: column;
+    gap: var(--gn-space-3);
+}
+
+/* --- Node creation dropdown --------------------------------- */
+.gn-flow-add-wrap { position: relative; }
+.gn-flow-node-menu {
+    position: absolute;
+    inset-block-start: 100%;
+    inset-inline-start: 0;
+    margin-block-start: var(--gn-space-1);
+    background: var(--gn-color-bg-alt);
+    border: 1px solid var(--gn-color-border);
+    border-radius: var(--gn-radius-sm);
+    box-shadow: var(--gn-shadow-md);
+    padding: var(--gn-space-1) 0;
+    z-index: 30;
+    min-width: 180px;
+}
+.gn-flow-node-menu[hidden] { display: none; }
+.gn-flow-node-menu__item {
+    display: block;
+    width: 100%;
+    text-align: start;
+    background: none;
+    border: none;
+    padding: var(--gn-space-2) var(--gn-space-3);
+    font-size: var(--gn-font-size-sm);
+    color: var(--gn-color-text);
+    cursor: pointer;
+    transition: background var(--gn-transition-fast);
+}
+.gn-flow-node-menu__item:hover { background: var(--gn-color-bg-hover); }
+
+/* --- Zoom controls ------------------------------------------ */
+.gn-flow-zoom {
+    display: inline-flex;
+    gap: var(--gn-space-1);
+    align-items: center;
+}
+.gn-flow-zoom__btn {
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+    font-size: var(--gn-font-size-lg);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* --- Dry-run panel ------------------------------------------ */
+.gn-flow-dryrun {
+    border-block-start: 1px solid var(--gn-color-border);
+    padding: var(--gn-space-4);
+    background: var(--gn-color-bg-alt);
+}
+.gn-flow-dryrun[hidden] { display: none; }
+.gn-flow-dryrun__title {
+    font-size: var(--gn-font-size-sm);
+    font-weight: var(--gn-font-weight-semibold);
+    margin: 0 0 var(--gn-space-3);
+}
+.gn-flow-dryrun__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: var(--gn-space-3);
+}
+.gn-flow-dryrun__locals {
+    margin-block-start: var(--gn-space-3);
+}
+.gn-flow-dryrun__actions {
+    display: flex;
+    gap: var(--gn-space-2);
+    margin-block-start: var(--gn-space-3);
+}
+.gn-flow-dryrun__result {
+    margin-block-start: var(--gn-space-3);
+    padding: var(--gn-space-3);
+    border-radius: var(--gn-radius-sm);
+    font-size: var(--gn-font-size-sm);
+    font-weight: var(--gn-font-weight-medium);
+}
+.gn-flow-dryrun__result[hidden] { display: none; }
+.gn-flow-dryrun__result--success { background: var(--gn-color-success-soft); color: var(--gn-color-success); }
+.gn-flow-dryrun__result--failure { background: var(--gn-color-danger-soft); color: var(--gn-color-danger); }
+.gn-flow-dryrun__result--incomplete { background: var(--gn-color-warning-soft); color: var(--gn-color-warning); }
+.gn-flow-dryrun__steps {
+    margin-block-start: var(--gn-space-3);
+}
+.gn-flow-dryrun__steps[hidden] { display: none; }
+.gn-flow-dryrun__step-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    font-size: var(--gn-font-size-sm);
+    display: flex;
+    flex-direction: column;
+    gap: var(--gn-space-1);
+}
+.gn-flow-dryrun__step-list li {
+    padding: var(--gn-space-1) var(--gn-space-2);
+    border-radius: var(--gn-radius-sm);
+    background: var(--gn-color-bg);
+}
+
+/* --- Dry-run trace overlay on canvas ------------------------ */
+.gn-flow-node--dimmed { opacity: 0.25; }
+.gn-flow-edge--dimmed { opacity: 0.2; }
+.gn-flow-node--traced-taken .gn-flow-node__bg {
+    stroke: var(--gn-color-success);
+    stroke-width: 2.5;
+}
+.gn-flow-node--traced-skipped .gn-flow-node__bg {
+    stroke: var(--gn-color-warning);
+    stroke-width: 2.5;
+}
+.gn-flow-edge--traced .gn-flow-edge__path {
+    stroke: var(--gn-color-success);
+    stroke-width: 3;
+}
+
+/* --- Dry-run badges ----------------------------------------- */
+.gn-flow-node__outcome-bg {
+    rx: 8;
+    ry: 8;
+}
+.gn-flow-node__outcome {
+    fill: white;
+    font-size: 9px;
+    font-weight: var(--gn-font-weight-bold);
+    text-anchor: middle;
+    dominant-baseline: central;
+}
+.gn-flow-node__step-bg {
+    fill: var(--gn-color-success);
+}
+.gn-flow-node__step-num {
+    fill: white;
+    font-size: 10px;
+    font-weight: var(--gn-font-weight-bold);
+    text-anchor: middle;
+    dominant-baseline: central;
+}
+
+/* --- Guard editor rows -------------------------------------- */
+.gn-flow-guard-row {
+    display: flex;
+    gap: var(--gn-space-2);
+    align-items: center;
+    margin-block-end: var(--gn-space-2);
+}
+.gn-flow-guard-row .gn-input { flex: 1; }
+.gn-flow-guard-row__remove {
+    appearance: none;
+    background: none;
+    border: none;
+    color: var(--gn-color-danger);
+    cursor: pointer;
+    font-size: var(--gn-font-size-lg);
+    padding: var(--gn-space-1);
+    line-height: 1;
+}
+
+/* --- Minimap ------------------------------------------------ */
+.gn-flow-minimap {
+    position: absolute;
+    inset-block-end: var(--gn-space-3);
+    inset-inline-end: var(--gn-space-3);
+    width: 200px;
+    height: 140px;
+    background: var(--gn-color-bg);
+    border: 1px solid var(--gn-color-border);
+    border-radius: var(--gn-radius-sm);
+    opacity: 0.85;
+    z-index: 10;
+    cursor: pointer;
+    pointer-events: auto;
+}
+
+/* --- Noscript / JSON fallback ------------------------------- */
 .gn-flow-canvas__noscript p {
     color: var(--gn-color-danger);
     font-size: var(--gn-font-size-sm);

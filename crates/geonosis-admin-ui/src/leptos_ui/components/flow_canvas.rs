@@ -1,29 +1,14 @@
-//! Hand-rolled SVG flow editor canvas (v0.1 MVP — roadmap item A6).
+//! SVG flow editor canvas with ELK.js layout integration.
 //!
-//! Per `docs/08-admin-ui.md` §"Flow editor (special case)", the flow
-//! editor is the only admin surface that requires extensive client-side
-//! state. The Leptos component below produces the **server-rendered SVG
-//! tree** that the operator's browser then makes interactive via a
-//! small hand-rolled vanilla-JS module (`/static/flow-editor.js`). The
-//! split keeps the heavy graph-editor library Geonosis explicitly
-//! refuses out of the dependency tree while still respecting the
-//! "canvas as island" contract: SSR draws the initial state from the
-//! stored `FlowDefinition`, the JS module attaches drag handlers and
-//! a "Save" round-trip that POSTs the mutated JSON back to the
-//! existing form endpoint.
+//! The Leptos component below produces the **server-rendered SVG skeleton**
+//! that the operator's browser hydrates via modular vanilla-JS modules:
 //!
-//! v0.1 scope (intentional):
-//!
-//! - **Ships**: render existing nodes at their stored `node.layout`
-//!   coordinates (deterministic grid fallback if absent); render edges
-//!   as Bezier curves between nodes; drag nodes to reposition; "Save"
-//!   button persists the mutated graph (JSON form-POST to the existing
-//!   `/admin/realms/:slug/flows/:alias` handler); Canvas/JSON view
-//!   toggle so the JSON textarea remains the fallback for power users.
-//! - **Deliberately left for v0.1.x**: node creation/deletion (operators
-//!   can still author new nodes in JSON view), edge creation by drag,
-//!   per-edge guard / `on:` condition UI, dry-run integration, undo,
-//!   minimap.
+//! - `flow-editor.js`   — orchestrator
+//! - `flow-viewport.js` — zoom / pan / minimap
+//! - `flow-layout.js`   — ELK graph layout
+//! - `flow-crud.js`     — node / edge CRUD
+//! - `flow-panels.js`   — configuration side panel
+//! - `flow-dryrun.js`   — dry-run integration
 //!
 //! The JSON path stays the source of truth: every save goes through the
 //! existing server-side validator + compiler, so the canvas can never
@@ -33,15 +18,16 @@ use leptos::prelude::*;
 
 use geonosis_flow::{Edge, FlowDefinition, FlowNode, NodeLayout};
 
-/// Canvas viewBox dimensions (logical pixels). Picked to match the
-/// historical Maud preview canvas so the visual rhythm doesn't shift
-/// when an operator switches between the two admin surfaces.
-const VIEW_W: f32 = 960.0;
-const VIEW_H: f32 = 560.0;
+/// Canvas viewBox dimensions (logical pixels).
+const VIEW_W: f32 = 1920.0;
+const VIEW_H: f32 = 1080.0;
 
 /// Per-node SVG box dimensions.
-const BOX_W: f32 = 168.0;
-const BOX_H: f32 = 56.0;
+const BOX_W: f32 = 180.0;
+const BOX_H: f32 = 64.0;
+
+/// Port circle radius.
+const PORT_R: f32 = 6.0;
 
 /// Layout state ready to be serialized into the SVG tree. Separated
 /// from `FlowDefinition` so the canvas component can take a stable,
@@ -54,9 +40,6 @@ pub struct FlowCanvasState {
 
 #[derive(Debug, Clone)]
 pub struct FlowCanvasNode {
-    /// Stable identifier — the source-of-truth `NodeId.to_string()`.
-    /// The vanilla-JS hydrator uses this to look up the underlying
-    /// node when patching coordinates back into the JSON DSL.
     pub id: String,
     pub display_name: String,
     pub kind_label: String,
@@ -74,11 +57,6 @@ pub struct FlowCanvasEdge {
 
 impl FlowCanvasState {
     /// Build the canvas state from a stored `FlowDefinition`.
-    ///
-    /// Nodes without a persisted layout receive a deterministic grid
-    /// position so the canvas always renders something legible. The
-    /// grid traversal order is `FlowDefinition.nodes`'s declaration
-    /// order, which mirrors what the JSON textarea would show.
     pub fn from_definition(def: &FlowDefinition) -> Self {
         let nodes = def
             .nodes
@@ -153,30 +131,20 @@ fn grid_position(ix: usize, total: usize) -> (f32, f32) {
     let row = ix / cols;
     let step_x = (VIEW_W - BOX_W) / (cols.max(1) as f32 + 1.0);
     let x = step_x * (col as f32 + 1.0);
-    let y = 60.0 + (row as f32) * (BOX_H + 56.0);
+    let y = 80.0 + (row as f32) * (BOX_H + 80.0);
     (x, y)
 }
 
-/// SSR render of the flow canvas. Produces the static SVG skeleton
-/// the operator's browser hydrates with drag + save behaviour. The
-/// `data-*` attributes form the stable contract between this server
-/// tree and `flow-editor.js`.
-///
-/// `realm_slug` + `alias` are baked into the wrapper so the hydrator
-/// can `fetch()` (or rather `form-POST`) without needing a separate
-/// configuration channel; they are not surfaced to the user.
 #[component]
 pub fn FlowCanvas(
     realm_slug: String,
     alias: String,
     state: FlowCanvasState,
-    /// The full JSON DSL — embedded once so the hydrator can mutate
-    /// it client-side and POST the mutated copy on save without a
-    /// second round-trip to the server.
     flow_json: String,
 ) -> impl IntoView {
     let view_box = format!("0 0 {VIEW_W} {VIEW_H}");
     let save_action = format!("/admin/realms/{realm_slug}/flows/{alias}");
+    let dry_run_action = format!("/admin/v1/realms/{realm_slug}/flows/{alias}/dry-run");
 
     let nodes = state.nodes.clone();
     let edges = state.edges.clone();
@@ -193,121 +161,200 @@ pub fn FlowCanvas(
             data-view-h=VIEW_H.to_string()
             data-box-w=BOX_W.to_string()
             data-box-h=BOX_H.to_string()
+            data-port-r=PORT_R.to_string()
             data-save-action=save_action.clone()
+            data-dryrun-action=dry_run_action.clone()
         >
+            // --- Toolbar ---------------------------------------------------
             <div class="gn-flow-toolbar" role="toolbar" aria-label="Flow editor toolbar">
-                <button type="button" class="gn-btn gn-flow-toolbar__btn" data-flow-view="canvas" aria-pressed="true">
+                <button type="button" class="gn-btn gn-btn--sm gn-flow-toolbar__btn" data-flow-view="canvas" aria-pressed="true">
                     "Canvas"
                 </button>
-                <button type="button" class="gn-btn gn-flow-toolbar__btn" data-flow-view="json" aria-pressed="false">
+                <button type="button" class="gn-btn gn-btn--sm gn-flow-toolbar__btn" data-flow-view="json" aria-pressed="false">
                     "JSON"
                 </button>
+
+                <span class="gn-flow-toolbar__divider" aria-hidden="true"></span>
+
+                // Node creation dropdown
+                <div class="gn-flow-add-wrap" style="position:relative">
+                    <button type="button" class="gn-btn gn-btn--sm" data-flow-action="add-node">
+                        "+ Node"
+                    </button>
+                    <div class="gn-flow-node-menu" hidden data-flow-node-menu>
+                        <button type="button" class="gn-flow-node-menu__item" data-node-kind="start">"Start"</button>
+                        <button type="button" class="gn-flow-node-menu__item" data-node-kind="render">"Render"</button>
+                        <button type="button" class="gn-flow-node-menu__item" data-node-kind="authenticator">"Authenticator"</button>
+                        <button type="button" class="gn-flow-node-menu__item" data-node-kind="broker">"Broker"</button>
+                        <button type="button" class="gn-flow-node-menu__item" data-node-kind="switch">"Switch"</button>
+                        <button type="button" class="gn-flow-node-menu__item" data-node-kind="sub-flow">"Sub-flow"</button>
+                        <button type="button" class="gn-flow-node-menu__item" data-node-kind="action">"Action"</button>
+                        <button type="button" class="gn-flow-node-menu__item" data-node-kind="success">"Success"</button>
+                        <button type="button" class="gn-flow-node-menu__item" data-node-kind="failure">"Failure"</button>
+                    </div>
+                </div>
+
+                <button type="button" class="gn-btn gn-btn--sm" data-flow-action="auto-layout">
+                    "Auto Layout"
+                </button>
+                <button type="button" class="gn-btn gn-btn--sm gn-flow-toolbar__btn" data-flow-action="dry-run" aria-pressed="false">
+                    "Dry Run"
+                </button>
+
+                <span class="gn-flow-toolbar__divider" aria-hidden="true"></span>
+
+                // Zoom controls
+                <div class="gn-flow-zoom">
+                    <button type="button" class="gn-btn gn-btn--sm gn-flow-zoom__btn" data-flow-action="zoom-in" aria-label="Zoom in">"+"</button>
+                    <button type="button" class="gn-btn gn-btn--sm gn-flow-zoom__btn" data-flow-action="zoom-out" aria-label="Zoom out">"\u{2212}"</button>
+                    <button type="button" class="gn-btn gn-btn--sm gn-flow-zoom__btn" data-flow-action="zoom-fit" aria-label="Fit to view">"Fit"</button>
+                </div>
+
                 <span class="gn-flow-toolbar__sep" aria-hidden="true"></span>
-                <button type="button" class="gn-btn gn-btn--primary" data-flow-action="save">
+
+                <button type="button" class="gn-btn gn-btn--primary gn-btn--sm" data-flow-action="save">
                     "Save"
                 </button>
                 <span class="gn-flow-toolbar__status" data-flow-status role="status" aria-live="polite"></span>
             </div>
-            <svg
-                class="gn-flow-canvas__svg"
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox=view_box
-                preserveAspectRatio="xMidYMid meet"
-                role="img"
-                aria-label="Flow graph"
-            >
-                <defs>
-                    <marker
-                        id="gn-flow-arrow"
-                        viewBox="0 0 10 10"
-                        refX="10"
-                        refY="5"
-                        markerWidth="8"
-                        markerHeight="8"
-                        orient="auto-start-reverse"
-                    >
-                        <path d="M 0 0 L 10 5 L 0 10 z"/>
-                    </marker>
-                </defs>
-                <g class="gn-flow-canvas__edges" data-flow-layer="edges">
-                    {edges.into_iter().map(|e| {
-                        let from = node_index.get(&e.from);
-                        let to = node_index.get(&e.to);
-                        let (path, midx, _midy, label_y) = edge_path_for(from, to);
-                        let from_id = e.from.clone();
-                        let to_id = e.to.clone();
-                        let label = e.on_label.clone();
-                        view! {
-                            <g class="gn-flow-edge"
-                               data-flow-edge="true"
-                               data-from=from_id
-                               data-to=to_id>
-                                <path
-                                    class="gn-flow-edge__path"
-                                    d=path
-                                    marker-end="url(#gn-flow-arrow)"
-                                />
-                                <text
-                                    class="gn-flow-edge__label"
-                                    x=midx.to_string()
-                                    y=label_y.to_string()
-                                    text-anchor="middle"
-                                    dominant-baseline="central"
-                                >
-                                    {label}
-                                </text>
-                            </g>
-                        }
-                    }).collect_view()}
-                </g>
-                <g class="gn-flow-canvas__nodes" data-flow-layer="nodes">
-                    {nodes.into_iter().map(|n| {
-                        let cx = (BOX_W / 2.0).to_string();
-                        let title_y = (BOX_H * 0.36).to_string();
-                        let meta_y = (BOX_H * 0.72).to_string();
-                        let kind = n.kind_label.clone();
-                        view! {
-                            <g
-                                class="gn-flow-node"
-                                data-flow-node="true"
-                                data-node-id=n.id.clone()
-                                data-kind=kind.clone()
-                                transform=format!("translate({}, {})", n.x, n.y)
-                                tabindex="0"
-                                role="group"
-                                aria-label=format!("{} ({})", n.display_name, kind)
-                            >
-                                <rect
-                                    class="gn-flow-node__bg"
-                                    x="0"
-                                    y="0"
-                                    width=BOX_W.to_string()
-                                    height=BOX_H.to_string()
-                                    rx="10"
-                                />
-                                <text
-                                    class="gn-flow-node__title"
-                                    x=cx.clone()
-                                    y=title_y
-                                    text-anchor="middle"
-                                    dominant-baseline="central"
-                                >
-                                    {n.display_name.clone()}
-                                </text>
-                                <text
-                                    class="gn-flow-node__meta"
-                                    x=cx
-                                    y=meta_y
-                                    text-anchor="middle"
-                                    dominant-baseline="central"
-                                >
-                                    {format!("{} · {}", kind, n.requirement_label)}
-                                </text>
-                            </g>
-                        }
-                    }).collect_view()}
-                </g>
-            </svg>
+
+            // --- Dry-run panel (hidden by default) ----------------------
+            <div id="gn-flow-dryrun" class="gn-flow-dryrun" hidden></div>
+
+            // --- SVG canvas -----------------------------------------------
+            <div class="gn-flow-canvas__viewport">
+                <svg
+                    class="gn-flow-canvas__svg"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox=view_box
+                    preserveAspectRatio="xMidYMid meet"
+                    role="img"
+                    aria-label="Flow graph"
+                >
+                    <defs>
+                        <marker
+                            id="gn-flow-arrow"
+                            viewBox="0 0 10 10"
+                            refX="10"
+                            refY="5"
+                            markerWidth="8"
+                            markerHeight="8"
+                            orient="auto-start-reverse"
+                        >
+                            <path d="M 0 0 L 10 5 L 0 10 z"/>
+                        </marker>
+                    </defs>
+                    // Viewport wrapper — zoom/pan transforms this group
+                    <g data-flow-viewport="true">
+                        <g class="gn-flow-canvas__edges" data-flow-layer="edges">
+                            {edges.into_iter().map(|e| {
+                                let from = node_index.get(&e.from);
+                                let to = node_index.get(&e.to);
+                                let (path, midx, _midy, label_y) = edge_path_for(from, to);
+                                let hit_path = path.clone();
+                                let from_id = e.from.clone();
+                                let to_id = e.to.clone();
+                                let label = e.on_label.clone();
+                                view! {
+                                    <g class="gn-flow-edge"
+                                       data-flow-edge="true"
+                                       data-from=from_id
+                                       data-to=to_id>
+                                        <path
+                                            class="gn-flow-edge__path"
+                                            d=path
+                                            marker-end="url(#gn-flow-arrow)"
+                                        />
+                                        // Invisible wider hit-target for click
+                                        <path
+                                            class="gn-flow-edge__hit"
+                                            d=hit_path
+                                        />
+                                        <text
+                                            class="gn-flow-edge__label"
+                                            x=midx.to_string()
+                                            y=label_y.to_string()
+                                            text-anchor="middle"
+                                            dominant-baseline="central"
+                                        >
+                                            {label}
+                                        </text>
+                                    </g>
+                                }
+                            }).collect_view()}
+                        </g>
+                        <g class="gn-flow-canvas__nodes" data-flow-layer="nodes">
+                            {nodes.into_iter().map(|n| {
+                                let cx = BOX_W / 2.0;
+                                let title_y = BOX_H * 0.38;
+                                let meta_y = BOX_H * 0.70;
+                                let kind = n.kind_label.clone();
+                                view! {
+                                    <g
+                                        class="gn-flow-node"
+                                        data-flow-node="true"
+                                        data-node-id=n.id.clone()
+                                        data-kind=kind.clone()
+                                        transform=format!("translate({}, {})", n.x, n.y)
+                                        tabindex="0"
+                                        role="group"
+                                        aria-label=format!("{} ({})", n.display_name, kind)
+                                    >
+                                        <rect
+                                            class="gn-flow-node__bg"
+                                            x="0"
+                                            y="0"
+                                            width=BOX_W.to_string()
+                                            height=BOX_H.to_string()
+                                            rx="10"
+                                        />
+                                        <text
+                                            class="gn-flow-node__title"
+                                            x=cx.to_string()
+                                            y=title_y.to_string()
+                                            text-anchor="middle"
+                                            dominant-baseline="central"
+                                        >
+                                            {n.display_name.clone()}
+                                        </text>
+                                        <text
+                                            class="gn-flow-node__meta"
+                                            x=cx.to_string()
+                                            y=meta_y.to_string()
+                                            text-anchor="middle"
+                                            dominant-baseline="central"
+                                        >
+                                            {format!("{} \u{00b7} {}", kind, n.requirement_label)}
+                                        </text>
+                                        // Input port (top center)
+                                        <circle
+                                            class="gn-flow-port gn-flow-port--in"
+                                            cx=cx.to_string()
+                                            cy="0"
+                                            r=PORT_R.to_string()
+                                            data-port="in"
+                                        />
+                                        // Output port (bottom center)
+                                        <circle
+                                            class="gn-flow-port gn-flow-port--out"
+                                            cx=cx.to_string()
+                                            cy=BOX_H.to_string()
+                                            r=PORT_R.to_string()
+                                            data-port="out"
+                                        />
+                                    </g>
+                                }
+                            }).collect_view()}
+                        </g>
+                    </g>
+                </svg>
+                // Minimap canvas
+                <canvas id="gn-flow-minimap" class="gn-flow-minimap" width="200" height="140"></canvas>
+            </div>
+
+            // --- Configuration side panel (hidden by default) -----------
+            <div id="gn-flow-panel" class="gn-flow-panel" hidden></div>
+
             <noscript>
                 <p class="gn-flow-canvas__noscript">
                     "Interactive canvas requires JavaScript. Switch to the JSON view below to edit."
@@ -319,20 +366,12 @@ pub fn FlowCanvas(
             >
                 {flow_json}
             </script>
-            <p class="gn-flow-canvas__note">
-                "Drag nodes to reposition. Use the JSON view for node creation, edge rewires, and per-edge guards (v0.1.x)."
-            </p>
         </div>
     }
 }
 
 /// Compute the cubic Bezier path between two node boxes plus the
 /// midpoint coordinates used to place the edge condition label.
-///
-/// Returns a fall-back vertical mid-screen line when either endpoint
-/// is missing from the layout — this only happens for malformed
-/// graphs that wouldn't have compiled, but the canvas still has to
-/// render *something* so the operator can find the bad edge.
 fn edge_path_for(from: Option<&FlowCanvasNode>, to: Option<&FlowCanvasNode>) -> (String, f32, f32, f32) {
     let (fx, fy) = match from {
         Some(n) => (n.x + BOX_W / 2.0, n.y + BOX_H),
@@ -352,8 +391,6 @@ fn edge_path_for(from: Option<&FlowCanvasNode>, to: Option<&FlowCanvasNode>) -> 
         my = mid_y,
     );
     let midx = (fx + tx) / 2.0;
-    // Offset label 14px above the curve midpoint so it doesn't overlap
-    // the path stroke.
     let label_y = mid_y - 14.0;
     (path, midx, mid_y, label_y)
 }
@@ -425,7 +462,6 @@ mod tests {
             n.layout = None;
         }
         let state = FlowCanvasState::from_definition(&def);
-        // Deterministic grid: same total + index must yield same coords.
         assert_eq!(state.nodes.len(), 2);
         let (x0, y0) = grid_position(0, 2);
         let (x1, y1) = grid_position(1, 2);
@@ -435,31 +471,23 @@ mod tests {
         assert_eq!(state.nodes[1].y, y1);
     }
 
-    /// Required by the task brief: confirm the FlowDefinition survives
-    /// a full round-trip through canvas-state preview (layout reads)
-    /// + the JSON serializer the canvas hydrator POSTs back.
     #[test]
     fn flow_def_round_trips_through_canvas_state() {
         let def = sample_definition();
-        // Take the same path the SSR canvas takes.
         let state = FlowCanvasState::from_definition(&def);
-        // Now mutate the layout the way a drag would.
         let mut mutated = def.clone();
         mutated.nodes[0].layout = Some(NodeLayout { x: 220.0, y: 90.0 });
         mutated.nodes[1].layout = Some(NodeLayout { x: 520.0, y: 240.0 });
         let json = serde_json::to_string(&mutated).expect("serialize");
         let back: FlowDefinition = serde_json::from_str(&json).expect("deserialize");
-        // Same graph identity preserved.
         assert_eq!(back.alias, def.alias);
         assert_eq!(back.version, def.version);
         assert_eq!(back.nodes.len(), def.nodes.len());
         assert_eq!(back.edges.len(), def.edges.len());
-        // Layout values survived the round trip.
         assert_eq!(back.nodes[0].layout.unwrap().x, 220.0);
         assert_eq!(back.nodes[0].layout.unwrap().y, 90.0);
         assert_eq!(back.nodes[1].layout.unwrap().x, 520.0);
         assert_eq!(back.nodes[1].layout.unwrap().y, 240.0);
-        // Canvas-state derived from the original is preserved too.
         assert_eq!(state.nodes[0].id, def.nodes[0].id.to_string());
     }
 
@@ -475,8 +503,6 @@ mod tests {
 
     #[test]
     fn flow_node_without_layout_serializes_without_field() {
-        // Backwards compatibility: pre-canvas flows must serialize
-        // without an empty `layout` key polluting their JSON.
         let n = FlowNode {
             id: NodeId::new(),
             display_name: "x".into(),
