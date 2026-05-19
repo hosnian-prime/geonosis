@@ -96,6 +96,17 @@ pub async fn create(
         created_at: now,
         updated_at: now,
     };
+    // Validate user attributes against the realm's profile schema.
+    if let Ok(profile) = state.storage.get_user_profile_schema(realm.id).await {
+        let violations = profile.validate_attributes(&user.attributes);
+        if !violations.is_empty() {
+            let msgs: Vec<String> = violations.iter().map(|(k, v)| format!("{k}: {v}")).collect();
+            return Err(AdminError::Storage(format!(
+                "profile validation failed: {}",
+                msgs.join(", ")
+            )));
+        }
+    }
     state
         .storage
         .create_user(user.clone())
@@ -143,6 +154,16 @@ pub async fn update(
     user.username = existing.username;
     user.created_at = existing.created_at;
     user.updated_at = chrono::Utc::now();
+    if let Ok(profile) = state.storage.get_user_profile_schema(realm.id).await {
+        let violations = profile.validate_attributes(&user.attributes);
+        if !violations.is_empty() {
+            let msgs: Vec<String> = violations.iter().map(|(k, v)| format!("{k}: {v}")).collect();
+            return Err(AdminError::Storage(format!(
+                "profile validation failed: {}",
+                msgs.join(", ")
+            )));
+        }
+    }
     state
         .storage
         .update_user(user.clone())

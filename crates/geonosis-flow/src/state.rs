@@ -40,6 +40,11 @@ pub struct FlowContext {
     pub amr: Vec<String>,
     /// Authentication-strength bumps (when each step asserts a level).
     pub authn_level: i32,
+    /// Requested ACR values from the OIDC authorize request. The flow
+    /// executor uses this to determine whether step-up authentication
+    /// is required. Populated by `authorize.rs` from the `acr_values`
+    /// parameter.
+    pub requested_acr: Option<String>,
     /// Per-step config-derived locals (form errors, last attempted username).
     pub locals: BTreeMap<String, serde_json::Value>,
 }

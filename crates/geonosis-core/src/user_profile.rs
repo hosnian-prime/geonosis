@@ -51,6 +51,86 @@ impl UserProfile {
     pub fn find(&self, name: &str) -> Option<&UserAttributeDecl> {
         self.attributes.iter().find(|a| a.name == name)
     }
+
+    /// Validate user attributes against the schema's built-in validators.
+    /// Returns a list of `(attribute_name, error_message)` violations.
+    /// `Custom` (WASM) validators are skipped — they require the SPI
+    /// runtime which is not available in the core crate.
+    /// Built-in attribute names that are top-level User fields, not in
+    /// the `attributes` map. Skip these during attribute validation.
+    const BUILTIN_NAMES: &[&str] = &["username", "email", "firstName", "lastName"];
+
+    /// Validate user attributes against the schema's built-in validators.
+    /// Returns a list of `(attribute_name, error_message)` violations.
+    /// Built-in attributes (`username`, `email`, etc.) are skipped since
+    /// they are top-level `User` fields, not in the `attributes` map.
+    /// `Custom` (WASM) validators are also skipped.
+    pub fn validate_attributes(
+        &self,
+        attrs: &BTreeMap<String, crate::AttributeValue>,
+    ) -> Vec<(String, String)> {
+        let mut violations = Vec::new();
+        for decl in &self.attributes {
+            // Skip built-in attributes handled as top-level User fields.
+            if Self::BUILTIN_NAMES.contains(&decl.name.as_str()) {
+                continue;
+            }
+            let value = attrs.get(&decl.name);
+            if decl.required
+                && value.map_or(true, |v| {
+                    matches!(v, crate::AttributeValue::Null)
+                })
+            {
+                violations.push((decl.name.clone(), "required".into()));
+                continue;
+            }
+            let Some(val) = value else { continue };
+            let val_str = val.as_str().unwrap_or("").to_string();
+            for validator in &decl.validators {
+                if let Some(err) = validate_one(validator, &val_str) {
+                    violations.push((decl.name.clone(), err));
+                    break;
+                }
+            }
+        }
+        violations
+    }
+}
+
+fn validate_one(v: &AttributeValidator, value: &str) -> Option<String> {
+    match v {
+        AttributeValidator::Length { min, max } => {
+            let len = value.len() as u32;
+            if let Some(m) = min {
+                if len < *m {
+                    return Some(format!("too short (min {m})"));
+                }
+            }
+            if let Some(m) = max {
+                if len > *m {
+                    return Some(format!("too long (max {m})"));
+                }
+            }
+            None
+        }
+        AttributeValidator::Email => {
+            if !value.contains('@') || !value.contains('.') {
+                Some("invalid email".into())
+            } else {
+                None
+            }
+        }
+        AttributeValidator::Options { allowed } => {
+            if !allowed.iter().any(|a| a == value) {
+                Some(format!("value not in allowed list"))
+            } else {
+                None
+            }
+        }
+        // Pattern, Uri, Integer, DoubleNotNan, Custom — skipped in v0.1
+        // (regex requires a regex crate dep; Custom requires WASM runtime).
+        _ => None,
+    }
 }
 
 /// One attribute declaration.

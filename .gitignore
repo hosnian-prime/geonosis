@@ -11,6 +11,7 @@
 *.swp
 *.swo
 *~
+PROGRESS.md
 
 # OS
 .DS_Store

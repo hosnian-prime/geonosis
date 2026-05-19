@@ -100,10 +100,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let refresh_hash_key = derive_subkey(&master, b"geonosis-refresh-hash-v1");
     let client_secret_hash_key = derive_subkey(&master, b"geonosis-client-secret-hash-v1");
 
-    // Audit sinks: webhook URLs from env, plus the postgres sink when
-    // a database is configured. Order matters only for log clarity;
-    // the publisher fans out concurrently.
+    // Audit sinks: Postgres (when a database is configured) + webhook
+    // URLs from env. The publisher fans out concurrently.
     let mut audit_sinks: Vec<std::sync::Arc<dyn geonosis_audit::AuditSink>> = Vec::new();
+    if let Some(ref pool) = retention_pool {
+        audit_sinks.push(std::sync::Arc::new(
+            geonosis_audit::postgres::PostgresAuditSink::new(pool.clone()),
+        ));
+        tracing::info!("wiring Postgres audit sink");
+    }
     for raw in args
         .audit_webhook_urls
         .split(',')
@@ -158,10 +163,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Ok(realms) => {
             for r in &realms {
                 state.providers.seed_v0_1_builtins(r.id);
+                geonosis_authenticators::registry::register_builtins(
+                    &state.providers,
+                    r.id,
+                );
             }
             tracing::info!(
                 count = realms.len(),
-                "seeded v0.1 built-in providers into registry",
+                "seeded v0.1 built-in providers + authenticators into registry",
             );
         }
         Err(e) => {

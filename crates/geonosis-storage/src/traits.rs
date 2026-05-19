@@ -144,6 +144,16 @@ pub trait Storage: Send + Sync {
         realm: RealmId,
         alias: &str,
     ) -> Result<geonosis_flow::FlowDefinition, StorageError>;
+    /// Return a specific version of the flow for `(realm, alias, version)`.
+    /// Used by the flow executor when resuming an in-flight session to
+    /// ensure the session completes against the same flow graph it started
+    /// with, even if the admin has published a newer version since.
+    async fn get_auth_flow_by_alias_and_version(
+        &self,
+        realm: RealmId,
+        alias: &str,
+        version: i32,
+    ) -> Result<geonosis_flow::FlowDefinition, StorageError>;
     async fn list_auth_flows(
         &self,
         realm: RealmId,

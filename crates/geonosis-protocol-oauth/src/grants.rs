@@ -87,6 +87,7 @@ pub trait TokenIssuer: Send + Sync {
         session_id: &SessionId,
         scope: &[ScopeName],
         nonce: Option<&str>,
+        acr: Option<&str>,
     ) -> Result<String, GrantError>;
 
     /// Per-realm BLAKE3 hashing key for refresh-token storage.
@@ -154,6 +155,7 @@ impl AuthorizationCodeGrant {
                         &code.session_id,
                         &code.scope,
                         code.nonce.as_deref(),
+                        code.acr.as_deref(),
                     )
                     .await?,
             )
@@ -427,6 +429,7 @@ mod tests {
             _session_id: &SessionId,
             _scope: &[ScopeName],
             nonce: Option<&str>,
+            _acr: Option<&str>,
         ) -> Result<String, GrantError> {
             self.log
                 .lock()
@@ -461,6 +464,7 @@ mod tests {
             nonce: None,
             state: None,
             amr: vec![],
+            acr: None,
             auth_time: Utc::now(),
             created_at: Utc::now(),
             expires_at: Utc::now() + Duration::seconds(60),
@@ -505,6 +509,7 @@ mod tests {
             nonce: Some("n1".into()),
             state: None,
             amr: vec![],
+            acr: None,
             auth_time: Utc::now(),
             created_at: Utc::now(),
             expires_at: Utc::now() + Duration::seconds(60),

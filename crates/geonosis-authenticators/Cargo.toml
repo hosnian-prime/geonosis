@@ -34,3 +34,4 @@ subtle.workspace = true
 [dev-dependencies]
 tokio.workspace = true
 pretty_assertions.workspace = true
+p256.workspace = true

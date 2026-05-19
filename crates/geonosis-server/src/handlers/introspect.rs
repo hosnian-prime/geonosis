@@ -13,6 +13,7 @@ use axum::Json;
 
 use geonosis_protocol_oidc::{build_introspection, IntrospectionResponse};
 
+use crate::audit_emit;
 use crate::handlers::client_auth::authenticate_client;
 use crate::handlers::error::oauth_error_response;
 use crate::state::AppState;
@@ -48,6 +49,13 @@ pub async fn introspect(
             } else {
                 None
             };
+            audit_emit::emit_system(
+                &state,
+                realm.id,
+                geonosis_audit::action::TOKEN_INTROSPECT,
+                None,
+                serde_json::json!({ "active": true, "sub": claims.sub }),
+            );
             Json(build_introspection(&claims, username)).into_response()
         }
         Err(_) => Json(IntrospectionResponse::inactive()).into_response(),

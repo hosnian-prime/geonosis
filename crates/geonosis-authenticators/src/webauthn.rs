@@ -1,41 +1,47 @@
-//! Built-in `webauthn` authenticator — assertion-as-step (v0.1).
+//! Built-in `webauthn` authenticator — assertion verification (v0.1).
 //!
 //! Per `docs/14-roadmap.md` v0.1 scope:
 //! > webauthn (assertion-as-step; full passkey lifecycle v0.2)
 //!
-//! Concretely v0.1 ships:
-//! - A `Continue { render }` that prompts the browser to fetch a
-//!   challenge from `/login-actions/webauthn/challenge` (handler lands
-//!   with the broader login-actions surface).
-//! - A `Submit` arm that accepts the navigator-emitted
-//!   `clientDataJSON` + `authenticatorData` + `signature` + `userHandle`
-//!   blob and looks up the matching enrolled credential.
-//! - **Signature verification stubbed**: full WebAuthn signature
-//!   verification needs the `webauthn-rs` family of crates (deferred
-//!   to v0.1.x to keep the dependency surface auditable). v0.1 records
-//!   the assertion shape and returns `Failure(RequiresEnrollment)` when
-//!   no credential is enrolled; otherwise `Failure(InvalidCredential)`
-//!   with a `webauthn:assertion` local set so the deferring runtime
-//!   path is unambiguous.
+//! v0.1 ships assertion verification using the existing crypto
+//! primitives (ES256/RS256/EdDSA). The registration ceremony lands
+//! in v0.2 — for now credentials are pre-provisioned via admin API.
 
 use async_trait::async_trait;
 use serde_json::json;
 
 use geonosis_core::{Amr, CredentialKind};
+use geonosis_crypto::webauthn::{
+    self, AssertionParams, StoredCredential, WebauthnError,
+};
 
 use crate::context::AuthnContext;
 use crate::traits::{
     Authenticator, AuthnError, AuthnInput, AuthnOutput, FailureKind, RenderInstruction,
 };
 
-#[derive(Default)]
-pub struct WebauthnAuthenticator {
-    /// If `true`, the authenticator returns `Success` once it sees the
-    /// submitted assertion blob (for end-to-end test scaffolding only).
-    /// Production deployments leave this `false` until the
-    /// signature-verification module lands.
-    pub trust_unverified_assertions: bool,
+/// Browser assertion blob sent by `navigator.credentials.get()`.
+#[derive(serde::Deserialize)]
+struct AssertionBlob {
+    /// Base64url-encoded clientDataJSON.
+    #[serde(rename = "clientDataJSON")]
+    client_data_json: String,
+    /// Base64url-encoded authenticatorData.
+    #[serde(rename = "authenticatorData")]
+    authenticator_data: String,
+    /// Base64url-encoded signature.
+    signature: String,
+    /// Base64url-encoded credential ID.
+    #[serde(rename = "credentialId", default)]
+    credential_id: Option<String>,
 }
+
+/// WebAuthn authenticator. Reads `rp_id`, `origin`, and
+/// `user_verification` from the realm's `WebauthnPolicy` at runtime
+/// via `AuthnContext.storage.get_realm()`. No hardcoded defaults for
+/// production-critical security parameters.
+#[derive(Default)]
+pub struct WebauthnAuthenticator;
 
 #[async_trait]
 impl Authenticator for WebauthnAuthenticator {
@@ -49,43 +55,170 @@ impl Authenticator for WebauthnAuthenticator {
         input: AuthnInput,
     ) -> Result<AuthnOutput, AuthnError> {
         match input {
-            AuthnInput::Init | AuthnInput::Resume => Ok(AuthnOutput::Continue {
-                render: RenderInstruction::new("login/webauthn-assert.html"),
-            }),
+            AuthnInput::Init | AuthnInput::Resume => {
+                // Generate a random challenge and stash it for
+                // verification when the browser submits.
+                let challenge = geonosis_crypto::random::random_token();
+                ctx.locals.insert(
+                    "webauthn:challenge".into(),
+                    json!(challenge),
+                );
+                Ok(AuthnOutput::Continue {
+                    render: RenderInstruction::new("login/webauthn-assert.html"),
+                })
+            }
             AuthnInput::Submit(form) => {
                 let user_id = ctx
                     .user_id
                     .ok_or_else(|| AuthnError::Invalid("webauthn requires resolved user".into()))?;
-                let assertion = form
+                let assertion_json = form
                     .get("assertion")
                     .cloned()
                     .ok_or_else(|| AuthnError::Invalid("missing assertion".into()))?;
 
+                // Load user + enrolled credentials.
                 let user = ctx
                     .storage
                     .get_user(ctx.realm_id, user_id)
                     .await
                     .map_err(|e| AuthnError::Storage(e.to_string()))?;
-                let has_credential = user.attributes.contains_key("webauthn:credentials");
-                if !has_credential {
+                let creds_attr = user
+                    .attributes
+                    .get("webauthn:credentials")
+                    .and_then(|v| v.as_str());
+                let Some(creds_json) = creds_attr else {
+                    return Ok(AuthnOutput::Failure(FailureKind::RequiresEnrollment));
+                };
+
+                // Parse stored credentials.
+                let credentials: Vec<StoredCredential> =
+                    serde_json::from_str(creds_json).map_err(|e| {
+                        AuthnError::Invalid(format!("bad stored credentials: {e}"))
+                    })?;
+                if credentials.is_empty() {
                     return Ok(AuthnOutput::Failure(FailureKind::RequiresEnrollment));
                 }
-                ctx.locals
-                    .insert("webauthn:assertion".into(), json!(assertion));
 
-                if !self.trust_unverified_assertions {
-                    // Defer verification — the runtime path lights up once
-                    // the `webauthn-rs` integration lands (v0.1.x).
-                    return Ok(AuthnOutput::Failure(FailureKind::Other(
-                        "webauthn signature verification deferred to v0.1.x".into(),
-                    )));
+                // Resolve realm config for RP ID and origin.
+                let realm = ctx
+                    .storage
+                    .get_realm(ctx.realm_id)
+                    .await
+                    .map_err(|e| AuthnError::Storage(e.to_string()))?;
+                let rp_id = realm
+                    .webauthn_policy
+                    .relying_party_id
+                    .clone()
+                    .unwrap_or_else(|| realm.slug.clone());
+                let origin = realm
+                    .frontend_url
+                    .as_ref()
+                    .map(|u| u.to_string().trim_end_matches('/').to_string())
+                    .unwrap_or_else(|| format!("https://{rp_id}"));
+                let require_uv = realm.webauthn_policy.user_verification == "required";
+
+                // Parse the browser assertion blob.
+                let blob: AssertionBlob = serde_json::from_str(&assertion_json)
+                    .map_err(|e| AuthnError::Invalid(format!("bad assertion: {e}")))?;
+                let b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD;
+                use base64::Engine;
+                let cdj = b64.decode(&blob.client_data_json)
+                    .map_err(|e| AuthnError::Invalid(format!("clientDataJSON b64: {e}")))?;
+                let auth_data = b64.decode(&blob.authenticator_data)
+                    .map_err(|e| AuthnError::Invalid(format!("authenticatorData b64: {e}")))?;
+                let sig = b64.decode(&blob.signature)
+                    .map_err(|e| AuthnError::Invalid(format!("signature b64: {e}")))?;
+
+                // Consume the challenge (single-use to prevent replay).
+                let expected_challenge = ctx
+                    .locals
+                    .remove("webauthn:challenge")
+                    .and_then(|v| v.as_str().map(String::from))
+                    .ok_or_else(|| AuthnError::Invalid("no webauthn challenge in session".into()))?;
+
+                // Find the matching credential. Try credential_id from
+                // the blob first; fall back to trying all enrolled creds.
+                let matching_cred = if let Some(ref cid) = blob.credential_id {
+                    credentials.iter().find(|c| c.credential_id == *cid)
+                } else {
+                    None
+                };
+
+                // If no credential_id match, try all enrolled credentials.
+                let result = if let Some(cred) = matching_cred {
+                    webauthn::verify_assertion(&AssertionParams {
+                        client_data_json: &cdj,
+                        authenticator_data: &auth_data,
+                        signature: &sig,
+                        expected_challenge: &expected_challenge,
+                        expected_origin: &origin,
+                        rp_id: &rp_id,
+                        credential: cred,
+                        require_user_verification: require_uv,
+                    })
+                } else {
+                    // Try each credential until one succeeds.
+                    let mut last_err = WebauthnError::Malformed("no credentials".into());
+                    let mut found = None;
+                    for cred in &credentials {
+                        match webauthn::verify_assertion(&AssertionParams {
+                            client_data_json: &cdj,
+                            authenticator_data: &auth_data,
+                            signature: &sig,
+                            expected_challenge: &expected_challenge,
+                            expected_origin: &origin,
+                            rp_id: &rp_id,
+                            credential: cred,
+                            require_user_verification: require_uv,
+                        }) {
+                            Ok(v) => {
+                                found = Some(v);
+                                break;
+                            }
+                            Err(e) => last_err = e,
+                        }
+                    }
+                    found.ok_or(last_err)
+                };
+
+                match result {
+                    Ok(verified) => {
+                        // Update sign count on the stored credential.
+                        let mut updated_creds = credentials;
+                        if let Some(c) = updated_creds
+                            .iter_mut()
+                            .find(|c| c.credential_id == verified.credential_id)
+                        {
+                            c.sign_count = verified.new_sign_count;
+                        }
+                        if let Ok(json_str) = serde_json::to_string(&updated_creds) {
+                            let mut updated_user = user.clone();
+                            updated_user.attributes.insert(
+                                "webauthn:credentials".into(),
+                                geonosis_core::AttributeValue::String(json_str),
+                            );
+                            if let Err(e) = ctx.storage.update_user(updated_user).await {
+                                tracing::warn!(
+                                    error = %e,
+                                    "webauthn sign count update failed; cloning detection degraded",
+                                );
+                            }
+                        }
+
+                        ctx.record_amr(Amr::Wbn);
+                        Ok(AuthnOutput::Success {
+                            credentials_satisfied: vec![CredentialKind::Webauthn],
+                            amr: vec![Amr::Wbn],
+                        })
+                    }
+                    Err(e) => {
+                        ctx.locals.insert(
+                            "webauthn:error".into(),
+                            json!(e.to_string()),
+                        );
+                        Ok(AuthnOutput::Failure(FailureKind::InvalidCredential))
+                    }
                 }
-
-                ctx.record_amr(Amr::Wbn);
-                Ok(AuthnOutput::Success {
-                    credentials_satisfied: vec![CredentialKind::Webauthn],
-                    amr: vec![Amr::Wbn],
-                })
             }
         }
     }
@@ -128,9 +261,23 @@ mod tests {
             updated_at: Utc::now(),
         };
         if enrolled {
+            // Create a real ES256 credential for testing.
+            use p256::ecdsa::SigningKey;
+            let sk = SigningKey::random(&mut rand::thread_rng());
+            let vk = sk.verifying_key();
+            let point = vk.to_encoded_point(false);
+            use base64::Engine;
+            let b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD;
+            let cred = StoredCredential {
+                credential_id: "test-cred-1".into(),
+                cose_alg: -7, // ES256
+                public_key_b64: b64.encode(point.as_bytes()),
+                sign_count: 0,
+            };
+            let creds_json = serde_json::to_string(&vec![cred]).unwrap();
             u.attributes.insert(
                 "webauthn:credentials".into(),
-                AttributeValue::Strings(vec!["cred-id-1".into()]),
+                AttributeValue::String(creds_json),
             );
         }
         let uid = u.id;
@@ -178,7 +325,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn init_renders_assertion_prompt() {
+    async fn init_renders_assertion_prompt_and_sets_challenge() {
         let (mut ctx, _) = fixture(true).await;
         let out = WebauthnAuthenticator::default()
             .process(&mut ctx, AuthnInput::Init)
@@ -190,13 +337,16 @@ mod tests {
             }
             other => panic!("expected Continue, got {other:?}"),
         }
+        assert!(ctx.locals.contains_key("webauthn:challenge"));
     }
 
     #[tokio::test]
     async fn unenrolled_user_signals_requires_enrollment() {
         let (mut ctx, _) = fixture(false).await;
+        // Set challenge first (Init would do this).
+        ctx.locals.insert("webauthn:challenge".into(), json!("ch"));
         let mut form = std::collections::BTreeMap::new();
-        form.insert("assertion".into(), "blob".into());
+        form.insert("assertion".into(), r#"{"clientDataJSON":"","authenticatorData":"","signature":""}"#.into());
         let out = WebauthnAuthenticator::default()
             .process(&mut ctx, AuthnInput::Submit(form))
             .await
@@ -205,39 +355,5 @@ mod tests {
             out,
             AuthnOutput::Failure(FailureKind::RequiresEnrollment)
         ));
-    }
-
-    #[tokio::test]
-    async fn unverified_path_returns_deferred_failure() {
-        let (mut ctx, _) = fixture(true).await;
-        let mut form = std::collections::BTreeMap::new();
-        form.insert("assertion".into(), "blob".into());
-        let out = WebauthnAuthenticator::default()
-            .process(&mut ctx, AuthnInput::Submit(form))
-            .await
-            .unwrap();
-        match out {
-            AuthnOutput::Failure(FailureKind::Other(msg)) => {
-                assert!(msg.contains("webauthn"));
-            }
-            other => panic!("expected deferred-failure, got {other:?}"),
-        }
-        // The assertion blob is stashed so the audit trail can show it.
-        assert!(ctx.locals.contains_key("webauthn:assertion"));
-    }
-
-    #[tokio::test]
-    async fn trust_flag_succeeds_for_test_scaffolding() {
-        let (mut ctx, _) = fixture(true).await;
-        let mut form = std::collections::BTreeMap::new();
-        form.insert("assertion".into(), "blob".into());
-        let out = WebauthnAuthenticator {
-            trust_unverified_assertions: true,
-        }
-        .process(&mut ctx, AuthnInput::Submit(form))
-        .await
-        .unwrap();
-        assert!(matches!(out, AuthnOutput::Success { .. }));
-        assert!(ctx.amr.contains(&Amr::Wbn));
     }
 }

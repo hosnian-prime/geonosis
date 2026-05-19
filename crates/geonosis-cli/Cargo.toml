@@ -20,6 +20,7 @@ geonosis-flow = { path = "../geonosis-flow" }
 geonosis-migrate = { path = "../geonosis-migrate" }
 geonosis-storage = { path = "../geonosis-storage", features = ["postgres"] }
 geonosis-federation-ldap = { path = "../geonosis-federation-ldap", features = ["ldap-runtime"] }
+geonosis-spi-host = { path = "../geonosis-spi-host" }
 
 clap.workspace = true
 serde.workspace = true

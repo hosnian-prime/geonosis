@@ -18,9 +18,10 @@ pub mod kms;
 pub mod password;
 pub mod random;
 pub mod refresh_token;
+pub mod webauthn;
 pub mod wrap;
 
-pub use hash::token_hash;
+pub use hash::{pairwise_subject_hash, token_hash};
 pub use jwe::{
     decrypt as jwe_decrypt, encrypt as jwe_encrypt, JweAlg, JweEnc, JweError, JweRecipientKey,
     JweRecipientPrivateKey,

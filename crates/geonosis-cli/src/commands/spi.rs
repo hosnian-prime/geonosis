@@ -30,6 +30,15 @@ pub enum SpiCmd {
         /// Path to the compiled `.wasm` component.
         #[arg(long)]
         module: String,
+        /// Path to the TOML plugin manifest (contains sha256, signer pubkey).
+        #[arg(long)]
+        manifest: Option<String>,
+        /// Base64-encoded Ed25519 signature over the manifest bytes.
+        #[arg(long)]
+        signature: Option<String>,
+        /// Skip manifest signature verification (DEV ONLY).
+        #[arg(long, default_value_t = false)]
+        skip_verify: bool,
         /// Provider priority. Lower binds higher in the chain.
         #[arg(long, default_value_t = 500)]
         priority: i32,
@@ -64,6 +73,9 @@ pub async fn run(database_url: &str, cmd: SpiCmd) -> anyhow::Result<()> {
             interface,
             alias,
             module,
+            manifest,
+            signature,
+            skip_verify,
             priority,
             replaces,
             config,
@@ -76,6 +88,34 @@ pub async fn run(database_url: &str, cmd: SpiCmd) -> anyhow::Result<()> {
                 h.update(&bytecode);
                 hex::encode(h.finalize())
             };
+
+            // Plugin manifest verification: when --manifest and
+            // --signature are provided, verify the Ed25519 signature
+            // over the manifest and check the bytecode SHA-256.
+            // --skip-verify bypasses this (DEV ONLY).
+            if !skip_verify {
+                if let (Some(manifest_path), Some(sig_b64)) = (&manifest, &signature) {
+                    let manifest_bytes = std::fs::read(manifest_path)?;
+                    let parsed = geonosis_spi_host::manifest::verify_signature(
+                        &manifest_bytes,
+                        sig_b64,
+                    )
+                    .map_err(|e| anyhow::anyhow!("manifest signature verification failed: {e}"))?;
+                    geonosis_spi_host::manifest::verify_bytecode_sha256(&parsed, &bytecode)
+                        .map_err(|e| anyhow::anyhow!("bytecode SHA-256 mismatch: {e}"))?;
+                    // Trust list check: empty trusted list accepts any
+                    // signer (dev mode); production operators populate
+                    // the list via `geoctl spi trust`.
+                    geonosis_spi_host::manifest::check_trusted(&parsed, &[])
+                        .map_err(|e| anyhow::anyhow!("untrusted signer: {e}"))?;
+                    println!("manifest verified: signer={}", parsed.signer_pubkey_b64);
+                } else if manifest.is_some() || signature.is_some() {
+                    anyhow::bail!("both --manifest and --signature are required for verification");
+                }
+                // When neither --manifest nor --signature is provided,
+                // install proceeds without verification (backwards-compat).
+            }
+
             let size = bytecode.len() as i64;
             let m = WasmModule {
                 id: WasmModuleId::new(),

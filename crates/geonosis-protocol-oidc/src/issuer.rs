@@ -64,7 +64,7 @@ impl<K: KeyManagementService + ?Sized + 'static> TokenIssuer for OidcIssuer<K> {
         let exp_secs = realm.token_policy.access_token_lifespan.as_secs() as i64;
         let claims = AccessTokenClaims {
             iss: issuer_url(&self.issuer_base, &realm.slug),
-            sub: subject.token_sub(),
+            sub: resolve_sub(subject, client),
             aud: vec![client.client_id.clone()],
             exp: now.timestamp() + exp_secs,
             iat: now.timestamp(),
@@ -104,6 +104,7 @@ impl<K: KeyManagementService + ?Sized + 'static> TokenIssuer for OidcIssuer<K> {
         session_id: &SessionId,
         _scope: &[ScopeName],
         nonce: Option<&str>,
+        acr: Option<&str>,
     ) -> Result<String, GrantError> {
         let alg = client
             .access_token_signing_alg
@@ -122,7 +123,7 @@ impl<K: KeyManagementService + ?Sized + 'static> TokenIssuer for OidcIssuer<K> {
         let now = Utc::now();
         let claims = IdTokenClaims {
             iss: issuer_url(&self.issuer_base, &realm.slug),
-            sub: subject.token_sub(),
+            sub: resolve_sub(subject, client),
             aud: vec![client.client_id.clone()],
             exp: now.timestamp() + realm.token_policy.access_token_lifespan.as_secs() as i64,
             iat: now.timestamp(),
@@ -130,7 +131,7 @@ impl<K: KeyManagementService + ?Sized + 'static> TokenIssuer for OidcIssuer<K> {
             nonce: nonce.map(str::to_string),
             azp: client.client_id.clone(),
             amr: None,
-            acr: None,
+            acr: acr.map(str::to_string),
             sid: Some(session_id.to_string()),
             name: None,
             preferred_username: None,
@@ -192,7 +193,7 @@ impl<K: KeyManagementService + ?Sized + 'static> OidcIssuer<K> {
             .unwrap_or_else(|| vec![client.client_id.clone()]);
         let claims = AccessTokenClaims {
             iss: issuer_url(&self.issuer_base, &realm.slug),
-            sub: subject.token_sub(),
+            sub: resolve_sub(subject, client),
             aud,
             exp: now.timestamp() + exp_secs,
             iat: now.timestamp(),
@@ -214,6 +215,26 @@ impl<K: KeyManagementService + ?Sized + 'static> OidcIssuer<K> {
         let header = JwsHeader::new(alg, kid.to_string(), "JWT");
         let jwt = sign_jwt_compat(&header, &claims, &private).map_err(GrantError::Internal)?;
         Ok((jwt, exp_secs))
+    }
+}
+
+/// Resolve the `sub` claim for a token. When the client is configured
+/// with `pairwise_sub_algorithm`, hash the raw user id with the
+/// client_id as sector to produce a per-client opaque identifier.
+/// Otherwise return the public subject identifier.
+fn resolve_sub(subject: &Subject, client: &Client) -> String {
+    let raw = subject.token_sub();
+    match client.pairwise_sub_algorithm.as_deref() {
+        Some("sha256") => geonosis_crypto::pairwise_subject_hash(&client.client_id, &raw),
+        Some(_) => {
+            // Unknown algorithm — fall back to public sub with a log.
+            tracing::warn!(
+                client_id = %client.client_id,
+                "unknown pairwise_sub_algorithm; falling back to public sub",
+            );
+            raw
+        }
+        None => raw,
     }
 }
 

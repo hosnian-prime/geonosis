@@ -30,6 +30,7 @@ use geonosis_protocol_oauth::{
 };
 use geonosis_protocol_oidc::OidcIssuer;
 
+use crate::audit_emit;
 use crate::handlers::client_auth::{authenticate_client, server_err};
 use crate::handlers::error::oauth_error_response;
 use crate::state::AppState;
@@ -116,12 +117,24 @@ pub async fn token(
 
     let grant_label = grant_type_label(grant_type);
     match result {
-        Ok(tokens) => {
+        Ok(ref tokens) => {
             state
                 .metrics
                 .oidc_token
                 .inc(&[&realm.slug, grant_label, "success"]);
-            let body: TokenResponseBody = tokens.into();
+            audit_emit::emit_system(
+                &state,
+                realm.id,
+                geonosis_audit::action::TOKEN_ISSUED,
+                Some(geonosis_audit::Target::Session {
+                    id: tokens.session_id.clone(),
+                }),
+                serde_json::json!({
+                    "grant_type": grant_label,
+                    "client_id": client.client_id,
+                }),
+            );
+            let body: TokenResponseBody = tokens.clone().into();
             (axum::http::StatusCode::OK, Json(body)).into_response()
         }
         Err(e) => {
@@ -129,16 +142,22 @@ pub async fn token(
                 .metrics
                 .oidc_token
                 .inc(&[&realm.slug, grant_label, "error"]);
-            // Password (direct-grant) failures are the canonical
-            // "login failure" signal in v0.1 — the browser flow
-            // never reaches the token endpoint on a failed login.
-            // Once login_actions instruments its own outcomes the
-            // browser-flow failures land here too.
             if matches!(grant_type, GrantType::Password) {
                 state
                     .metrics
                     .oidc_login_failures
                     .inc(&[&realm.slug, error_reason_label(&e)]);
+                audit_emit::emit_system(
+                    &state,
+                    realm.id,
+                    geonosis_audit::action::LOGIN_FAILURE,
+                    None,
+                    serde_json::json!({
+                        "grant_type": "password",
+                        "client_id": client.client_id,
+                        "reason": error_reason_label(&e),
+                    }),
+                );
             }
             oauth_error_response(&e)
         }
@@ -239,12 +258,16 @@ async fn handle_refresh(
             OAuthError::invalid_grant("refresh token expired")
         }
         geonosis_protocol_oauth::RefreshRotateError::Reuse => {
-            // Critical security signal — refresh-token reuse
-            // means a token leaked or was replayed. Bump the
-            // counter feeding the `GeonosisTokenReuse` alert
-            // (severity=critical in
-            // `deploy/prometheus-rules/geonosis-alerts.yaml`).
             state.metrics.token_reuse_detected.inc(&[&realm.slug]);
+            audit_emit::emit_system(
+                state,
+                realm.id,
+                geonosis_audit::action::TOKEN_REUSE,
+                None,
+                serde_json::json!({
+                    "client_id": client.client_id,
+                }),
+            );
             OAuthError::invalid_grant("refresh token reuse — family burned")
         }
         geonosis_protocol_oauth::RefreshRotateError::Storage(s) => server_err(s),
@@ -264,7 +287,7 @@ async fn handle_refresh(
     let id_token = if scope.iter().any(|s| s.as_str() == "openid") {
         Some(
             issuer
-                .mint_id_token(realm, client, &subject, &prior.session_id, &scope, None)
+                .mint_id_token(realm, client, &subject, &prior.session_id, &scope, None, None)
                 .await?,
         )
     } else {
@@ -293,6 +316,17 @@ async fn handle_refresh(
     geonosis_protocol_oauth::rotate_refresh_token(&storage_arc, &prior, new_token)
         .await
         .map_err(|e| server_err(e.to_string()))?;
+
+    audit_emit::emit_user(
+        state,
+        realm.id,
+        prior.user_id,
+        geonosis_audit::action::TOKEN_REFRESHED,
+        Some(geonosis_audit::Target::Session {
+            id: prior.session_id.clone(),
+        }),
+        serde_json::json!({ "client_id": client.client_id }),
+    );
 
     Ok(IssuedTokens {
         access_token: access,
@@ -584,6 +618,7 @@ async fn issue_user_tokens(
         .create_session(session)
         .await
         .map_err(|e| server_err(e.to_string()))?;
+    state.metrics.session_created.inc(&[&realm.slug]);
 
     let subject = Subject::Local { user_id };
     let (access, exp) = issuer
@@ -593,7 +628,7 @@ async fn issue_user_tokens(
     let id_token = if scope.iter().any(|s| s.as_str() == "openid") {
         Some(
             issuer
-                .mint_id_token(realm, client, &subject, &session_id, scope, None)
+                .mint_id_token(realm, client, &subject, &session_id, scope, None, None)
                 .await
                 .map_err(into_oauth_err)?,
         )

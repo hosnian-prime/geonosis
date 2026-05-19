@@ -24,10 +24,11 @@ from incumbents.
 | OIDC 1.0 + OAuth 2.1 endpoints | [`03`](./03-protocols-oidc.md) | `geonosis-protocol-oidc` + `geonosis-protocol-oauth` crates |
 | PKCE-mandatory authorize + token | [`03`](./03-protocols-oidc.md) | Default policy; `plain` rejected |
 | Refresh-token rotation + family reuse detection | [`03`](./03-protocols-oidc.md) | `family_id` lineage; reuse burns the family |
-| FAPI 1 Baseline conformance | [`03`](./03-protocols-oidc.md) | OpenID Foundation suite in CI from Phase 1 |
+| FAPI 1 Baseline conformance | [`03`](./03-protocols-oidc.md) | Defaults are FAPI-compatible; **conformance suite CI moved to v0.1.x** |
 | Token Exchange (RFC 8693) | [`03`](./03-protocols-oidc.md) + [`18`](./18-agent-identity.md) | First implementation lands with Agent identity |
 | Device Authorization grant (RFC 8628) | [`03`](./03-protocols-oidc.md) | Polling endpoint; interval hard-coded 5 s |
-| PAR (RFC 9126) + JAR (RFC 9101) | [`03`](./03-protocols-oidc.md) | Pushed authorization + signed request objects |
+| PAR (RFC 9126) | [`03`](./03-protocols-oidc.md) | Pushed authorization requests |
+| JAR (RFC 9101) | [`03`](./03-protocols-oidc.md) | Signed request objects; **implementation moved to v0.1.x** |
 | Token revocation (RFC 7009) + introspection (RFC 7662) | [`03`](./03-protocols-oidc.md) | `/oauth2/revoke` + `/oauth2/introspect` |
 | SAML 2.0 SP role (consuming SAML IdPs) | [`05`](./05-identity-broker.md) | `geonosis-broker` |
 | **SAML 2.0 IdP role (issuing assertions)** | [`20`](./20-saml-idp.md) | `geonosis-protocol-saml-idp` crate, NEW push to v0.1 |
@@ -158,12 +159,79 @@ Authoring SDK: **Rust** only in v0.1 (`geonosis-spi-api`).
 
 ---
 
-## v0.2 — Enterprise B2B + ecosystem expansion (≈ 4–6 months after v0.1)
+## v0.1.x — Production hardening (≈ 4–6 weeks after v0.1 feature freeze)
+
+The goal of v0.1.x is to close the gap between "feature-complete v0.1"
+and "production-safe for external traffic". No new features — only
+hardening, compliance verification, and fixes for gaps discovered
+during the v0.1 audit. Items are ordered by dependency: SSO cookie
+unlocks conformance testing, conformance testing validates the
+protocol surface, load testing validates the deployment model.
+
+### v0.1.x — SSO session surface (prerequisite for everything below)
+
+| Feature | Why | How |
+|---|---|---|
+| **SSO browser cookie** (`geonosis_sid`) | Without this, every `/authorize` starts a fresh login; `prompt=none` always returns `login_required`; SPAs cannot do silent token renewal; SAML IdP-initiated flow is fragile | Realm-scoped `HttpOnly; SameSite=Lax; Secure` cookie set on login success, read on `/authorize`; resolves existing session → skip flow when `max_age` not elapsed |
+| `prompt=none` + `prompt=login` + `prompt=consent` enforcement | OIDC Core §3.1.2.1 compliance; RPs depend on `prompt=none` for silent renewal | `authorize.rs` checks cookie-resolved session; `prompt=none` → reuse session or `login_required`; `prompt=login` → force re-auth; `prompt=consent` → force consent screen |
+| `max_age` enforcement with `auth_time` | RPs use `max_age` to demand fresh authentication | Compare `now - session.started_at` against `max_age`; trigger re-auth if elapsed |
+| `id_token_hint` session resolution on `/authorize` | Required for RP-Initiated Logout and silent renewal flows | Extract `sid` from hint, validate against cookie-bound session |
+
+### v0.1.x — Security hardening
+
+| Feature | Why | How |
+|---|---|---|
+| **Per-realm key derivation** (`refresh_hash_key`, `client_secret_hash_key`) | Current deployment-wide single key means a compromise in one realm leaks all realms' refresh tokens | BLAKE3 keyed derivation with `realm_id` as domain separator; backwards-compatible migration (re-hash on next refresh) |
+| **Cluster-wide rate limiting** (moved from v0.2) | Per-pod token-bucket is bypassed in multi-pod deployments; attacker distributes brute-force across pods | Redis `INCRBY` + sliding window; falls back to per-pod when Redis is unavailable; reuses existing Redis dependency from cache layer |
+| `CodeGrant.acr` Postgres migration | P1-3 fix added the field to the struct but no DB column exists | `20260520001_add_acr_to_code_grant.up.sql`: `ALTER TABLE code_grant ADD COLUMN acr TEXT` |
+| Error-path timing normalization | Password verification timing leaks whether the username exists (fast reject on unknown user vs. slow Argon2 on known user) | Constant-time dummy Argon2 verify on unknown-user path |
+
+### v0.1.x — Conformance & interop verification
+
+| Feature | Why | How |
+|---|---|---|
+| **OIDC Basic conformance suite in CI** | v0.1 "done" signal requires it (line 373); catches edge cases that unit tests miss | OpenID Foundation RP test against a bootstrapped Geonosis instance in GitHub Actions |
+| **FAPI 1 Baseline conformance suite in CI** | v0.1 roadmap line 27 promises it; enterprise procurement requires certification | Same CI flow; FAPI profile enforces stricter defaults |
+| **Vendor broker interop tests** | Google/GitHub/Apple/Microsoft adapters listed in v0.1 but never tested against real providers | CI job with test OAuth apps on each provider; asserts token exchange + userinfo roundtrip |
+| JAR (RFC 9101) signed `request` parameter | Listed in v0.1 (line 30) alongside PAR but not implemented; `authorize.rs` returns `request_not_supported` | Parse + verify signed request JWT; reject unsigned when `require_request_object_signing` is set on client |
+
+### v0.1.x — Observability completeness
+
+| Feature | Why | How |
+|---|---|---|
+| Wire `cache_hits` / `cache_misses` metrics | Defined but never incremented; cache performance is invisible in dashboards | Add `.inc()` calls in `LocalCache::get` and `RedisCache::get` |
+| Wire `spi_quarantined` metric | Defined but never incremented; SPI health alerts fire on missing data | Add `.inc()` in SPI host quarantine logic |
+| Complete Grafana dashboards (5 of 6 blocked) | Only the Overview dashboard ships; OIDC, Sessions, Cache, SPI, Federation dashboards have no data | Wire remaining metrics, validate each dashboard against a running instance |
+
+### v0.1.x — Load testing
+
+| Feature | Why | How |
+|---|---|---|
+| **Authorize + token load test** (target: ≥ 5000 req/s on 4 vCPU) | v0.1 "done" signal requires it | `k6` or `oha` script in `tests/load/`; CI runs nightly against a 4-vCPU pod with warm Postgres + Redis |
+| Connection-pool tuning runbook | Default `sqlx` pool size may bottleneck under load | Document pool-size / max-connections / idle-timeout tuning |
+| Flame-graph profiling pass | Identify hot paths before production traffic | `cargo flamegraph` on the load test; optimize top 3 bottlenecks |
+
+### v0.1.x — "Done" criteria (gate for v0.2 start)
+
+| Criterion | Verification |
+|---|---|
+| SSO cookie works end-to-end | `prompt=none` returns tokens without re-login; `max_age=0` forces re-auth |
+| OIDC Basic + FAPI 1 Baseline conformance green in CI | OpenID Foundation test report attached to release |
+| Load test ≥ 5000 authorize req/s on 4 vCPU | CI artifact with p50/p95/p99 latencies |
+| All Prometheus metrics emit data | Grafana dashboards show non-zero values for every panel |
+| Per-realm key derivation active | Refresh tokens from realm A cannot be validated in realm B |
+| Cluster-wide rate limiting active | Multi-pod brute-force test shows unified counter enforcement |
+
+---
+
+## v0.2 — Enterprise B2B + ecosystem expansion (≈ 4–6 months after v0.1.x)
 
 The goal of v0.2 is parity with established enterprise IAMs on
 features that enterprise procurement teams check off explicitly,
 plus the ecosystem assets (SDKs, account console, KMS) that move
-adoption from "we evaluated it" to "we deployed it".
+adoption from "we evaluated it" to "we deployed it". v0.2 starts
+only after v0.1.x "done" criteria are met (conformance green, SSO
+cookie working, load test passing).
 
 ### v0.2 — Protocols
 
@@ -200,7 +268,7 @@ adoption from "we evaluated it" to "we deployed it".
 
 | Feature | Doc | How |
 |---|---|---|
-| **Cluster-wide rate limiting** | [`12`](./12-security-crypto.md) | Redis-backed counters with sliding window |
+| ~~Cluster-wide rate limiting~~ | [`12`](./12-security-crypto.md) | **Moved to v0.1.x** — per-pod only is a security gap in multi-pod |
 | Audit sinks: Kafka, cloud-native (CloudWatch / Stackdriver / Loki) | [`13`](./13-observability.md) | New `EventSinkKind` variants |
 | Audit event compaction | [`13`](./13-observability.md) | Per-token-family summary rows |
 | Migration progress UI in admin console | [`10`](./10-zero-downtime-migrations.md) | Backfill worker status + ETA |
@@ -370,7 +438,8 @@ to prevent perpetual reopening:
 
 | Phase | "Done" signal |
 |---|---|
-| v0.1 | OIDC Basic + FAPI 1 Baseline conformance suite passing in CI; the 5-minute quickstart works end-to-end against a fresh `compose.yml`; load test shows ≥ 5000 authorize req/s on a 4 vCPU pod with warm cache |
+| v0.1 | Feature freeze: all v0.1 features implemented; 5-minute quickstart works end-to-end; unit + integration tests green |
+| v0.1.x | Production gate: OIDC Basic + FAPI 1 Baseline conformance passing in CI; SSO cookie works (prompt=none, max_age); load test ≥ 5000 authorize req/s on 4 vCPU; cluster-wide rate limiting active; per-realm key derivation active; all metrics emit data |
 | v0.2 | Account console fully usable for end-user self-service; SCIM 2.0 interop tested against Okta + Entra ID provisioning; `geonosis-verify` crate published; 4 admin SDKs published |
 | v0.3 | Cloud GA in first region; UMA 2.0 + CIBA + OpenID Federation conformance tests passing; plugin marketplace publicly available; migration importer works against a representative incumbent realm export |
 | v1.0 | External security audit passed; HTTP API stable contract; multi-region active-active shipped; Komino candidate replacing Redis in benchmarks |
@@ -385,6 +454,8 @@ to prevent perpetual reopening:
 | SAML IdP role complexity (XML-DSig surface) eats Phase 3 | Use vetted XML-DSig crate; cover with shipped interop fixtures from major SP libs |
 | Schema-migration discipline slips during enterprise-feature buildout | CI lint blocks merges; quarterly audit of past migrations |
 | Cloud planning crowds out OSS velocity | Strict separation: no Cloud code in OSS repo (see [`22`](./22-cloud-offering.md)) |
+| SSO cookie was missing from the original roadmap | Added as v0.1.x top priority; prerequisite for `prompt=none`, conformance, and real-world RP integration. Without it, Geonosis is a token dispenser, not an identity provider |
+| v0.1 "done" criteria not met at feature freeze | v0.1.x phase added to close the gap (conformance, load test, metrics) before v0.2 feature work begins |
 
 ## How this roadmap is maintained
 

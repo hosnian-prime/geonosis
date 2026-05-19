@@ -837,6 +837,14 @@ async fn post_user_create(
     };
     state.storage.create_user(user.clone()).await?;
     if let Some(pw) = form.password.filter(|s| !s.is_empty()) {
+        let report = realm.password_policy.validate(
+            &pw,
+            &user.username,
+            user.email.as_deref(),
+        );
+        if !report.is_ok() {
+            return Err(AdminError::PasswordPolicy(report.violations));
+        }
         let phc = geonosis_crypto::hash_password(&pw)
             .map_err(|e| AdminError::Storage(format!("hash_password: {e}")))?;
         state

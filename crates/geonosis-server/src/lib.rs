@@ -10,6 +10,7 @@
 //! `geonosis-migrate` provides the schema.
 
 pub mod app;
+pub mod audit_emit;
 pub mod authenticators;
 pub mod bootstrap;
 pub mod broker;

@@ -158,27 +158,35 @@ async fn handle_authorize(
         // "now", so we always satisfy `max_age >= 0`. Once cookies
         // land we re-evaluate here against `now - session.started_at`.
     }
+    // Store acr_values in params so we can thread it into the
+    // FlowContext below — the flow executor and token mint path both
+    // need it.
     if let Some(acr_values) = req.acr_values.as_deref() {
-        // ACR enforcement requires the realm's AcrPolicy → AuthnLevel
-        // table from doc 12 + the flow executor surfacing the achieved
-        // level. v0.1 records the requested value so the eventual
-        // step-up authenticator can compare; the actual enforcement
-        // hook lands with the step-up flow node in Phase 4.
-        params.insert("__geonosis_requested_acr_values".into(), acr_values.into());
+        params.insert("__geonosis_acr_values".into(), acr_values.into());
     }
 
-    // Persist a flow state with the request params so the login-actions
-    // endpoint can mint the code on success.
-    let flow_state = FlowState::fresh(
+    // Resolve the browser flow so we can snapshot its version + start
+    // node into the FlowState. In-flight sessions then complete
+    // against the exact version they started with (P0-2 desync fix).
+    let browser_flow = state
+        .storage
+        .get_auth_flow_by_alias(realm.id, geonosis_flow::builtin::alias::BROWSER)
+        .await;
+    let (flow_id, flow_version, start_node) = match browser_flow {
+        Ok(ref f) => (f.id, f.version, f.start),
+        Err(_) => (FlowId::new(), 1, NodeId::new()),
+    };
+
+    let mut flow_state = FlowState::fresh(
         realm.id,
-        // v0.1 has no admin UI to bind flows by id; we use a sentinel
-        // FlowId derived from the realm. Once flows are admin-managed,
-        // this resolves via `client.flow_binding.browser`.
-        FlowId::new(),
-        1,
-        NodeId::new(),
+        flow_id,
+        flow_version,
+        start_node,
         Duration::from_secs(realm.session_policy.sso_session_idle.as_secs().min(900)),
     );
+    // Thread acr_values into FlowContext so the executor and token
+    // mint path can access the requested ACR level.
+    flow_state.context.requested_acr = params.get("__geonosis_acr_values").cloned();
     let row = FlowStateRow {
         state: flow_state.clone(),
         authorize_params: params.clone(),

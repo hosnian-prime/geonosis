@@ -994,6 +994,32 @@ impl Storage for PostgresStorage {
         Ok(flow)
     }
 
+    async fn get_auth_flow_by_alias_and_version(
+        &self,
+        realm: RealmId,
+        alias: &str,
+        version: i32,
+    ) -> Result<geonosis_flow::FlowDefinition, StorageError> {
+        let mut tx = begin_realm(&self.pool, realm).await?;
+        let row = sqlx::query(
+            "SELECT graph FROM auth_flow
+             WHERE realm_id = $1 AND alias = $2 AND version = $3
+             LIMIT 1",
+        )
+        .bind(realm.to_string())
+        .bind(alias)
+        .bind(version)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(sqlx_err)?
+        .ok_or(StorageError::NotFound)?;
+        let graph: serde_json::Value = row.try_get("graph").map_err(sqlx_err)?;
+        let flow: geonosis_flow::FlowDefinition =
+            serde_json::from_value(graph).map_err(json_err)?;
+        tx.commit().await.map_err(sqlx_err)?;
+        Ok(flow)
+    }
+
     async fn list_auth_flows(
         &self,
         realm: RealmId,
@@ -3284,6 +3310,7 @@ fn code_grant_from_row(row: &sqlx::postgres::PgRow) -> Result<CodeGrant, Storage
         nonce,
         state,
         amr: serde_json::from_value(amr).map_err(json_err)?,
+        acr: row.try_get("acr").ok().flatten(),
         auth_time,
         created_at,
         expires_at,

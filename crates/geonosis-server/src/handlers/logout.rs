@@ -23,6 +23,7 @@ use geonosis_crypto::jwt::{sign_jwt, JwsHeader, PrivateMaterial};
 use geonosis_crypto::KeyManagementService;
 use geonosis_protocol_oidc::{LogoutTokenClaims, LOGOUT_TOKEN_TYP};
 
+use crate::audit_emit;
 use crate::state::AppState;
 
 #[derive(serde::Deserialize, Default)]
@@ -44,12 +45,17 @@ pub async fn logout_get(
     };
 
     if let Some(hint) = &q.id_token_hint {
-        // v0.1: best-effort — extract `sid` from the hint without verifying
-        // the signature (RFC 7519 §3.1 permits this for hints). v0.1.x
-        // wires full verification.
         if let Some(sid) = sid_from_jwt_unsafe(hint) {
-            let sess_id = geonosis_core::SessionId(sid);
+            let sess_id = geonosis_core::SessionId(sid.clone());
             let _ = state.storage.delete_session(&sess_id).await;
+            state.metrics.session_revoked.inc(&[&realm.slug, "frontchannel"]);
+            audit_emit::emit_system(
+                &state,
+                realm.id,
+                geonosis_audit::action::LOGOUT_LOCAL,
+                Some(geonosis_audit::Target::Session { id: sess_id }),
+                serde_json::json!({}),
+            );
         }
     }
 
@@ -105,12 +111,20 @@ pub async fn logout_post(
             sub_hint = parts.sub;
         }
         if client_id_hint.is_none() {
-            // `aud` is preferred for OIDC; `azp` is the authorized party
-            // when `aud` is an array of >1 entries.
             client_id_hint = parts.azp.or(parts.aud);
         }
         if let Some(ref sid) = sid_hint {
             let _ = state.storage.delete_session(&SessionId(sid.clone())).await;
+            state.metrics.session_revoked.inc(&[&realm.slug, "backchannel"]);
+            audit_emit::emit_system(
+                &state,
+                realm.id,
+                geonosis_audit::action::LOGOUT_LOCAL,
+                Some(geonosis_audit::Target::Session {
+                    id: SessionId(sid.clone()),
+                }),
+                serde_json::json!({}),
+            );
         }
     }
     // `client_id` form parameter — RP-Initiated Logout §3 allows
@@ -131,6 +145,17 @@ pub async fn logout_post(
     ) {
         if let Ok(client) = state.storage.get_client_by_client_id(realm.id, cid).await {
             if client.backchannel_logout_url.is_some() {
+                audit_emit::emit_system(
+                    &state,
+                    realm.id,
+                    geonosis_audit::action::LOGOUT_BACKCHANNEL,
+                    sid_hint
+                        .as_ref()
+                        .map(|s| geonosis_audit::Target::Session {
+                            id: SessionId(s.clone()),
+                        }),
+                    serde_json::json!({ "client_id": client.client_id }),
+                );
                 dispatch_backchannel_logout(
                     state.clone(),
                     realm.clone(),

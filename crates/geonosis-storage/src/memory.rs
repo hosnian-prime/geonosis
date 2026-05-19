@@ -544,6 +544,21 @@ impl Storage for MemoryStorage {
             .ok_or(StorageError::NotFound)
     }
 
+    async fn get_auth_flow_by_alias_and_version(
+        &self,
+        realm: RealmId,
+        alias: &str,
+        version: i32,
+    ) -> Result<geonosis_flow::FlowDefinition, StorageError> {
+        self.inner
+            .read()
+            .auth_flows
+            .values()
+            .find(|f| f.realm_id == realm && f.alias == alias && f.version == version)
+            .cloned()
+            .ok_or(StorageError::NotFound)
+    }
+
     async fn list_auth_flows(
         &self,
         realm: RealmId,
@@ -1801,6 +1816,7 @@ mod tests {
             nonce: None,
             state: None,
             amr: vec![],
+            acr: None,
             auth_time: Utc::now(),
             created_at: Utc::now(),
             expires_at: Utc::now(),

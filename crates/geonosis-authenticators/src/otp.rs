@@ -114,6 +114,25 @@ impl Authenticator for OtpAuthenticator {
         let secret = hex::decode(&secret_hex)
             .map_err(|e| AuthnError::Invalid(format!("invalid OTP secret hex: {e}")))?;
 
+        // Validate enrolled secret meets minimum length for the
+        // configured algorithm (RFC 4226 §4: key MUST be >= 128 bits;
+        // RFC 6238 recommends hash-length keys).
+        let min_key_len = match self.config.algorithm {
+            OtpAlgorithm::Sha1 => 20,
+            OtpAlgorithm::Sha256 => 32,
+            OtpAlgorithm::Sha512 => 64,
+        };
+        if secret.len() < min_key_len {
+            return Ok(AuthnOutput::Failure(FailureKind::Other(
+                format!(
+                    "enrolled OTP secret too short for {:?} (got {} bytes, need {})",
+                    self.config.algorithm,
+                    secret.len(),
+                    min_key_len,
+                ),
+            )));
+        }
+
         let candidate = code.trim();
         if !candidate.chars().all(|c| c.is_ascii_digit())
             || candidate.len() as u32 != self.config.digits

@@ -49,6 +49,11 @@ pub struct CodeGrant {
     pub nonce: Option<String>,
     pub state: Option<String>,
     pub amr: Vec<Amr>,
+    /// Achieved ACR (authentication context class reference). Populated
+    /// from `FlowContext.authn_level` when the authorize flow completes.
+    /// Threaded into the id_token `acr` claim at code exchange.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acr: Option<String>,
     pub auth_time: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
     pub expires_at: DateTime<Utc>,

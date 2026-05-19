@@ -19,6 +19,7 @@ use geonosis_core::{AuthnLevel, CodeId, ScopeName, Session, SessionId};
 use geonosis_flow::executor::DefaultExecutor;
 use geonosis_flow::{compile, AuthnDispatcher, FlowError, FlowExecutor, StepInput, StepOutput};
 
+use crate::audit_emit;
 use crate::flow_runtime::BuiltinAuthnDispatcher;
 use crate::state::AppState;
 
@@ -56,22 +57,36 @@ pub async fn authenticate_post(
         return (StatusCode::BAD_REQUEST, "realm mismatch").into_response();
     }
 
-    // Resolve the realm's browser flow. The audit found the executor
-    // dispatch chain was un-wired; B5c closes that by routing every
-    // login form submission through DefaultExecutor +
-    // BuiltinAuthnDispatcher → BuiltinAuthenticators.dispatch.
-    let definition = match state
-        .storage
-        .get_auth_flow_by_alias(realm.id, geonosis_flow::builtin::alias::BROWSER)
-        .await
-    {
-        Ok(d) => d,
-        Err(_) => {
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "realm has no `browser` flow installed; seed via geonosis_flow::builtin::v0_1_flows on realm create",
-            )
-                .into_response()
+    // Resolve the browser flow. When the FlowState carries a valid
+    // flow_version (> 0), fetch that exact version so the in-flight
+    // session completes against the graph it started with. Fall back
+    // to the latest version only when the stored version is no longer
+    // available (pruned).
+    let definition = {
+        let stored_version = row.state.flow_version;
+        let alias = geonosis_flow::builtin::alias::BROWSER;
+        let versioned = if stored_version > 0 {
+            state
+                .storage
+                .get_auth_flow_by_alias_and_version(realm.id, alias, stored_version)
+                .await
+                .ok()
+        } else {
+            None
+        };
+        let result = match versioned {
+            Some(d) => Ok(d),
+            None => state.storage.get_auth_flow_by_alias(realm.id, alias).await,
+        };
+        match result {
+            Ok(d) => d,
+            Err(_) => {
+                return (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "realm has no `browser` flow installed",
+                )
+                    .into_response()
+            }
         }
     };
     let compiled = match compile(definition) {
@@ -85,16 +100,14 @@ pub async fn authenticate_post(
         }
     };
 
-    // Reconcile the stored flow_state's current_node with the loaded
-    // graph. authorize.rs currently creates the flow_state with a
-    // sentinel NodeId because admin-managed flow binding isn't wired
-    // yet; if the stored node isn't in the compiled graph we
-    // re-anchor at the flow's start. Once authorize.rs looks up the
-    // real flow at /authorize time this block becomes a no-op.
+    // Backwards-compat: sessions created before the P0-2 fix may
+    // carry a sentinel NodeId. Re-anchor at start and flow_id, but
+    // NEVER override flow_version — the session must complete against
+    // the version it was started with (even if the loaded definition
+    // is a different version due to fallback after pruning).
     if !compiled.by_id.contains_key(&row.state.current_node) {
         row.state.current_node = compiled.definition.start;
         row.state.flow_id = compiled.definition.id;
-        row.state.flow_version = compiled.definition.version;
     }
 
     // Populate FlowContext fields the dispatcher needs.
@@ -142,6 +155,16 @@ pub async fn authenticate_post(
     match outcome {
         StepOutput::Done(_) => mint_code_and_redirect(&state, &realm, &row).await,
         StepOutput::Failed(_) => {
+            audit_emit::emit_system(
+                &state,
+                realm.id,
+                geonosis_audit::action::LOGIN_FAILURE,
+                None,
+                serde_json::json!({
+                    "username": form.username,
+                    "flow": "browser",
+                }),
+            );
             (StatusCode::UNAUTHORIZED, "invalid username or password").into_response()
         }
         StepOutput::Render(_) | StepOutput::Redirect(_) => {
@@ -213,6 +236,18 @@ async fn mint_code_and_redirect(
         )
             .into_response();
     }
+
+    state.metrics.session_created.inc(&[&realm.slug]);
+    audit_emit::emit_user(
+        state,
+        realm.id,
+        user_id,
+        geonosis_audit::action::LOGIN_SUCCESS,
+        Some(geonosis_audit::Target::Session {
+            id: session_id.clone(),
+        }),
+        serde_json::json!({ "flow": "browser" }),
+    );
 
     let p = &row.authorize_params;
     let client_id = match p.get("client_id") {
@@ -313,6 +348,15 @@ async fn mint_code_and_redirect(
                 .unwrap_or(geonosis_core::Amr::Custom(s.clone()))
         })
         .collect();
+    // Map the achieved authn_level to an ACR string. v0.1 uses a
+    // simple numeric mapping; realm-configurable ACR ↔ level tables
+    // land in v0.2.
+    let acr = match row.state.context.authn_level {
+        0 => None,
+        1 => Some("urn:geonosis:acr:password".to_string()),
+        n if n >= 2 => Some("urn:geonosis:acr:mfa".to_string()),
+        _ => None,
+    };
     let grant = CodeGrant {
         code: code.clone(),
         realm_id: realm.id,
@@ -325,6 +369,7 @@ async fn mint_code_and_redirect(
         nonce: p.get("nonce").cloned(),
         state: p.get("state").cloned(),
         amr,
+        acr,
         auth_time: now,
         created_at: now,
         expires_at: now + auth_code_lifetime,
