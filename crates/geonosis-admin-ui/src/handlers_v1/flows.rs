@@ -69,6 +69,7 @@ impl From<SyntheticContext> for FlowContext {
             amr: s.amr,
             authn_level: s.authn_level,
             requested_acr: None,
+            session_id: None,
             locals: s.locals,
         }
     }

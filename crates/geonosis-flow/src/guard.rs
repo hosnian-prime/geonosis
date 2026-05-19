@@ -55,6 +55,7 @@ fn context_as_json(ctx: &FlowContext) -> Value {
             "amr": ctx.amr,
             "authn_level": ctx.authn_level,
             "requested_acr": ctx.requested_acr,
+            "session_id": ctx.session_id,
             "locals": ctx.locals,
         }
     })
@@ -103,6 +104,7 @@ mod tests {
             amr: vec!["pwd".into()],
             authn_level: 2,
             requested_acr: None,
+            session_id: None,
             locals,
         }
     }

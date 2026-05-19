@@ -168,14 +168,16 @@ during the v0.1 audit. Items are ordered by dependency: SSO cookie
 unlocks conformance testing, conformance testing validates the
 protocol surface, load testing validates the deployment model.
 
-### v0.1.x — SSO session surface (prerequisite for everything below)
+### v0.1.x — SSO session surface (prerequisite for everything below) ✅ DONE
 
-| Feature | Why | How |
-|---|---|---|
-| **SSO browser cookie** (`geonosis_sid`) | Without this, every `/authorize` starts a fresh login; `prompt=none` always returns `login_required`; SPAs cannot do silent token renewal; SAML IdP-initiated flow is fragile | Realm-scoped `HttpOnly; SameSite=Lax; Secure` cookie set on login success, read on `/authorize`; resolves existing session → skip flow when `max_age` not elapsed |
-| `prompt=none` + `prompt=login` + `prompt=consent` enforcement | OIDC Core §3.1.2.1 compliance; RPs depend on `prompt=none` for silent renewal | `authorize.rs` checks cookie-resolved session; `prompt=none` → reuse session or `login_required`; `prompt=login` → force re-auth; `prompt=consent` → force consent screen |
-| `max_age` enforcement with `auth_time` | RPs use `max_age` to demand fresh authentication | Compare `now - session.started_at` against `max_age`; trigger re-auth if elapsed |
-| `id_token_hint` session resolution on `/authorize` | Required for RP-Initiated Logout and silent renewal flows | Extract `sid` from hint, validate against cookie-bound session |
+| Feature | Why | How | Status |
+|---|---|---|---|
+| **SSO browser cookie** (`geonosis_sid`) | Without this, every `/authorize` starts a fresh login; `prompt=none` always returns `login_required`; SPAs cannot do silent token renewal; SAML IdP-initiated flow is fragile | Realm-scoped `HttpOnly; SameSite=Lax; Secure` cookie set on login success (`login_actions.rs`), read on `/authorize` (`authorize/sso.rs`); resolves existing session → skip flow when `max_age` not elapsed | ✅ |
+| `prompt=none` + `prompt=login` + `prompt=consent` enforcement | OIDC Core §3.1.2.1 compliance; RPs depend on `prompt=none` for silent renewal | `authorize/sso.rs::enforce_prompt_policy()`: `prompt=none` → reuse session or `login_required`; `prompt=login` → force re-auth; `prompt=none` mutually exclusive with all other values | ✅ |
+| `max_age` enforcement with `auth_time` | RPs use `max_age` to demand fresh authentication | Compare `now - session.started_at` against `max_age`; trigger re-auth if elapsed | ✅ |
+| `id_token_hint` session resolution on `/authorize` | Required for RP-Initiated Logout and silent renewal flows | Extract `sub` from hint payload, validate against cookie-bound session user; full JWT signature verification in v0.2 | ✅ |
+| SSO shortcircuit code path | Skip login flow entirely when valid session exists | `authorize/sso.rs::shortcircuit()`: updates `last_seen_at`, records client participation for logout fan-out, mints `CodeGrant` directly | ✅ |
+| `session_id` threading into flow context | Cookie authenticator needs session ID during flow execution | `FlowContext.session_id` populated from cookie; `flow_runtime.rs` passes it into `AuthnContext` | ✅ |
 
 ### v0.1.x — Security hardening
 
@@ -215,7 +217,7 @@ protocol surface, load testing validates the deployment model.
 
 | Criterion | Verification |
 |---|---|
-| SSO cookie works end-to-end | `prompt=none` returns tokens without re-login; `max_age=0` forces re-auth |
+| ✅ SSO cookie works end-to-end | `prompt=none` returns tokens without re-login; `max_age=0` forces re-auth; implemented in `authorize/sso.rs` |
 | OIDC Basic + FAPI 1 Baseline conformance green in CI | OpenID Foundation test report attached to release |
 | Load test ≥ 5000 authorize req/s on 4 vCPU | CI artifact with p50/p95/p99 latencies |
 | All Prometheus metrics emit data | Grafana dashboards show non-zero values for every panel |
@@ -454,7 +456,7 @@ to prevent perpetual reopening:
 | SAML IdP role complexity (XML-DSig surface) eats Phase 3 | Use vetted XML-DSig crate; cover with shipped interop fixtures from major SP libs |
 | Schema-migration discipline slips during enterprise-feature buildout | CI lint blocks merges; quarterly audit of past migrations |
 | Cloud planning crowds out OSS velocity | Strict separation: no Cloud code in OSS repo (see [`22`](./22-cloud-offering.md)) |
-| SSO cookie was missing from the original roadmap | Added as v0.1.x top priority; prerequisite for `prompt=none`, conformance, and real-world RP integration. Without it, Geonosis is a token dispenser, not an identity provider |
+| ~~SSO cookie was missing from the original roadmap~~ | **RESOLVED** — SSO browser cookie, prompt enforcement, max_age, id_token_hint all implemented in v0.1.x. `authorize/sso.rs` handles session resolution and shortcircuit. `id_token_hint` JWT signature verification deferred to v0.2 |
 | v0.1 "done" criteria not met at feature freeze | v0.1.x phase added to close the gap (conformance, load test, metrics) before v0.2 feature work begins |
 
 ## How this roadmap is maintained

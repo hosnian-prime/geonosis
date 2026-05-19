@@ -45,6 +45,10 @@ pub struct FlowContext {
     /// is required. Populated by `authorize.rs` from the `acr_values`
     /// parameter.
     pub requested_acr: Option<String>,
+    /// Existing SSO session ID resolved from the browser cookie. When
+    /// set, authenticators (e.g. `cookie`) can validate the session
+    /// mid-flow without a separate cookie read.
+    pub session_id: Option<String>,
     /// Per-step config-derived locals (form errors, last attempted username).
     pub locals: BTreeMap<String, serde_json::Value>,
 }

@@ -104,7 +104,11 @@ impl BuiltinAuthnDispatcher {
             storage: self.storage.clone(),
             realm_hash_key: self.realm_hash_key,
             user_id,
-            session_id: None,
+            session_id: state
+                .context
+                .session_id
+                .as_ref()
+                .map(|s| geonosis_core::SessionId(s.clone())),
             amr,
             locals: state.context.locals.clone(),
             now: chrono::Utc::now(),

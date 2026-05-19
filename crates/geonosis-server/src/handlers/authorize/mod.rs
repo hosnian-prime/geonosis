@@ -4,21 +4,22 @@
 //! 1. parse + validate request
 //! 2. resolve client + realm
 //! 3. enforce client policy (PKCE, redirect-uri exact match)
-//! 4. resolve flow + start a `FlowState`
-//! 5. render the login page (server-side HTML form for v0.1)
+//! 4. resolve SSO session from browser cookie
+//! 5. enforce `prompt` / `max_age` / `id_token_hint` (OIDC Core §3.1.2.1)
+//! 6. either shortcircuit (valid session → mint code) or start a flow
+//! 7. render the login page (server-side HTML form for v0.1)
 //!
 //! The login form posts to `/realms/{slug}/login-actions/authenticate`
 //! which completes the flow, mints the code, and 302s back to `redirect_uri`
 //! with `?code=...&state=...`.
-//!
-//! `request_uri=urn:ietf:params:oauth:request_uri:...` is resolved by
-//! consuming the matching PAR row and replacing the inline params.
+
+mod sso;
 
 use std::collections::BTreeMap;
 use std::time::Duration;
 
 use axum::extract::{Form, Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 
 use geonosis_core::{Client, FlowId, NodeId};
@@ -32,23 +33,26 @@ use crate::state::AppState;
 pub async fn authorize_get(
     Path(slug): Path<String>,
     Query(params): Query<BTreeMap<String, String>>,
+    headers: HeaderMap,
     State(state): State<AppState>,
 ) -> Response {
-    handle_authorize(slug, params, state).await
+    handle_authorize(slug, params, headers, state).await
 }
 
 /// `POST /realms/{slug}/protocol/openid-connect/auth` — `form_post` mode.
 pub async fn authorize_post(
     Path(slug): Path<String>,
     State(state): State<AppState>,
+    headers: HeaderMap,
     Form(params): Form<BTreeMap<String, String>>,
 ) -> Response {
-    handle_authorize(slug, params, state).await
+    handle_authorize(slug, params, headers, state).await
 }
 
 async fn handle_authorize(
     slug: String,
     mut params: BTreeMap<String, String>,
+    headers: HeaderMap,
     state: AppState,
 ) -> Response {
     let realm = match state.storage.get_realm_by_slug(&slug).await {
@@ -58,16 +62,8 @@ async fn handle_authorize(
             return (StatusCode::NOT_FOUND, "realm not found").into_response();
         }
     };
-    // Every successful realm resolution that reaches the OIDC
-    // negotiation path bumps the authorize counter once. The fine-
-    // grained per-error breakdown lands when login_actions
-    // instruments its own outcomes.
     state.metrics.oidc_authorize.inc(&[&realm.slug, "started"]);
 
-    // JAR (RFC 9101) signed `request` parameter is not yet wired —
-    // surface as `request_not_supported` per OIDC 1.0 §6.1 instead of
-    // silently accepting unverified claims. PAR remains the supported
-    // alternative.
     if params.contains_key("request") {
         return error_redirect(
             &params,
@@ -122,52 +118,38 @@ async fn handle_authorize(
         return authorize_error_to_response(&params, &e);
     }
 
-    // ---- prompt / max_age / acr_values enforcement (OIDC 1.0 §3.1.2.1) ----
-    //
-    // v0.1 does not yet maintain an SSO browser-cookie surface, so any
-    // request that requires a silently-completable login (`prompt=none`
-    // or a `max_age` that's already elapsed) must surface as the
-    // canonical OIDC error. Per spec the relying party then falls back
-    // to an interactive `prompt=login` retry.
-    if let Some(prompt) = req.prompt.as_deref() {
-        // Spec values: none / login / consent / select_account.
-        for tok in prompt.split_whitespace() {
-            match tok {
-                "none" => {
-                    return error_redirect(
-                        &params,
-                        "login_required",
-                        "user is not authenticated and prompt=none was requested",
-                    );
-                }
-                "login" | "consent" | "select_account" => { /* satisfied by the interactive flow */
-                }
-                other => {
-                    let msg = format!("unknown prompt value: {other}");
-                    return error_redirect(&params, "invalid_request", &msg);
-                }
-            }
+    // ---- SSO session resolution from browser cookie ----
+    let sso_session = match sso::extract_session_cookie(&headers) {
+        Some(sid) => sso::resolve_session(&state, &sid, realm.id).await,
+        None => None,
+    };
+
+    // ---- prompt / max_age / id_token_hint (OIDC Core §3.1.2.1) ----
+    match sso::enforce_prompt_policy(&req, &sso_session, &realm, &params) {
+        sso::PromptDecision::Shortcircuit(session) => {
+            return sso::shortcircuit(&state, &realm, &client, session, &params).await;
+        }
+        sso::PromptDecision::StartFlow(maybe_session) => {
+            return start_flow(&state, &realm, &client, &req, &mut params, maybe_session).await;
+        }
+        sso::PromptDecision::Error { code, description } => {
+            return error_redirect(&params, code, description);
         }
     }
-    if let Some(max_age) = req.max_age {
-        if max_age < 0 {
-            return error_redirect(&params, "invalid_request", "max_age must be non-negative");
-        }
-        // With no SSO session cookie yet, every authorize request
-        // starts a fresh interactive login — `auth_time` will equal
-        // "now", so we always satisfy `max_age >= 0`. Once cookies
-        // land we re-evaluate here against `now - session.started_at`.
-    }
-    // Store acr_values in params so we can thread it into the
-    // FlowContext below — the flow executor and token mint path both
-    // need it.
+}
+
+async fn start_flow(
+    state: &AppState,
+    realm: &geonosis_core::Realm,
+    client: &Client,
+    req: &AuthorizeRequest,
+    params: &mut BTreeMap<String, String>,
+    sso_session: Option<geonosis_core::Session>,
+) -> Response {
     if let Some(acr_values) = req.acr_values.as_deref() {
         params.insert("__geonosis_acr_values".into(), acr_values.into());
     }
 
-    // Resolve the browser flow so we can snapshot its version + start
-    // node into the FlowState. In-flight sessions then complete
-    // against the exact version they started with (P0-2 desync fix).
     let browser_flow = state
         .storage
         .get_auth_flow_by_alias(realm.id, geonosis_flow::builtin::alias::BROWSER)
@@ -184,9 +166,11 @@ async fn handle_authorize(
         start_node,
         Duration::from_secs(realm.session_policy.sso_session_idle.as_secs().min(900)),
     );
-    // Thread acr_values into FlowContext so the executor and token
-    // mint path can access the requested ACR level.
     flow_state.context.requested_acr = params.get("__geonosis_acr_values").cloned();
+    if let Some(ref session) = sso_session {
+        flow_state.context.session_id = Some(session.id.0.clone());
+    }
+
     let row = FlowStateRow {
         state: flow_state.clone(),
         authorize_params: params.clone(),
@@ -199,12 +183,10 @@ async fn handle_authorize(
             .into_response();
     }
 
-    // Render the login form. v0.1 uses a server-rendered minimal HTML
-    // page; the Leptos admin theme overlay lands later.
     Html(render_login_form(
         &realm.slug,
         &flow_state.id.to_string(),
-        &client,
+        client,
     ))
     .into_response()
 }
@@ -261,11 +243,11 @@ fn authorize_error_to_response(
     error_redirect(params, code, &desc)
 }
 
-fn error_redirect(params: &BTreeMap<String, String>, code: &str, desc: &str) -> Response {
-    // Per RFC 6749 §4.1.2.1 we redirect errors back to the redirect_uri
-    // when one is present and validated; otherwise we surface the error
-    // inline. v0.1 is conservative — we surface inline if redirect_uri
-    // hasn't passed exact-match yet (handler hasn't reached that step).
+pub(crate) fn error_redirect(
+    params: &BTreeMap<String, String>,
+    code: &str,
+    desc: &str,
+) -> Response {
     if let Some(redir) = params.get("redirect_uri") {
         if let Ok(mut url) = url::Url::parse(redir) {
             url.query_pairs_mut()

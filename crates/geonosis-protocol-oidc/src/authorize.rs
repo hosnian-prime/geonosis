@@ -32,6 +32,9 @@ pub struct AuthorizeRequest {
     pub prompt: Option<String>,
     pub max_age: Option<i64>,
     pub login_hint: Option<String>,
+    /// `id_token_hint` — previously issued id_token for session
+    /// resolution on `/authorize` (OIDC Core §3.1.2.1).
+    pub id_token_hint: Option<String>,
     /// Other parameters echoed back as-is (`ui_locales` etc.).
     pub extra: BTreeMap<String, String>,
 }
@@ -96,6 +99,7 @@ impl AuthorizeRequest {
         let prompt = params.get("prompt").cloned();
         let max_age = params.get("max_age").and_then(|v| v.parse().ok());
         let login_hint = params.get("login_hint").cloned();
+        let id_token_hint = params.get("id_token_hint").cloned();
 
         let extra = params
             .into_iter()
@@ -113,6 +117,7 @@ impl AuthorizeRequest {
                     "prompt",
                     "max_age",
                     "login_hint",
+                    "id_token_hint",
                 ]
                 .contains(&k.as_str())
             })
@@ -131,6 +136,7 @@ impl AuthorizeRequest {
             prompt,
             max_age,
             login_hint,
+            id_token_hint,
             extra,
         })
     }
