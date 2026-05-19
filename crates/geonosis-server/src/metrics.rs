@@ -97,6 +97,10 @@ pub struct MetricsState {
     /// Feeds the `GeonosisSpiQuarantined` alert rule.
     pub spi_quarantined: LabeledCounter,
 
+    /// Optional reference to the cache backend so the metrics handler
+    /// can read hit/miss counters at scrape time.
+    pub cache_backend: parking_lot::RwLock<Option<Arc<geonosis_cache::LocalCache>>>,
+
     /// `geonosis_listener_lag_seconds{channel}` — last observed
     /// staleness of the Postgres LISTEN/NOTIFY cache-invalidation
     /// listener (seconds since the most recent successful
@@ -179,6 +183,7 @@ impl MetricsState {
                 "SPI plugins quarantined by the host (fault threshold / timeout / signature failure).",
                 &["interface", "urn", "reason"],
             ),
+            cache_backend: parking_lot::RwLock::new(None),
             listener_lag: parking_lot::Mutex::new(std::collections::HashMap::new()),
         }
     }
@@ -495,8 +500,22 @@ fn render(m: &MetricsState) -> String {
     m.session_revoked.render(&mut out);
     m.token_reuse_detected.render(&mut out);
     m.http_latency.render(&mut out);
-    m.cache_hits.render(&mut out);
-    m.cache_misses.render(&mut out);
+    // Sync cache hit/miss counters from the cache backend before rendering.
+    if let Some(ref cache) = *m.cache_backend.read() {
+        let hits = cache.hits.load(Ordering::Relaxed);
+        let misses = cache.misses.load(Ordering::Relaxed);
+        // Write directly — the LabeledCounter render is still there
+        // but we override with the actual backend values.
+        out.push_str("# HELP geonosis_cache_hits_total Cache hits by backend layer.\n");
+        out.push_str("# TYPE geonosis_cache_hits_total counter\n");
+        out.push_str(&format!("geonosis_cache_hits_total{{cache=\"local\"}} {hits}\n"));
+        out.push_str("# HELP geonosis_cache_misses_total Cache misses by backend layer.\n");
+        out.push_str("# TYPE geonosis_cache_misses_total counter\n");
+        out.push_str(&format!("geonosis_cache_misses_total{{cache=\"local\"}} {misses}\n"));
+    } else {
+        m.cache_hits.render(&mut out);
+        m.cache_misses.render(&mut out);
+    }
     m.spi_quarantined.render(&mut out);
 
     // Listener-lag gauge — emit once per channel currently tracked.

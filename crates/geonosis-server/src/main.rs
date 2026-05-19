@@ -129,9 +129,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         }
     }
 
+    let cache = Arc::new(LocalCache::default_small());
     let state = AppState {
         storage,
-        cache: Arc::new(LocalCache::default_small()),
+        cache: cache.clone(),
         kms: Arc::new(SoftwareKms::new(master)),
         providers: Arc::new(ProviderRegistry::new()),
         audit: Arc::new(Publisher::new(audit_sinks)),
@@ -149,6 +150,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         rate_limiter: Arc::new(geonosis_server::rate_limit::CompositeRateLimiter::local_only()),
         draining: Arc::new(std::sync::atomic::AtomicBool::new(false)),
     };
+
+    // Wire cache backend into metrics for scrape-time counter reads.
+    *state.metrics.cache_backend.write() = Some(cache);
 
     if args.bootstrap_quickstart {
         geonosis_server::bootstrap::run(state.storage.clone()).await?;

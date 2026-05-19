@@ -67,15 +67,18 @@ async fn handle_authorize(
 
     // JAR (RFC 9101): if `request` param is present, resolve the client
     // first (client_id MUST be in query per §6.2), then verify + merge.
+    // JAR and PAR errors MUST NOT redirect to `redirect_uri` because
+    // `enforce_client_policy` hasn't validated it yet. Inline 400
+    // responses prevent open-redirect attacks.
     if let Some(request_jwt) = params.remove("request") {
         let client_id = match params.get("client_id") {
             Some(id) => id.clone(),
             None => {
-                return error_redirect(
-                    &params,
-                    "invalid_request",
-                    "client_id required alongside request parameter",
-                );
+                return (
+                    StatusCode::BAD_REQUEST,
+                    "invalid_request: client_id required alongside request parameter",
+                )
+                    .into_response();
             }
         };
         let client = match state
@@ -89,27 +92,39 @@ async fn handle_authorize(
                     .into_response()
             }
         };
-        match jar::resolve_request_object(&state, &client, &request_jwt, params.clone()).await {
+        match jar::resolve_request_object(
+            &state,
+            &client,
+            &request_jwt,
+            params.clone(),
+            &realm.slug,
+        )
+        .await
+        {
             Ok(merged) => params = merged,
-            Err((code, desc)) => return error_redirect(&params, code, &desc),
+            Err((code, desc)) => {
+                return (StatusCode::BAD_REQUEST, format!("{code}: {desc}")).into_response()
+            }
         }
     }
 
     // Resolve PAR `request_uri` if presented (RFC 9126 §4).
+    // Inline errors — redirect_uri not yet validated.
     if let Some(request_uri) = params.remove("request_uri") {
         match state.storage.consume_par_request(&request_uri).await {
             Ok(par) => {
                 if par.realm_id != realm.id {
-                    return error_redirect(&params, "invalid_request_uri", "realm mismatch");
+                    return (StatusCode::BAD_REQUEST, "invalid_request_uri: realm mismatch")
+                        .into_response();
                 }
                 params = par.params;
             }
             Err(_) => {
-                return error_redirect(
-                    &params,
-                    "invalid_request_uri",
-                    "unknown / expired request_uri",
-                );
+                return (
+                    StatusCode::BAD_REQUEST,
+                    "invalid_request_uri: unknown / expired request_uri",
+                )
+                    .into_response();
             }
         }
     }

@@ -1,0 +1,255 @@
+Geonosis
+Copyright 2025-2026 Hosnian Prime Contributors
+
+This product is licensed under the Apache License 2.0 or MIT License,
+at your option.
+
+This product includes software developed by third parties.
+See below for details.
+
+---
+
+ASYNC / RUNTIME
+
+tokio — MIT
+https://github.com/tokio-rs/tokio
+
+async-trait — MIT OR Apache-2.0
+https://github.com/dtolnay/async-trait
+
+futures / futures-util — MIT OR Apache-2.0
+https://github.com/rust-lang/futures-rs
+
+---
+
+SERIALIZATION
+
+serde / serde_json — MIT OR Apache-2.0
+https://github.com/serde-rs/serde
+
+serde_with — MIT OR Apache-2.0
+https://github.com/jonasbb/serde_with
+
+---
+
+ERROR HANDLING
+
+thiserror — MIT OR Apache-2.0
+https://github.com/dtolnay/thiserror
+
+anyhow — MIT OR Apache-2.0
+https://github.com/dtolnay/anyhow
+
+---
+
+LOGGING / TRACING / TELEMETRY
+
+tracing / tracing-subscriber — MIT
+https://github.com/tokio-rs/tracing
+
+opentelemetry / opentelemetry_sdk / opentelemetry-otlp — Apache-2.0
+https://github.com/open-telemetry/opentelemetry-rust
+
+tracing-opentelemetry — MIT
+https://github.com/tokio-rs/tracing-opentelemetry
+
+---
+
+TIME
+
+chrono — MIT OR Apache-2.0
+https://github.com/chronotope/chrono
+
+time — MIT OR Apache-2.0
+https://github.com/time-rs/time
+
+---
+
+IDENTIFIERS
+
+ulid — MIT OR Apache-2.0
+https://github.com/dylanhart/ulid-rs
+
+uuid — MIT OR Apache-2.0
+https://github.com/uuid-rs/uuid
+
+---
+
+HTTP / WEB FRAMEWORK
+
+axum — MIT
+https://github.com/tokio-rs/axum
+
+tower — MIT
+https://github.com/tower-rs/tower
+
+tower-http — MIT
+https://github.com/tower-rs/tower-http
+
+http — MIT OR Apache-2.0
+https://github.com/hyperium/http
+
+hyper — MIT
+https://github.com/hyperium/hyper
+
+url — MIT OR Apache-2.0
+https://github.com/servo/rust-url
+
+reqwest — MIT OR Apache-2.0
+https://github.com/seanmonstar/reqwest
+
+---
+
+CRYPTOGRAPHY
+
+sha2 / sha1 / hmac — MIT OR Apache-2.0
+https://github.com/RustCrypto/hashes
+
+blake3 — MIT OR Apache-2.0
+https://github.com/BLAKE3-team/BLAKE3
+
+rand / rand_core — MIT OR Apache-2.0
+https://github.com/rust-random/rand
+
+base64 — MIT OR Apache-2.0
+https://github.com/marshallpierce/rust-base64
+
+hex — MIT OR Apache-2.0
+https://github.com/KokaKiwi/rust-hex
+
+constant_time_eq — CC0-1.0
+https://github.com/cesarb/constant_time_eq
+
+subtle — BSD-3-Clause
+https://github.com/dalek-cryptography/subtle
+
+zeroize — MIT OR Apache-2.0
+https://github.com/RustCrypto/utils
+
+argon2 — MIT OR Apache-2.0
+https://github.com/RustCrypto/password-hashes
+
+aes-gcm — MIT OR Apache-2.0
+https://github.com/RustCrypto/AEADs
+
+rsa — MIT OR Apache-2.0
+https://github.com/RustCrypto/RSA
+
+ed25519-dalek — BSD-3-Clause
+https://github.com/dalek-cryptography/curve25519-dalek
+
+p256 / p384 — MIT OR Apache-2.0
+https://github.com/RustCrypto/elliptic-curves
+
+spki / pkcs8 — MIT OR Apache-2.0
+https://github.com/RustCrypto/formats
+
+x509-parser — MIT OR Apache-2.0
+https://github.com/rusticata/x509-parser
+
+rcgen — MIT OR Apache-2.0
+https://github.com/rustls/rcgen
+
+rustls-pki-types — MIT OR Apache-2.0
+https://github.com/rustls/pki-types
+
+---
+
+DATABASE
+
+sqlx — MIT OR Apache-2.0
+https://github.com/launchbadge/sqlx
+
+---
+
+CACHE / CONCURRENCY
+
+parking_lot — MIT OR Apache-2.0
+https://github.com/Amanieu/parking_lot
+
+arc-swap — MIT OR Apache-2.0
+https://github.com/vorner/arc-swap
+
+moka — MIT OR Apache-2.0
+https://github.com/moka-rs/moka
+
+redis — BSD-3-Clause
+https://github.com/redis-rs/redis-rs
+
+---
+
+WASM
+
+wasmtime / wasmtime-wasi — Apache-2.0 WITH LLVM-exception
+https://github.com/bytecodealliance/wasmtime
+
+wit-bindgen — Apache-2.0 WITH LLVM-exception
+https://github.com/bytecodealliance/wit-bindgen
+
+---
+
+LDAP
+
+ldap3 — MIT OR Apache-2.0
+https://github.com/inejge/ldap3
+
+---
+
+XML / COMPRESSION
+
+quick-xml — MIT
+https://github.com/tafia/quick-xml
+
+flate2 — MIT OR Apache-2.0
+https://github.com/rust-lang/flate2-rs
+
+---
+
+UI / TEMPLATING
+
+maud — MIT OR Apache-2.0
+https://github.com/lambda-fairy/maud
+
+leptos / leptos_axum / leptos_meta / leptos_router — MIT
+https://github.com/leptos-rs/leptos
+
+---
+
+INTERNATIONALIZATION
+
+fluent / fluent-syntax — MIT OR Apache-2.0
+https://github.com/projectfluent/fluent-rs
+
+unic-langid — MIT OR Apache-2.0
+https://github.com/unicode-org/icu4x
+
+---
+
+MISCELLANEOUS
+
+once_cell — MIT OR Apache-2.0
+https://github.com/matklad/once_cell
+
+bytes — MIT
+https://github.com/tokio-rs/bytes
+
+percent-encoding — MIT OR Apache-2.0
+https://github.com/servo/rust-url
+
+indexmap — MIT OR Apache-2.0
+https://github.com/indexmap-rs/indexmap
+
+toml — MIT OR Apache-2.0
+https://github.com/toml-rs/toml
+
+clap — MIT OR Apache-2.0
+https://github.com/clap-rs/clap
+
+config — MIT OR Apache-2.0
+https://github.com/mehcode/config-rs
+
+rust-embed — MIT
+https://github.com/pyrossh/rust-embed
+
+notify — MIT OR Apache-2.0
+https://github.com/notify-rs/notify

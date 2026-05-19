@@ -2,6 +2,7 @@
 //! deployments and for tests.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -33,6 +34,10 @@ pub struct LocalCache {
     /// Moka's own predicate invalidation is asynchronous and best-effort,
     /// which we found racy in tests.
     prefix_index: Mutex<HashMap<(String, &'static str), Vec<String>>>,
+    /// Monotonic hit/miss counters. Read by the server metrics layer
+    /// to populate `cache_hits` / `cache_misses` Prometheus counters.
+    pub hits: AtomicU64,
+    pub misses: AtomicU64,
 }
 
 impl LocalCache {
@@ -44,6 +49,8 @@ impl LocalCache {
         Self {
             inner,
             prefix_index: Mutex::new(HashMap::new()),
+            hits: AtomicU64::new(0),
+            misses: AtomicU64::new(0),
         }
     }
 
@@ -79,7 +86,13 @@ impl LocalCache {
 #[async_trait]
 impl Cache for LocalCache {
     async fn get_raw(&self, key: &CacheKey) -> Option<Vec<u8>> {
-        self.inner.get(&key.to_string()).await
+        let result = self.inner.get(&key.to_string()).await;
+        if result.is_some() {
+            self.hits.fetch_add(1, Ordering::Relaxed);
+        } else {
+            self.misses.fetch_add(1, Ordering::Relaxed);
+        }
+        result
     }
 
     async fn put_raw(&self, key: CacheKey, bytes: Vec<u8>, _ttl: Duration) {

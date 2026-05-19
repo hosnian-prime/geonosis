@@ -21,8 +21,8 @@ pub async fn resolve_request_object(
     client: &Client,
     request_jwt: &str,
     mut query_params: BTreeMap<String, String>,
+    realm_slug: &str,
 ) -> Result<BTreeMap<String, String>, (&'static str, String)> {
-    // 1. Decode header (unverified) to get kid + alg.
     let header = decode_jwt_header(request_jwt)
         .map_err(|e| ("invalid_request_object", format!("malformed request JWT: {e}")))?;
 
@@ -34,7 +34,7 @@ pub async fn resolve_request_object(
     let alg = parse_alg(&header.alg)
         .map_err(|e| ("invalid_request_object", format!("unsupported alg: {e}")))?;
 
-    // 2. Verify the kid is registered on this client.
+    // Verify the kid is registered on this client.
     if !client.client_authentication_keys.is_empty()
         && !client.client_authentication_keys.iter().any(|k| k == &kid)
     {
@@ -44,7 +44,7 @@ pub async fn resolve_request_object(
         ));
     }
 
-    // 3. Load public key from KMS.
+    // Load public key from KMS.
     let key_id: KeyId = kid
         .parse()
         .map_err(|_| ("invalid_request_object", format!("invalid kid: {kid}")))?;
@@ -54,13 +54,43 @@ pub async fn resolve_request_object(
         .await
         .map_err(|e| ("invalid_request_object", format!("key lookup failed: {e}")))?;
 
-    // 4. Verify JWT and extract claims.
+    // Verify JWT and extract claims.
     let claims: BTreeMap<String, serde_json::Value> =
         geonosis_crypto::verify_jwt(request_jwt, alg, &kid, &public_key)
-            .map_err(|e| ("invalid_request_object", format!("signature verification failed: {e}")))?;
+            .map_err(|e| ("invalid_request_object", format!("verification failed: {e}")))?;
 
-    // 5. RFC 9101 §6.3: JWT claims override query params.
-    //    `client_id` MUST match if present in both.
+    // RFC 9101 §10.2: `iss` MUST match `client_id`.
+    if let Some(iss) = claims.get("iss").and_then(|v| v.as_str()) {
+        if iss != client.client_id {
+            return Err((
+                "invalid_request_object",
+                format!("iss mismatch: expected {}, got {iss}", client.client_id),
+            ));
+        }
+    }
+
+    // RFC 9101 §10.2: `aud` SHOULD contain the authorization server issuer.
+    let expected_issuer = format!(
+        "{}/realms/{realm_slug}",
+        state.public_base_url.as_str().trim_end_matches('/')
+    );
+    if let Some(aud) = claims.get("aud") {
+        let aud_matches = match aud {
+            serde_json::Value::String(s) => s == &expected_issuer,
+            serde_json::Value::Array(arr) => arr
+                .iter()
+                .any(|v| v.as_str() == Some(expected_issuer.as_str())),
+            _ => false,
+        };
+        if !aud_matches {
+            return Err((
+                "invalid_request_object",
+                "aud does not match authorization server issuer".into(),
+            ));
+        }
+    }
+
+    // `client_id` MUST match if present in both (§6.3).
     if let Some(jwt_client_id) = claims.get("client_id").and_then(|v| v.as_str()) {
         if let Some(query_client_id) = query_params.get("client_id") {
             if jwt_client_id != query_client_id {
@@ -72,20 +102,17 @@ pub async fn resolve_request_object(
         }
     }
 
-    // Merge: JWT claims override query params.
+    // Merge: JWT claims override query params (§6.3).
     for (k, v) in &claims {
         if let Some(s) = v.as_str() {
             query_params.insert(k.clone(), s.to_string());
         } else if let Some(n) = v.as_i64() {
             query_params.insert(k.clone(), n.to_string());
         }
-        // Arrays/objects (e.g. `claims` parameter) are skipped for now;
-        // they'd need JSON serialization which is a v0.2 concern.
+        // Arrays/objects (e.g. `claims` parameter) skipped; v0.2 concern.
     }
 
-    // Remove the `request` param itself — it's been consumed.
     query_params.remove("request");
-
     Ok(query_params)
 }
 
@@ -104,4 +131,3 @@ fn parse_alg(alg: &str) -> Result<JwsAlgorithm, String> {
         other => Err(format!("unsupported: {other}")),
     }
 }
-

@@ -1,0 +1,130 @@
+# cargo-deny configuration for Geonosis IAM Server
+# https://embarkstudios.github.io/cargo-deny/
+#
+# Run: cargo deny check
+# Format: cargo-deny v2
+
+# --------------------------------------------------------------------------
+# General settings
+# --------------------------------------------------------------------------
+[graph]
+# Target platforms to check. Empty = all targets in the lockfile.
+targets = []
+# Exclude dev-only and build-only dependencies from license/ban checks
+# when they don't end up in the final binary.
+exclude-dev = true
+
+# --------------------------------------------------------------------------
+# [licenses] — controls which licenses are acceptable
+# --------------------------------------------------------------------------
+[licenses]
+# Confidence threshold for license detection (0.0–1.0).
+# 0.8 is a good balance between catching false positives and not being
+# overly strict on heuristic detection.
+confidence-threshold = 0.8
+
+# Allow-list approach: only the licenses listed here are permitted.
+# This covers the vast majority of the Rust ecosystem.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "ISC",
+    "Zlib",
+    "CC0-1.0",
+    "Unicode-DFS-2016",
+    "Unicode-3.0",
+    "OpenSSL",
+]
+
+# Copyleft licenses are denied by default because they are not in the
+# allow list above. The following are explicitly called out for clarity:
+#   - GPL-2.0, GPL-3.0
+#   - LGPL-2.1, LGPL-3.0
+#   - AGPL-3.0
+#   - MPL-2.0
+#
+# If a dependency requires one of these, add a [[licenses.exceptions]]
+# entry with justification rather than adding it to the allow list.
+
+# Per-crate exceptions for licenses not on the allow list.
+# Example:
+# [[licenses.exceptions]]
+# allow = ["MPL-2.0"]
+# name = "some-crate"
+
+# Some crates embed their license in non-standard ways. Clarifications
+# let cargo-deny map them correctly.
+[[licenses.clarify]]
+name = "ring"
+expression = "MIT AND ISC AND OpenSSL"
+license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
+
+# --------------------------------------------------------------------------
+# [bans] — controls which crates (and versions) are allowed
+# --------------------------------------------------------------------------
+[bans]
+# Emit warnings (not errors) when multiple versions of the same crate
+# appear in the dependency graph. Some duplication is unavoidable in the
+# Rust ecosystem (e.g., syn 1.x + 2.x during migration periods).
+multiple-versions = "warn"
+
+# Wildcard version constraints (e.g., `*`) are never acceptable in a
+# security-sensitive project — they can silently pull breaking or
+# vulnerable releases.
+wildcards = "deny"
+
+# When reporting duplicate crates, highlight every instance so it's easy
+# to track down which top-level dependency pulls in the older version.
+highlight = "all"
+
+# Deny specific crates outright (e.g., known-bad or superseded crates).
+# deny = [
+#     { name = "openssl-sys", wrappers = [] },  # prefer rustls
+# ]
+
+# Allow specific duplicates that are expected and reviewed.
+# [[bans.skip]]
+# name = "syn"
+# version = "1"
+
+# --------------------------------------------------------------------------
+# [advisories] — checks crates against the RustSec advisory database
+# --------------------------------------------------------------------------
+[advisories]
+# Deny crates with known security vulnerabilities — non-negotiable for
+# an IAM server that handles authentication, authorization, and crypto.
+vulnerability = "deny"
+
+# Warn about unmaintained crates so the team can plan migrations, but
+# don't block the build — some unmaintained crates are still safe to use
+# (e.g., stable, feature-complete libraries).
+unmaintained = "warn"
+
+# Deny crates flagged as unsound (may cause undefined behavior even in
+# safe Rust code).
+unsound = "deny"
+
+# Deny yanked crate versions — a yanked version usually signals a
+# serious defect or security issue.
+yanked = "deny"
+
+# --------------------------------------------------------------------------
+# [sources] — controls where crate source code may come from
+# --------------------------------------------------------------------------
+[sources]
+# Deny crates from registries other than crates.io.
+unknown-registry = "deny"
+
+# Deny crates sourced from git repositories. All dependencies must come
+# through crates.io for reproducibility and audit-ability.
+unknown-git = "deny"
+
+# Explicitly allow only the official crates.io index.
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+
+# No git sources are allowed.
+allow-git = []

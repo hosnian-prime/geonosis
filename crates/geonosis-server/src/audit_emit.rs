@@ -19,6 +19,7 @@ pub fn emit_user(
     target: Option<Target>,
     detail: serde_json::Value,
 ) {
+    state.metrics.audit_events_total.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     state.audit.publish(AuditEvent {
         id: EventId::new(),
         realm_id,
@@ -42,6 +43,7 @@ pub fn emit_system(
     target: Option<Target>,
     detail: serde_json::Value,
 ) {
+    state.metrics.audit_events_total.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     state.audit.publish(AuditEvent {
         id: EventId::new(),
         realm_id,
@@ -62,6 +64,7 @@ pub fn emit_client(
     target: Option<Target>,
     detail: serde_json::Value,
 ) {
+    state.metrics.audit_events_total.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     state.audit.publish(AuditEvent {
         id: EventId::new(),
         realm_id,

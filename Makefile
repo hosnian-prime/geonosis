@@ -157,6 +157,34 @@ example-nextjs-install: ## Install the Next.js example's Node deps
 example-nextjs: ## Run the Next.js example (port 8888)
 	cd examples/nextjs-app && npm run dev
 
+### Load testing
+.PHONY: load-seed
+load-seed: ## Seed the load test realm (requires running server)
+	tests/load/seed-load-realm.sh $(SERVER_URL)
+
+.PHONY: load-test
+load-test: ## Run k6 load test against $(SERVER_URL)
+	k6 run tests/load/authorize-token.js --env BASE_URL=$(SERVER_URL)
+
+.PHONY: flamegraph
+flamegraph: ## Profile the server under load (cargo-flamegraph must be installed)
+	cargo flamegraph --bin geonosis-server -- \
+	  --public-url $(SERVER_URL) --bind 0.0.0.0:8080
+
+### Conformance
+.PHONY: conformance-seed
+conformance-seed: ## Seed conformance test realm
+	tests/conformance/seed-conformance-realm.sh $(SERVER_URL)
+
+.PHONY: conformance-oidc
+conformance-oidc: ## Run OIDC Basic conformance smoke tests
+	tests/conformance/run-oidc-basic.sh $(SERVER_URL)
+
+.PHONY: conformance-fapi
+conformance-fapi: ## Run FAPI 1 Baseline conformance smoke tests
+	tests/conformance/seed-fapi-realm.sh $(SERVER_URL)
+	tests/conformance/run-fapi-baseline.sh $(SERVER_URL)
+
 ### Operations
 .PHONY: docker-build
 docker-build: ## Build the geonosis-server container image
