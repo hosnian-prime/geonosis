@@ -45,7 +45,9 @@ pub async fn resolve_request_object(
     }
 
     // 3. Load public key from KMS.
-    let key_id = KeyId::from_str_lossy(&kid);
+    let key_id: KeyId = kid
+        .parse()
+        .map_err(|_| ("invalid_request_object", format!("invalid kid: {kid}")))?;
     let public_key = state
         .kms
         .load_public(&key_id)
@@ -103,13 +105,3 @@ fn parse_alg(alg: &str) -> Result<JwsAlgorithm, String> {
     }
 }
 
-/// Extension trait for KeyId to create from a string without FromStr.
-trait KeyIdExt {
-    fn from_str_lossy(s: &str) -> Self;
-}
-
-impl KeyIdExt for KeyId {
-    fn from_str_lossy(s: &str) -> Self {
-        s.parse().unwrap_or_else(|_| KeyId::new())
-    }
-}
