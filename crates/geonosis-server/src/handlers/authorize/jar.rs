@@ -9,7 +9,7 @@
 use std::collections::BTreeMap;
 
 use geonosis_core::{Client, JwsAlgorithm, KeyId};
-use geonosis_crypto::jwt::{JwsHeader, PublicMaterial};
+use geonosis_crypto::jwt::JwsHeader;
 use geonosis_crypto::KeyManagementService;
 
 use crate::state::AppState;
