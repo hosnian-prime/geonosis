@@ -253,7 +253,7 @@ mod tests {
         let realm = RealmId::new();
         let key = CacheKey::new(realm, CacheClass::Flow, "browser");
         let key_payload = format!("k:{key}");
-        let glob = format!("p:g:{}:flow:*", realm);
+        let glob = format!("p:g:{realm}:flow:*");
         assert!(parse_prefix_from_key(&key_payload).is_some());
         assert!(parse_prefix_from_glob(&glob).is_some());
     }

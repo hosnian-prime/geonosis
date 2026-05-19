@@ -96,11 +96,11 @@ pub async fn run(database_url: &str, cmd: SpiCmd) -> anyhow::Result<()> {
             if !skip_verify {
                 if let (Some(manifest_path), Some(sig_b64)) = (&manifest, &signature) {
                     let manifest_bytes = std::fs::read(manifest_path)?;
-                    let parsed = geonosis_spi_host::manifest::verify_signature(
-                        &manifest_bytes,
-                        sig_b64,
-                    )
-                    .map_err(|e| anyhow::anyhow!("manifest signature verification failed: {e}"))?;
+                    let parsed =
+                        geonosis_spi_host::manifest::verify_signature(&manifest_bytes, sig_b64)
+                            .map_err(|e| {
+                                anyhow::anyhow!("manifest signature verification failed: {e}")
+                            })?;
                     geonosis_spi_host::manifest::verify_bytecode_sha256(&parsed, &bytecode)
                         .map_err(|e| anyhow::anyhow!("bytecode SHA-256 mismatch: {e}"))?;
                     // Trust list check: empty trusted list accepts any

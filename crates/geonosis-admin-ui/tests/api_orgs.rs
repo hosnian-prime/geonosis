@@ -455,9 +455,7 @@ async fn upsert_and_list_consent_policy() {
 
     let router4 = test_router(state);
     let resp = router4
-        .oneshot(get(
-            "/admin/v1/realms/acme/orgs/acme-org/consent-policies",
-        ))
+        .oneshot(get("/admin/v1/realms/acme/orgs/acme-org/consent-policies"))
         .await
         .unwrap();
     let json = assert_ok_json(resp).await;

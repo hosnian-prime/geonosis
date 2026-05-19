@@ -5,20 +5,17 @@ on:
     branches: [main, hive]
   pull_request:
     branches: [main, hive]
-  # Nightly run to catch regressions from dependency updates.
   schedule:
     - cron: "0 4 * * *"
 
 env:
   CARGO_TERM_COLOR: always
-  RUST_VERSION: "1.83"
 
 concurrency:
   group: conformance-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # ── OIDC Basic conformance ─────────────────────────────────────────
   oidc-basic:
     name: OIDC Basic conformance
     runs-on: ubuntu-latest
@@ -44,37 +41,27 @@ jobs:
       - name: Build server
         run: cargo build --release -p geonosis-server
 
-      - name: Run migrations
-        env:
-          DATABASE_URL: postgres://geonosis:geonosis@localhost:5432/geonosis_conformance
-        run: cargo run -p geonosis-migrate -- up
-
-      - name: Start Geonosis server
+      - name: Start Geonosis server (auto-migrate + bootstrap)
         env:
           GEONOSIS_DATABASE_URL: postgres://geonosis:geonosis@localhost:5432/geonosis_conformance
           GEONOSIS_PUBLIC_URL: http://localhost:8080
           GEONOSIS_MASTER_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
           GEONOSIS_BIND: "0.0.0.0:8080"
+          GEONOSIS_MIGRATE_ON_BOOT: "true"
           GEONOSIS_BOOTSTRAP_QUICKSTART: "true"
         run: |
           ./target/release/geonosis-server &
-          # Wait for server readiness.
           for i in $(seq 1 30); do
             curl -sf http://localhost:8080/-/ready && break
             sleep 1
           done
+          curl -sf http://localhost:8080/-/ready || (echo "server not ready"; exit 1)
 
       - name: Seed conformance realm + client
-        run: |
-          # Create a conformance test realm with a public client configured
-          # for the OpenID Foundation RP test suite callback URL.
-          tests/conformance/seed-conformance-realm.sh http://localhost:8080
+        run: tests/conformance/seed-conformance-realm.sh http://localhost:8080
 
       - name: Run OIDC Basic RP test
-        run: |
-          # The OpenID Foundation conformance suite is a Node.js app.
-          # We run a subset of the Basic profile tests.
-          tests/conformance/run-oidc-basic.sh http://localhost:8080
+        run: tests/conformance/run-oidc-basic.sh http://localhost:8080
 
       - name: Upload conformance report
         if: always()
@@ -83,7 +70,6 @@ jobs:
           name: oidc-basic-conformance-report
           path: tests/conformance/reports/
 
-  # ── FAPI 1 Baseline conformance ────────────────────────────────────
   fapi-baseline:
     name: FAPI 1 Baseline conformance
     runs-on: ubuntu-latest
@@ -109,17 +95,13 @@ jobs:
       - name: Build server
         run: cargo build --release -p geonosis-server
 
-      - name: Run migrations
-        env:
-          DATABASE_URL: postgres://geonosis:geonosis@localhost:5432/geonosis_fapi
-        run: cargo run -p geonosis-migrate -- up
-
-      - name: Start Geonosis server
+      - name: Start Geonosis server (auto-migrate + bootstrap)
         env:
           GEONOSIS_DATABASE_URL: postgres://geonosis:geonosis@localhost:5432/geonosis_fapi
           GEONOSIS_PUBLIC_URL: http://localhost:8080
           GEONOSIS_MASTER_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
           GEONOSIS_BIND: "0.0.0.0:8080"
+          GEONOSIS_MIGRATE_ON_BOOT: "true"
           GEONOSIS_BOOTSTRAP_QUICKSTART: "true"
         run: |
           ./target/release/geonosis-server &
@@ -127,6 +109,7 @@ jobs:
             curl -sf http://localhost:8080/-/ready && break
             sleep 1
           done
+          curl -sf http://localhost:8080/-/ready || (echo "server not ready"; exit 1)
 
       - name: Seed FAPI realm + client
         run: tests/conformance/seed-fapi-realm.sh http://localhost:8080
@@ -141,12 +124,9 @@ jobs:
           name: fapi-baseline-conformance-report
           path: tests/conformance/reports/
 
-  # ── Vendor broker interop ──────────────────────────────────────────
   broker-interop:
     name: Vendor broker interop
     runs-on: ubuntu-latest
-    # Only run on schedule or manual trigger — requires real OAuth app
-    # credentials stored as repository secrets.
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     services:
       postgres:
@@ -170,17 +150,13 @@ jobs:
       - name: Build server
         run: cargo build --release -p geonosis-server
 
-      - name: Run migrations
-        env:
-          DATABASE_URL: postgres://geonosis:geonosis@localhost:5432/geonosis_interop
-        run: cargo run -p geonosis-migrate -- up
-
-      - name: Start Geonosis server
+      - name: Start Geonosis server (auto-migrate + bootstrap)
         env:
           GEONOSIS_DATABASE_URL: postgres://geonosis:geonosis@localhost:5432/geonosis_interop
           GEONOSIS_PUBLIC_URL: http://localhost:8080
           GEONOSIS_MASTER_KEY: "0000000000000000000000000000000000000000000000000000000000000000"
           GEONOSIS_BIND: "0.0.0.0:8080"
+          GEONOSIS_MIGRATE_ON_BOOT: "true"
           GEONOSIS_BOOTSTRAP_QUICKSTART: "true"
         run: |
           ./target/release/geonosis-server &
@@ -188,6 +164,7 @@ jobs:
             curl -sf http://localhost:8080/-/ready && break
             sleep 1
           done
+          curl -sf http://localhost:8080/-/ready || (echo "server not ready"; exit 1)
 
       - name: Google broker interop
         env:

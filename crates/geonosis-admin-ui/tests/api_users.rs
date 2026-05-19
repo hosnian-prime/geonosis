@@ -133,7 +133,10 @@ async fn update_user_preserves_identity() {
     let json = assert_ok_json(resp).await;
     assert_eq!(json["id"], original_id, "id must not change");
     assert_eq!(json["username"], "alice", "username must not change");
-    assert_eq!(json["created_at"], original_created, "created_at must not change");
+    assert_eq!(
+        json["created_at"], original_created,
+        "created_at must not change"
+    );
     assert_eq!(json["email"], "newalice@example.com");
     let _ = user;
 }

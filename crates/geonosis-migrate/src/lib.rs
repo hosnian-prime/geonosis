@@ -135,7 +135,7 @@ mod tests {
         let names: Vec<&str> = MIGRATIONS.iter().map(|m| m.description.as_ref()).collect();
         // Each `.up.sql` is one migration; sqlx strips the timestamp
         // prefix into the description.
-        assert_eq!(names.len(), 12, "migrations: {names:?}");
+        assert_eq!(names.len(), 13, "migrations: {names:?}");
         for n in &names {
             eprintln!("migration: {n}");
         }
@@ -150,9 +150,10 @@ mod tests {
     fn every_migration_creates_a_table() {
         for m in MIGRATIONS.iter() {
             let upper = m.sql.to_ascii_uppercase();
+            // Expand-phase migrations may ALTER TABLE instead of CREATE TABLE.
             assert!(
-                upper.contains("CREATE TABLE"),
-                "migration {} has no CREATE TABLE: {}",
+                upper.contains("CREATE TABLE") || upper.contains("ALTER TABLE"),
+                "migration {} has no CREATE/ALTER TABLE: {}",
                 m.version,
                 m.description
             );
@@ -170,6 +171,11 @@ mod tests {
             if m.description.contains("init realm") {
                 // Realm table itself: no RLS needed. realm_id is the
                 // RLS pivot.
+                continue;
+            }
+            // ALTER TABLE migrations on existing tenanted tables inherit
+            // the RLS policy from the original CREATE TABLE migration.
+            if !m.sql.to_ascii_uppercase().contains("CREATE TABLE") {
                 continue;
             }
             if m.description.contains("init audit") {

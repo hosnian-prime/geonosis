@@ -179,11 +179,7 @@ pub async fn seed_public_client(state: &AppState, client_id: &str) {
 }
 
 /// Seed a public client with optional `device_code` grant.
-pub async fn seed_public_client_with_grants(
-    state: &AppState,
-    client_id: &str,
-    device_code: bool,
-) {
+pub async fn seed_public_client_with_grants(state: &AppState, client_id: &str, device_code: bool) {
     use geonosis_core::{
         AccessTokenType, ClientAuthMethod, ClientId, ClientKind, ConsentPolicy, FlowBinding,
         GrantPolicy, RedirectUri,
@@ -413,10 +409,7 @@ pub async fn update_realm_brute_force(
 }
 
 /// Update the realm's session policy via a closure.
-pub async fn update_realm_session_policy(
-    state: &AppState,
-    f: impl FnOnce(&mut SessionPolicy),
-) {
+pub async fn update_realm_session_policy(state: &AppState, f: impl FnOnce(&mut SessionPolicy)) {
     let mut realm = state.storage.get_realm_by_slug("acme").await.unwrap();
     f(&mut realm.session_policy);
     realm.updated_at = Utc::now();

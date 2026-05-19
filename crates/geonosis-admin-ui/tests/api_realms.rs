@@ -74,10 +74,7 @@ async fn create_realm_seeds_default_flows() {
 async fn get_realm_by_slug() {
     let (state, _) = fixture_state().await;
     let router = test_router(state);
-    let resp = router
-        .oneshot(get("/admin/v1/realms/acme"))
-        .await
-        .unwrap();
+    let resp = router.oneshot(get("/admin/v1/realms/acme")).await.unwrap();
     let json = assert_ok_json(resp).await;
     assert_eq!(json["slug"], "acme");
     assert_eq!(json["display_name"], "Acme");
@@ -87,10 +84,7 @@ async fn get_realm_by_slug() {
 async fn get_unknown_realm_404() {
     let (state, _) = fixture_state().await;
     let router = test_router(state);
-    let resp = router
-        .oneshot(get("/admin/v1/realms/nope"))
-        .await
-        .unwrap();
+    let resp = router.oneshot(get("/admin/v1/realms/nope")).await.unwrap();
     assert_not_found(resp).await;
 }
 
@@ -100,10 +94,7 @@ async fn update_realm_preserves_slug_and_id() {
 
     // Get the original realm to capture its ID
     let router = test_router(state.clone());
-    let resp = router
-        .oneshot(get("/admin/v1/realms/acme"))
-        .await
-        .unwrap();
+    let resp = router.oneshot(get("/admin/v1/realms/acme")).await.unwrap();
     let original = assert_ok_json(resp).await;
     let original_id = original["id"].as_str().unwrap().to_string();
 
@@ -127,10 +118,7 @@ async fn update_unknown_realm_404() {
 
     // Get a valid realm body from the existing realm
     let router = test_router(state.clone());
-    let resp = router
-        .oneshot(get("/admin/v1/realms/acme"))
-        .await
-        .unwrap();
+    let resp = router.oneshot(get("/admin/v1/realms/acme")).await.unwrap();
     let body = assert_ok_json(resp).await;
 
     // PUT it against a non-existing slug
@@ -156,10 +144,7 @@ async fn delete_realm() {
 
     // Verify it's gone
     let router2 = test_router(state);
-    let resp = router2
-        .oneshot(get("/admin/v1/realms/acme"))
-        .await
-        .unwrap();
+    let resp = router2.oneshot(get("/admin/v1/realms/acme")).await.unwrap();
     assert_not_found(resp).await;
 }
 

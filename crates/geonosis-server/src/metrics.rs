@@ -508,10 +508,14 @@ fn render(m: &MetricsState) -> String {
         // but we override with the actual backend values.
         out.push_str("# HELP geonosis_cache_hits_total Cache hits by backend layer.\n");
         out.push_str("# TYPE geonosis_cache_hits_total counter\n");
-        out.push_str(&format!("geonosis_cache_hits_total{{cache=\"local\"}} {hits}\n"));
+        out.push_str(&format!(
+            "geonosis_cache_hits_total{{cache=\"local\"}} {hits}\n"
+        ));
         out.push_str("# HELP geonosis_cache_misses_total Cache misses by backend layer.\n");
         out.push_str("# TYPE geonosis_cache_misses_total counter\n");
-        out.push_str(&format!("geonosis_cache_misses_total{{cache=\"local\"}} {misses}\n"));
+        out.push_str(&format!(
+            "geonosis_cache_misses_total{{cache=\"local\"}} {misses}\n"
+        ));
     } else {
         m.cache_hits.render(&mut out);
         m.cache_misses.render(&mut out);
@@ -543,11 +547,11 @@ fn render(m: &MetricsState) -> String {
         out.push_str(
             "# HELP geonosis_db_pool_size Total connections held by the Postgres pool.\n# TYPE geonosis_db_pool_size gauge\n",
         );
-        out.push_str(&format!("geonosis_db_pool_size {}\n", size));
+        out.push_str(&format!("geonosis_db_pool_size {size}\n"));
         out.push_str(
             "# HELP geonosis_db_pool_in_use Connections currently checked out from the Postgres pool.\n# TYPE geonosis_db_pool_in_use gauge\n",
         );
-        out.push_str(&format!("geonosis_db_pool_in_use {}\n", in_use));
+        out.push_str(&format!("geonosis_db_pool_in_use {in_use}\n"));
     }
 
     out

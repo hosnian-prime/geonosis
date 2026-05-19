@@ -88,8 +88,7 @@ async fn handle_authorize(
         {
             Ok(c) => c,
             Err(_) => {
-                return (StatusCode::BAD_REQUEST, "invalid_request: unknown client")
-                    .into_response()
+                return (StatusCode::BAD_REQUEST, "invalid_request: unknown client").into_response()
             }
         };
         match jar::resolve_request_object(
@@ -114,7 +113,10 @@ async fn handle_authorize(
         match state.storage.consume_par_request(&request_uri).await {
             Ok(par) => {
                 if par.realm_id != realm.id {
-                    return (StatusCode::BAD_REQUEST, "invalid_request_uri: realm mismatch")
+                    return (
+                        StatusCode::BAD_REQUEST,
+                        "invalid_request_uri: realm mismatch",
+                    )
                         .into_response();
                 }
                 params = par.params;
@@ -171,7 +173,7 @@ async fn handle_authorize(
             return start_flow(&state, &realm, &client, &req, &mut params, maybe_session).await;
         }
         sso::PromptDecision::Error { code, description } => {
-            return error_redirect(&params, code, description);
+            error_redirect(&params, code, description)
         }
     }
 }

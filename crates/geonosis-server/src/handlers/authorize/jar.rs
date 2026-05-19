@@ -23,8 +23,12 @@ pub async fn resolve_request_object(
     mut query_params: BTreeMap<String, String>,
     realm_slug: &str,
 ) -> Result<BTreeMap<String, String>, (&'static str, String)> {
-    let header = decode_jwt_header(request_jwt)
-        .map_err(|e| ("invalid_request_object", format!("malformed request JWT: {e}")))?;
+    let header = decode_jwt_header(request_jwt).map_err(|e| {
+        (
+            "invalid_request_object",
+            format!("malformed request JWT: {e}"),
+        )
+    })?;
 
     let kid = header.kid.clone();
     if kid.is_empty() {
@@ -56,8 +60,12 @@ pub async fn resolve_request_object(
 
     // Verify JWT and extract claims.
     let claims: BTreeMap<String, serde_json::Value> =
-        geonosis_crypto::verify_jwt(request_jwt, alg, &kid, &public_key)
-            .map_err(|e| ("invalid_request_object", format!("verification failed: {e}")))?;
+        geonosis_crypto::verify_jwt(request_jwt, alg, &kid, &public_key).map_err(|e| {
+            (
+                "invalid_request_object",
+                format!("verification failed: {e}"),
+            )
+        })?;
 
     // RFC 9101 §10.2: `iss` MUST match `client_id`.
     if let Some(iss) = claims.get("iss").and_then(|v| v.as_str()) {

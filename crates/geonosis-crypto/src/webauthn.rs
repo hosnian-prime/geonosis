@@ -164,7 +164,8 @@ pub fn verify_assertion(params: &AssertionParams<'_>) -> Result<VerifiedAssertio
     }
 
     // §7.2 step 18: parse sign count (big-endian u32)
-    let sign_count = u32::from_be_bytes([auth_data[33], auth_data[34], auth_data[35], auth_data[36]]);
+    let sign_count =
+        u32::from_be_bytes([auth_data[33], auth_data[34], auth_data[35], auth_data[36]]);
 
     // §7.2 step 19: compute verification data
     // verificationData = authenticatorData || SHA-256(clientDataJSON)
@@ -228,8 +229,7 @@ fn verify_es256(pub_key_bytes: &[u8], data: &[u8], sig_bytes: &[u8]) -> Result<(
     let vk = VerifyingKey::from_encoded_point(&point)
         .map_err(|e| WebauthnError::KeyError(format!("ES256 key: {e}")))?;
     // WebAuthn uses DER-encoded ECDSA signatures (unlike JWS raw R||S).
-    let sig = Signature::from_der(sig_bytes)
-        .map_err(|_| WebauthnError::InvalidSignature)?;
+    let sig = Signature::from_der(sig_bytes).map_err(|_| WebauthnError::InvalidSignature)?;
     vk.verify(data, &sig)
         .map_err(|_| WebauthnError::InvalidSignature)
 }
@@ -263,8 +263,7 @@ fn verify_eddsa(pub_key_bytes: &[u8], data: &[u8], sig_bytes: &[u8]) -> Result<(
     pk_arr.copy_from_slice(pub_key_bytes);
     let vk = VerifyingKey::from_bytes(&pk_arr)
         .map_err(|e| WebauthnError::KeyError(format!("EdDSA key: {e}")))?;
-    let sig = Signature::try_from(sig_bytes)
-        .map_err(|_| WebauthnError::InvalidSignature)?;
+    let sig = Signature::try_from(sig_bytes).map_err(|_| WebauthnError::InvalidSignature)?;
     vk.verify(data, &sig)
         .map_err(|_| WebauthnError::InvalidSignature)
 }
@@ -274,8 +273,8 @@ fn verify_eddsa(pub_key_bytes: &[u8], data: &[u8], sig_bytes: &[u8]) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use p256::ecdsa::{SigningKey as P256Sk, Signature as P256Sig};
     use p256::ecdsa::signature::Signer;
+    use p256::ecdsa::{Signature as P256Sig, SigningKey as P256Sk};
 
     fn make_es256_credential() -> (P256Sk, StoredCredential) {
         let sk = P256Sk::random(&mut rand::thread_rng());
@@ -292,7 +291,12 @@ mod tests {
     }
 
     trait Pipe: Sized {
-        fn pipe<F, R>(self, f: F) -> R where F: FnOnce(Self) -> R { f(self) }
+        fn pipe<F, R>(self, f: F) -> R
+        where
+            F: FnOnce(Self) -> R,
+        {
+            f(self)
+        }
     }
     impl<T> Pipe for T {}
 
@@ -331,7 +335,8 @@ mod tests {
     #[test]
     fn es256_assertion_roundtrip() {
         let (sk, cred) = make_es256_credential();
-        let (cdj, auth_data, sig) = build_assertion(&sk, "example.com", "Y2hhbGxlbmdl", "https://example.com", 1);
+        let (cdj, auth_data, sig) =
+            build_assertion(&sk, "example.com", "Y2hhbGxlbmdl", "https://example.com", 1);
 
         let result = verify_assertion(&AssertionParams {
             client_data_json: &cdj,
@@ -352,7 +357,8 @@ mod tests {
     #[test]
     fn wrong_challenge_rejected() {
         let (sk, cred) = make_es256_credential();
-        let (cdj, auth_data, sig) = build_assertion(&sk, "example.com", "wrong", "https://example.com", 1);
+        let (cdj, auth_data, sig) =
+            build_assertion(&sk, "example.com", "wrong", "https://example.com", 1);
 
         let result = verify_assertion(&AssertionParams {
             client_data_json: &cdj,
@@ -370,7 +376,8 @@ mod tests {
     #[test]
     fn wrong_origin_rejected() {
         let (sk, cred) = make_es256_credential();
-        let (cdj, auth_data, sig) = build_assertion(&sk, "example.com", "ch", "https://evil.com", 1);
+        let (cdj, auth_data, sig) =
+            build_assertion(&sk, "example.com", "ch", "https://evil.com", 1);
 
         let result = verify_assertion(&AssertionParams {
             client_data_json: &cdj,
@@ -388,7 +395,8 @@ mod tests {
     #[test]
     fn rp_id_mismatch_rejected() {
         let (sk, cred) = make_es256_credential();
-        let (cdj, auth_data, sig) = build_assertion(&sk, "other.com", "ch", "https://example.com", 1);
+        let (cdj, auth_data, sig) =
+            build_assertion(&sk, "other.com", "ch", "https://example.com", 1);
 
         let result = verify_assertion(&AssertionParams {
             client_data_json: &cdj,
@@ -407,7 +415,8 @@ mod tests {
     fn sign_count_regression_rejected() {
         let (sk, mut cred) = make_es256_credential();
         cred.sign_count = 10; // stored
-        let (cdj, auth_data, sig) = build_assertion(&sk, "example.com", "ch", "https://example.com", 5); // regression
+        let (cdj, auth_data, sig) =
+            build_assertion(&sk, "example.com", "ch", "https://example.com", 5); // regression
 
         let result = verify_assertion(&AssertionParams {
             client_data_json: &cdj,
@@ -419,13 +428,17 @@ mod tests {
             credential: &cred,
             require_user_verification: false,
         });
-        assert!(matches!(result, Err(WebauthnError::SignCountRegression { .. })));
+        assert!(matches!(
+            result,
+            Err(WebauthnError::SignCountRegression { .. })
+        ));
     }
 
     #[test]
     fn tampered_signature_rejected() {
         let (sk, cred) = make_es256_credential();
-        let (cdj, auth_data, mut sig) = build_assertion(&sk, "example.com", "ch", "https://example.com", 1);
+        let (cdj, auth_data, mut sig) =
+            build_assertion(&sk, "example.com", "ch", "https://example.com", 1);
         // Tamper the last byte
         if let Some(last) = sig.last_mut() {
             *last ^= 0xFF;
@@ -447,7 +460,8 @@ mod tests {
     #[test]
     fn user_verification_required_but_missing() {
         let (sk, cred) = make_es256_credential();
-        let (cdj, mut auth_data, _) = build_assertion(&sk, "example.com", "ch", "https://example.com", 1);
+        let (cdj, mut auth_data, _) =
+            build_assertion(&sk, "example.com", "ch", "https://example.com", 1);
         // Clear the UV flag (bit 2)
         auth_data[32] &= !0x04;
         // Re-sign with modified auth_data

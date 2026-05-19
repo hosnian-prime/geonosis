@@ -51,10 +51,8 @@ pub fn verify_password(password: &str, stored_hash: &str) -> Result<bool, Passwo
 /// using a fixed salt. This guarantees identical CPU cost.
 pub fn dummy_verify(password: &str) {
     use argon2::PasswordHasher;
-    let salt = SaltString::from_b64("R2Vvbm9zaXNEdW1teVNhbHQ")
-        .expect("static salt must parse");
-    let params =
-        Params::new(64 * 1024, 3, 4, None).expect("static params must parse");
+    let salt = SaltString::from_b64("R2Vvbm9zaXNEdW1teVNhbHQ").expect("static salt must parse");
+    let params = Params::new(64 * 1024, 3, 4, None).expect("static params must parse");
     let argon = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
     // We don't care about the result — only the time cost.
     let _ = argon.hash_password(password.as_bytes(), &salt);

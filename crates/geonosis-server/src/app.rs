@@ -166,8 +166,7 @@ mod tests {
 
     use axum::body::Body;
     use axum::http::{Request, StatusCode};
-    use chrono::Utc;
-    use geonosis_core::RealmId;
+
     use tower::ServiceExt;
 
     use crate::test_fixtures::*;
@@ -1114,5 +1113,4 @@ mod tests {
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["error"], "invalid_client");
     }
-
 }

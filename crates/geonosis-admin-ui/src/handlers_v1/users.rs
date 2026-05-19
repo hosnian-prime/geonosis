@@ -100,7 +100,10 @@ pub async fn create(
     if let Ok(profile) = state.storage.get_user_profile_schema(realm.id).await {
         let violations = profile.validate_attributes(&user.attributes);
         if !violations.is_empty() {
-            let msgs: Vec<String> = violations.iter().map(|(k, v)| format!("{k}: {v}")).collect();
+            let msgs: Vec<String> = violations
+                .iter()
+                .map(|(k, v)| format!("{k}: {v}"))
+                .collect();
             return Err(AdminError::Storage(format!(
                 "profile validation failed: {}",
                 msgs.join(", ")
@@ -157,7 +160,10 @@ pub async fn update(
     if let Ok(profile) = state.storage.get_user_profile_schema(realm.id).await {
         let violations = profile.validate_attributes(&user.attributes);
         if !violations.is_empty() {
-            let msgs: Vec<String> = violations.iter().map(|(k, v)| format!("{k}: {v}")).collect();
+            let msgs: Vec<String> = violations
+                .iter()
+                .map(|(k, v)| format!("{k}: {v}"))
+                .collect();
             return Err(AdminError::Storage(format!(
                 "profile validation failed: {}",
                 msgs.join(", ")

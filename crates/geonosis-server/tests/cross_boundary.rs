@@ -144,11 +144,7 @@ async fn admin_put(
 }
 
 /// Send an admin API DELETE (with auth cookie) through the full server router.
-async fn admin_delete(
-    router: axum::Router,
-    cookie: &str,
-    uri: &str,
-) -> axum::response::Response {
+async fn admin_delete(router: axum::Router, cookie: &str, uri: &str) -> axum::response::Response {
     router
         .oneshot(
             Request::builder()
@@ -198,7 +194,11 @@ async fn password_grant_via_seeded_user() {
     let r = router(state);
 
     let resp = token_password(r, "web", &secret, "alice", "Str0ng!Pass9", "openid").await;
-    assert_eq!(resp.status(), StatusCode::OK, "password grant should succeed");
+    assert_eq!(
+        resp.status(),
+        StatusCode::OK,
+        "password grant should succeed"
+    );
     let json = read_json(resp).await;
     assert!(json["access_token"].is_string());
     assert!(json["refresh_token"].is_string());
@@ -215,7 +215,10 @@ async fn token_claims_have_correct_issuer_and_audience() {
     let claims = decode_jwt_payload(json["access_token"].as_str().unwrap());
 
     assert_eq!(claims["iss"], "https://g.example/realms/acme");
-    assert!(claims["aud"].as_array().unwrap().contains(&serde_json::json!("svc")));
+    assert!(claims["aud"]
+        .as_array()
+        .unwrap()
+        .contains(&serde_json::json!("svc")));
     assert_eq!(claims["azp"], "svc");
     assert!(claims["exp"].as_i64().unwrap() > chrono::Utc::now().timestamp());
 }
@@ -294,11 +297,7 @@ async fn delete_user_then_password_grant_fails() {
     assert_eq!(resp.status(), StatusCode::OK);
 
     // Delete user
-    state
-        .storage
-        .delete_user(realm.id, user.id)
-        .await
-        .unwrap();
+    state.storage.delete_user(realm.id, user.id).await.unwrap();
 
     // Token request should fail
     let r2 = router(state);

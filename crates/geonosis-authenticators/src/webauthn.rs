@@ -11,9 +11,7 @@ use async_trait::async_trait;
 use serde_json::json;
 
 use geonosis_core::{Amr, CredentialKind};
-use geonosis_crypto::webauthn::{
-    self, AssertionParams, StoredCredential, WebauthnError,
-};
+use geonosis_crypto::webauthn::{self, AssertionParams, StoredCredential, WebauthnError};
 
 use crate::context::AuthnContext;
 use crate::traits::{
@@ -59,10 +57,8 @@ impl Authenticator for WebauthnAuthenticator {
                 // Generate a random challenge and stash it for
                 // verification when the browser submits.
                 let challenge = geonosis_crypto::random::random_token();
-                ctx.locals.insert(
-                    "webauthn:challenge".into(),
-                    json!(challenge),
-                );
+                ctx.locals
+                    .insert("webauthn:challenge".into(), json!(challenge));
                 Ok(AuthnOutput::Continue {
                     render: RenderInstruction::new("login/webauthn-assert.html"),
                 })
@@ -91,10 +87,8 @@ impl Authenticator for WebauthnAuthenticator {
                 };
 
                 // Parse stored credentials.
-                let credentials: Vec<StoredCredential> =
-                    serde_json::from_str(creds_json).map_err(|e| {
-                        AuthnError::Invalid(format!("bad stored credentials: {e}"))
-                    })?;
+                let credentials: Vec<StoredCredential> = serde_json::from_str(creds_json)
+                    .map_err(|e| AuthnError::Invalid(format!("bad stored credentials: {e}")))?;
                 if credentials.is_empty() {
                     return Ok(AuthnOutput::Failure(FailureKind::RequiresEnrollment));
                 }
@@ -122,11 +116,14 @@ impl Authenticator for WebauthnAuthenticator {
                     .map_err(|e| AuthnError::Invalid(format!("bad assertion: {e}")))?;
                 let b64 = base64::engine::general_purpose::URL_SAFE_NO_PAD;
                 use base64::Engine;
-                let cdj = b64.decode(&blob.client_data_json)
+                let cdj = b64
+                    .decode(&blob.client_data_json)
                     .map_err(|e| AuthnError::Invalid(format!("clientDataJSON b64: {e}")))?;
-                let auth_data = b64.decode(&blob.authenticator_data)
+                let auth_data = b64
+                    .decode(&blob.authenticator_data)
                     .map_err(|e| AuthnError::Invalid(format!("authenticatorData b64: {e}")))?;
-                let sig = b64.decode(&blob.signature)
+                let sig = b64
+                    .decode(&blob.signature)
                     .map_err(|e| AuthnError::Invalid(format!("signature b64: {e}")))?;
 
                 // Consume the challenge (single-use to prevent replay).
@@ -134,7 +131,9 @@ impl Authenticator for WebauthnAuthenticator {
                     .locals
                     .remove("webauthn:challenge")
                     .and_then(|v| v.as_str().map(String::from))
-                    .ok_or_else(|| AuthnError::Invalid("no webauthn challenge in session".into()))?;
+                    .ok_or_else(|| {
+                        AuthnError::Invalid("no webauthn challenge in session".into())
+                    })?;
 
                 // Find the matching credential. Try credential_id from
                 // the blob first; fall back to trying all enrolled creds.
@@ -212,10 +211,8 @@ impl Authenticator for WebauthnAuthenticator {
                         })
                     }
                     Err(e) => {
-                        ctx.locals.insert(
-                            "webauthn:error".into(),
-                            json!(e.to_string()),
-                        );
+                        ctx.locals
+                            .insert("webauthn:error".into(), json!(e.to_string()));
                         Ok(AuthnOutput::Failure(FailureKind::InvalidCredential))
                     }
                 }
@@ -327,7 +324,7 @@ mod tests {
     #[tokio::test]
     async fn init_renders_assertion_prompt_and_sets_challenge() {
         let (mut ctx, _) = fixture(true).await;
-        let out = WebauthnAuthenticator::default()
+        let out = WebauthnAuthenticator
             .process(&mut ctx, AuthnInput::Init)
             .await
             .unwrap();
@@ -346,8 +343,11 @@ mod tests {
         // Set challenge first (Init would do this).
         ctx.locals.insert("webauthn:challenge".into(), json!("ch"));
         let mut form = std::collections::BTreeMap::new();
-        form.insert("assertion".into(), r#"{"clientDataJSON":"","authenticatorData":"","signature":""}"#.into());
-        let out = WebauthnAuthenticator::default()
+        form.insert(
+            "assertion".into(),
+            r#"{"clientDataJSON":"","authenticatorData":"","signature":""}"#.into(),
+        );
+        let out = WebauthnAuthenticator
             .process(&mut ctx, AuthnInput::Submit(form))
             .await
             .unwrap();

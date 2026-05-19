@@ -77,10 +77,7 @@ impl Default for BuiltinAuthenticators {
             BuiltinUrn::RISK_SCORE,
             Arc::new(RiskScoreAuthenticator::new()),
         );
-        by_urn.insert(
-            BuiltinUrn::WEBAUTHN,
-            Arc::new(WebauthnAuthenticator::default()),
-        );
+        by_urn.insert(BuiltinUrn::WEBAUTHN, Arc::new(WebauthnAuthenticator));
         // Note: `idp-redirect`, `magic-link`, `phone-otp` need per-binding
         // config (idp alias / SMTP sender / SMS sender) so they aren't
         // registered as singletons here. The executor instantiates them

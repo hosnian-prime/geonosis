@@ -132,20 +132,15 @@ pub fn enforce_prompt_policy(
 
     // `id_token_hint` validation: `sub` must match session user.
     let hint_matches = match (&req.id_token_hint, sso_session) {
-        (Some(hint), Some(session)) => {
-            match extract_sub_from_id_token_hint(hint) {
-                Some(sub) => sub == session.user_id.to_string(),
-                None => false,
-            }
-        }
+        (Some(hint), Some(session)) => match extract_sub_from_id_token_hint(hint) {
+            Some(sub) => sub == session.user_id.to_string(),
+            None => false,
+        },
         (Some(_), None) => false,
         (None, _) => true,
     };
 
-    let can_reuse = sso_session.is_some()
-        && !prompt_login
-        && session_fresh_enough
-        && hint_matches;
+    let can_reuse = sso_session.is_some() && !prompt_login && session_fresh_enough && hint_matches;
 
     if prompt_none {
         if sso_session.is_none() || !hint_matches {
@@ -208,7 +203,10 @@ pub async fn shortcircuit(
 ) -> Response {
     update_session_participation(state, &session, client).await;
 
-    let redirect_uri = match params.get("redirect_uri").and_then(|s| url::Url::parse(s).ok()) {
+    let redirect_uri = match params
+        .get("redirect_uri")
+        .and_then(|s| url::Url::parse(s).ok())
+    {
         Some(u) => u,
         None => {
             return (StatusCode::BAD_REQUEST, "missing/invalid redirect_uri").into_response();

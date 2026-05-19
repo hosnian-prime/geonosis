@@ -145,11 +145,7 @@ impl<K: KeyManagementService + ?Sized + 'static> TokenIssuer for OidcIssuer<K> {
     }
 
     fn refresh_hash_key(&self, realm: RealmId) -> [u8; 32] {
-        geonosis_crypto::derive_realm_key(
-            &self.refresh_hash_key,
-            &realm.to_string(),
-            b"refresh",
-        )
+        geonosis_crypto::derive_realm_key(&self.refresh_hash_key, &realm.to_string(), b"refresh")
     }
 }
 

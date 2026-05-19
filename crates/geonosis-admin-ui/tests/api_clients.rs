@@ -106,7 +106,10 @@ async fn update_client_preserves_identity() {
     let json = assert_ok_json(resp).await;
     assert_eq!(json["id"], original_id, "id must not change");
     assert_eq!(json["client_id"], "my-app", "client_id must not change");
-    assert_eq!(json["created_at"], original_created, "created_at must not change");
+    assert_eq!(
+        json["created_at"], original_created,
+        "created_at must not change"
+    );
     assert_eq!(json["display_name"], "My Updated App");
 }
 

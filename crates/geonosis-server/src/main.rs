@@ -168,10 +168,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         Ok(realms) => {
             for r in &realms {
                 state.providers.seed_v0_1_builtins(r.id);
-                geonosis_authenticators::registry::register_builtins(
-                    &state.providers,
-                    r.id,
-                );
+                geonosis_authenticators::registry::register_builtins(&state.providers, r.id);
             }
             tracing::info!(
                 count = realms.len(),

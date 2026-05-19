@@ -76,11 +76,7 @@ impl UserProfile {
                 continue;
             }
             let value = attrs.get(&decl.name);
-            if decl.required
-                && value.map_or(true, |v| {
-                    matches!(v, crate::AttributeValue::Null)
-                })
-            {
+            if decl.required && value.is_none_or(|v| matches!(v, crate::AttributeValue::Null)) {
                 violations.push((decl.name.clone(), "required".into()));
                 continue;
             }
@@ -122,7 +118,7 @@ fn validate_one(v: &AttributeValidator, value: &str) -> Option<String> {
         }
         AttributeValidator::Options { allowed } => {
             if !allowed.iter().any(|a| a == value) {
-                Some(format!("value not in allowed list"))
+                Some("value not in allowed list".to_string())
             } else {
                 None
             }

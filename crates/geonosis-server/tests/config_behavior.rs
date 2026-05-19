@@ -15,8 +15,8 @@ use axum::http::{Request, StatusCode};
 use base64::Engine;
 use tower::ServiceExt;
 
-use geonosis_server::test_fixtures::*;
 use geonosis_server::router;
+use geonosis_server::test_fixtures::*;
 
 // ---------------------------------------------------------------------------
 // Helpers (reused from cross_boundary.rs pattern)
@@ -36,10 +36,7 @@ async fn token_client_credentials(
         "Basic {}",
         base64::engine::general_purpose::STANDARD.encode(format!("{client_id}:{secret}"))
     );
-    let body = format!(
-        "grant_type=client_credentials&scope={}",
-        urlenc(scope)
-    );
+    let body = format!("grant_type=client_credentials&scope={}", urlenc(scope));
     router
         .oneshot(
             Request::builder()
@@ -262,19 +259,13 @@ async fn sso_session_max_reflected_in_session_expiry() {
     assert_eq!(resp.status(), StatusCode::OK);
 
     // Verify session was created with correct expiry
-    let sessions = state
-        .storage
-        .list_sessions(realm.id, 10)
-        .await
-        .unwrap();
+    let sessions = state.storage.list_sessions(realm.id, 10).await.unwrap();
     // Find the non-admin session (admin session from fixture has different user)
-    let user_session = sessions
-        .iter()
-        .find(|s| {
-            let diff = (s.expires_at - s.started_at).num_seconds();
-            // Should be approximately 7200 seconds
-            (7100..=7300).contains(&diff)
-        });
+    let user_session = sessions.iter().find(|s| {
+        let diff = (s.expires_at - s.started_at).num_seconds();
+        // Should be approximately 7200 seconds
+        (7100..=7300).contains(&diff)
+    });
     assert!(
         user_session.is_some(),
         "session should have ~2h expiry matching sso_session_max"
@@ -412,11 +403,8 @@ async fn digits_enforced() {
     let realm = state.storage.get_realm_by_slug("acme").await.unwrap();
     seed_user_with_password(&state, realm.id, "alice", "InitialPass1!").await;
 
-    update_realm_password_policy(
-        &state,
-        vec![geonosis_core::PasswordRule::Digits { min: 1 }],
-    )
-    .await;
+    update_realm_password_policy(&state, vec![geonosis_core::PasswordRule::Digits { min: 1 }])
+        .await;
 
     let cookie = admin_session_cookie(&state).await;
     let r = router(state);
@@ -446,11 +434,7 @@ async fn not_username_enforced() {
     let realm = state.storage.get_realm_by_slug("acme").await.unwrap();
     seed_user_with_password(&state, realm.id, "alice", "InitialPass1!").await;
 
-    update_realm_password_policy(
-        &state,
-        vec![geonosis_core::PasswordRule::NotUsername],
-    )
-    .await;
+    update_realm_password_policy(&state, vec![geonosis_core::PasswordRule::NotUsername]).await;
 
     let cookie = admin_session_cookie(&state).await;
     let r = router(state);
@@ -482,11 +466,7 @@ async fn not_email_enforced() {
     let realm = state.storage.get_realm_by_slug("acme").await.unwrap();
     seed_user_with_password(&state, realm.id, "alice", "InitialPass1!").await;
 
-    update_realm_password_policy(
-        &state,
-        vec![geonosis_core::PasswordRule::NotEmail],
-    )
-    .await;
+    update_realm_password_policy(&state, vec![geonosis_core::PasswordRule::NotEmail]).await;
 
     let cookie = admin_session_cookie(&state).await;
     let r = router(state);
@@ -532,7 +512,10 @@ async fn multiple_password_rules_all_checked() {
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let json = read_json(resp).await;
     let violations = json["violations"].as_array().unwrap();
-    assert!(violations.len() >= 2, "multiple violations should be returned");
+    assert!(
+        violations.len() >= 2,
+        "multiple violations should be returned"
+    );
 
     // Passes all
     let resp = admin_put(
@@ -554,11 +537,8 @@ async fn password_policy_change_applies_immediately() {
     let cookie = admin_session_cookie(&state).await;
 
     // No special char rule → "NoSpecial1" should be accepted
-    update_realm_password_policy(
-        &state,
-        vec![geonosis_core::PasswordRule::Length { min: 8 }],
-    )
-    .await;
+    update_realm_password_policy(&state, vec![geonosis_core::PasswordRule::Length { min: 8 }])
+        .await;
 
     let r = router(state.clone());
     let resp = admin_put(
@@ -896,7 +876,11 @@ async fn disabled_realm_rejects_all_protocol_requests() {
 
     let r = router(state);
     let resp = token_client_credentials(r, "svc", &secret, "api").await;
-    assert_ne!(resp.status(), StatusCode::OK, "disabled realm should reject");
+    assert_ne!(
+        resp.status(),
+        StatusCode::OK,
+        "disabled realm should reject"
+    );
 }
 
 // ===========================================================================

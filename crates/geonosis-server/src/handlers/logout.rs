@@ -48,7 +48,10 @@ pub async fn logout_get(
         if let Some(sid) = sid_from_jwt_unsafe(hint) {
             let sess_id = geonosis_core::SessionId(sid.clone());
             let _ = state.storage.delete_session(&sess_id).await;
-            state.metrics.session_revoked.inc(&[&realm.slug, "frontchannel"]);
+            state
+                .metrics
+                .session_revoked
+                .inc(&[&realm.slug, "frontchannel"]);
             audit_emit::emit_system(
                 &state,
                 realm.id,
@@ -97,10 +100,7 @@ pub async fn logout_post(
             &realm.id.to_string(),
             b"refresh",
         );
-        let id = geonosis_core::RefreshTokenId(geonosis_crypto::refresh_token_hash(
-            rt,
-            &realm_key,
-        ));
+        let id = geonosis_core::RefreshTokenId(geonosis_crypto::refresh_token_hash(rt, &realm_key));
         if let Ok(t) = state.storage.get_refresh_token(&id).await {
             sub_hint = Some(t.user_id.to_string());
             client_id_hint = Some(t.client_id.to_string());
@@ -120,7 +120,10 @@ pub async fn logout_post(
         }
         if let Some(ref sid) = sid_hint {
             let _ = state.storage.delete_session(&SessionId(sid.clone())).await;
-            state.metrics.session_revoked.inc(&[&realm.slug, "backchannel"]);
+            state
+                .metrics
+                .session_revoked
+                .inc(&[&realm.slug, "backchannel"]);
             audit_emit::emit_system(
                 &state,
                 realm.id,
@@ -154,11 +157,9 @@ pub async fn logout_post(
                     &state,
                     realm.id,
                     geonosis_audit::action::LOGOUT_BACKCHANNEL,
-                    sid_hint
-                        .as_ref()
-                        .map(|s| geonosis_audit::Target::Session {
-                            id: SessionId(s.clone()),
-                        }),
+                    sid_hint.as_ref().map(|s| geonosis_audit::Target::Session {
+                        id: SessionId(s.clone()),
+                    }),
                     serde_json::json!({ "client_id": client.client_id }),
                 );
                 dispatch_backchannel_logout(

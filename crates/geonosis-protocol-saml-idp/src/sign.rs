@@ -80,8 +80,8 @@ impl KeyInfoMaterial {
                 exponent_b64,
             } => {
                 out.push_str("<ds:KeyValue><ds:RSAKeyValue>");
-                write!(out, "<ds:Modulus>{}</ds:Modulus>", modulus_b64).unwrap();
-                write!(out, "<ds:Exponent>{}</ds:Exponent>", exponent_b64).unwrap();
+                write!(out, "<ds:Modulus>{modulus_b64}</ds:Modulus>").unwrap();
+                write!(out, "<ds:Exponent>{exponent_b64}</ds:Exponent>").unwrap();
                 out.push_str("</ds:RSAKeyValue></ds:KeyValue>");
             }
         }
@@ -149,12 +149,11 @@ fn render_signature_with_key_info(
 ) -> String {
     let signed_info = render_signed_info(reference_uri, digest_b64);
     let mut out = String::with_capacity(2048);
-    write!(out, "<ds:Signature xmlns:ds=\"{}\">", XMLNS_DS).unwrap();
+    write!(out, "<ds:Signature xmlns:ds=\"{XMLNS_DS}\">").unwrap();
     out.push_str(&signed_info);
     write!(
         out,
-        "<ds:SignatureValue>{}</ds:SignatureValue>",
-        signature_b64
+        "<ds:SignatureValue>{signature_b64}</ds:SignatureValue>"
     )
     .unwrap();
     out.push_str(key_info_xml);

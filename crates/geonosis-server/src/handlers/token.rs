@@ -249,34 +249,30 @@ async fn handle_refresh(
         &realm.id.to_string(),
         b"refresh",
     );
-    let outcome = geonosis_protocol_oauth::validate_refresh(
-        &storage_arc,
-        &presented,
-        &realm_key,
-    )
-    .await
-    .map_err(|e| match e {
-        geonosis_protocol_oauth::RefreshRotateError::NotFound => {
-            OAuthError::invalid_grant("unknown refresh token")
-        }
-        geonosis_protocol_oauth::RefreshRotateError::Expired => {
-            OAuthError::invalid_grant("refresh token expired")
-        }
-        geonosis_protocol_oauth::RefreshRotateError::Reuse => {
-            state.metrics.token_reuse_detected.inc(&[&realm.slug]);
-            audit_emit::emit_system(
-                state,
-                realm.id,
-                geonosis_audit::action::TOKEN_REUSE,
-                None,
-                serde_json::json!({
-                    "client_id": client.client_id,
-                }),
-            );
-            OAuthError::invalid_grant("refresh token reuse — family burned")
-        }
-        geonosis_protocol_oauth::RefreshRotateError::Storage(s) => server_err(s),
-    })?;
+    let outcome = geonosis_protocol_oauth::validate_refresh(&storage_arc, &presented, &realm_key)
+        .await
+        .map_err(|e| match e {
+            geonosis_protocol_oauth::RefreshRotateError::NotFound => {
+                OAuthError::invalid_grant("unknown refresh token")
+            }
+            geonosis_protocol_oauth::RefreshRotateError::Expired => {
+                OAuthError::invalid_grant("refresh token expired")
+            }
+            geonosis_protocol_oauth::RefreshRotateError::Reuse => {
+                state.metrics.token_reuse_detected.inc(&[&realm.slug]);
+                audit_emit::emit_system(
+                    state,
+                    realm.id,
+                    geonosis_audit::action::TOKEN_REUSE,
+                    None,
+                    serde_json::json!({
+                        "client_id": client.client_id,
+                    }),
+                );
+                OAuthError::invalid_grant("refresh token reuse — family burned")
+            }
+            geonosis_protocol_oauth::RefreshRotateError::Storage(s) => server_err(s),
+        })?;
     let prior = match outcome {
         geonosis_protocol_oauth::RefreshOutcome::Ok { prior } => prior,
     };
@@ -292,7 +288,15 @@ async fn handle_refresh(
     let id_token = if scope.iter().any(|s| s.as_str() == "openid") {
         Some(
             issuer
-                .mint_id_token(realm, client, &subject, &prior.session_id, &scope, None, None)
+                .mint_id_token(
+                    realm,
+                    client,
+                    &subject,
+                    &prior.session_id,
+                    &scope,
+                    None,
+                    None,
+                )
                 .await?,
         )
     } else {
@@ -302,10 +306,7 @@ async fn handle_refresh(
     // Rotate the refresh token.
     let new_secret = geonosis_crypto::RefreshTokenSecret::generate();
     let new_token = RefreshToken {
-        id: RefreshTokenId(refresh_token_hash(
-            new_secret.as_str(),
-            &realm_key,
-        )),
+        id: RefreshTokenId(refresh_token_hash(new_secret.as_str(), &realm_key)),
         family_id: prior.family_id,
         realm_id: prior.realm_id,
         client_id: prior.client_id,
@@ -383,11 +384,7 @@ async fn handle_password(
         geonosis_crypto::dummy_verify(&password);
         return Err(OAuthError::invalid_grant("invalid username or password"));
     }
-    let phc = match state
-        .storage
-        .get_password_hash(realm.id, user.id)
-        .await
-    {
+    let phc = match state.storage.get_password_hash(realm.id, user.id).await {
         Ok(h) => h,
         Err(_) => {
             geonosis_crypto::dummy_verify(&password);

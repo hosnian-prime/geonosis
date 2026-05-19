@@ -78,7 +78,7 @@ fn rfc3339_z(t: DateTime<Utc>) -> String {
 pub fn serialize_assertion(a: &SamlAssertion) -> String {
     let mut out = String::with_capacity(1024);
     out.push_str("<saml:Assertion");
-    write!(out, " xmlns:saml=\"{}\"", XMLNS_SAML).unwrap();
+    write!(out, " xmlns:saml=\"{XMLNS_SAML}\"").unwrap();
     write!(out, " ID=\"{}\"", escape(&a.id)).unwrap();
     write!(out, " IssueInstant=\"{}\"", rfc3339_z(a.issue_instant)).unwrap();
     out.push_str(" Version=\"2.0\"");
@@ -193,8 +193,8 @@ pub fn serialize_response(
 ) -> String {
     let mut out = String::with_capacity(1024 + signed_assertion_xml.len());
     out.push_str("<samlp:Response");
-    write!(out, " xmlns:samlp=\"{}\"", XMLNS_SAMLP).unwrap();
-    write!(out, " xmlns:saml=\"{}\"", XMLNS_SAML).unwrap();
+    write!(out, " xmlns:samlp=\"{XMLNS_SAMLP}\"").unwrap();
+    write!(out, " xmlns:saml=\"{XMLNS_SAML}\"").unwrap();
     write!(out, " ID=\"{}\"", escape(response_id)).unwrap();
     write!(out, " Version=\"2.0\"").unwrap();
     write!(out, " IssueInstant=\"{}\"", rfc3339_z(issue_instant)).unwrap();
@@ -224,12 +224,11 @@ pub fn render_signature_block(
 ) -> String {
     let signed_info = render_signed_info(reference_uri, digest_b64);
     let mut out = String::with_capacity(2048);
-    write!(out, "<ds:Signature xmlns:ds=\"{}\">", XMLNS_DS).unwrap();
+    write!(out, "<ds:Signature xmlns:ds=\"{XMLNS_DS}\">").unwrap();
     out.push_str(&signed_info);
     write!(
         out,
-        "<ds:SignatureValue>{}</ds:SignatureValue>",
-        signature_b64
+        "<ds:SignatureValue>{signature_b64}</ds:SignatureValue>"
     )
     .unwrap();
     out.push_str("<ds:KeyInfo><ds:X509Data><ds:X509Certificate>");
@@ -245,36 +244,28 @@ pub fn render_signature_block(
 /// exactly between the two passes.
 pub fn render_signed_info(reference_uri: &str, digest_b64: &str) -> String {
     let mut out = String::with_capacity(512);
-    write!(out, "<ds:SignedInfo xmlns:ds=\"{}\">", XMLNS_DS).unwrap();
+    write!(out, "<ds:SignedInfo xmlns:ds=\"{XMLNS_DS}\">").unwrap();
     write!(
         out,
-        "<ds:CanonicalizationMethod Algorithm=\"{}\"/>",
-        ALG_C14N_EXC
+        "<ds:CanonicalizationMethod Algorithm=\"{ALG_C14N_EXC}\"/>"
     )
     .unwrap();
     write!(
         out,
-        "<ds:SignatureMethod Algorithm=\"{}\"/>",
-        ALG_SIGNATURE_RSA_SHA256
+        "<ds:SignatureMethod Algorithm=\"{ALG_SIGNATURE_RSA_SHA256}\"/>"
     )
     .unwrap();
     write!(out, "<ds:Reference URI=\"#{}\">", escape(reference_uri)).unwrap();
     out.push_str("<ds:Transforms>");
     write!(
         out,
-        "<ds:Transform Algorithm=\"{}\"/>",
-        ALG_TRANSFORM_ENVELOPED
+        "<ds:Transform Algorithm=\"{ALG_TRANSFORM_ENVELOPED}\"/>"
     )
     .unwrap();
-    write!(out, "<ds:Transform Algorithm=\"{}\"/>", ALG_C14N_EXC).unwrap();
+    write!(out, "<ds:Transform Algorithm=\"{ALG_C14N_EXC}\"/>").unwrap();
     out.push_str("</ds:Transforms>");
-    write!(
-        out,
-        "<ds:DigestMethod Algorithm=\"{}\"/>",
-        ALG_DIGEST_SHA256
-    )
-    .unwrap();
-    write!(out, "<ds:DigestValue>{}</ds:DigestValue>", digest_b64).unwrap();
+    write!(out, "<ds:DigestMethod Algorithm=\"{ALG_DIGEST_SHA256}\"/>").unwrap();
+    write!(out, "<ds:DigestValue>{digest_b64}</ds:DigestValue>").unwrap();
     out.push_str("</ds:Reference>");
     out.push_str("</ds:SignedInfo>");
     out
@@ -307,8 +298,8 @@ pub fn serialize_idp_metadata(input: &IdpMetadataInput<'_>) -> String {
     let mut out = String::with_capacity(2048);
     out.push_str(r#"<?xml version="1.0" encoding="UTF-8"?>"#);
     out.push_str("<md:EntityDescriptor");
-    write!(out, " xmlns:md=\"{}\"", XMLNS_MD).unwrap();
-    write!(out, " xmlns:ds=\"{}\"", XMLNS_DS).unwrap();
+    write!(out, " xmlns:md=\"{XMLNS_MD}\"").unwrap();
+    write!(out, " xmlns:ds=\"{XMLNS_DS}\"").unwrap();
     write!(out, " entityID=\"{}\">", escape(input.entity_id)).unwrap();
 
     out.push_str("<md:IDPSSODescriptor WantAuthnRequestsSigned=\"false\" protocolSupportEnumeration=\"urn:oasis:names:tc:SAML:2.0:protocol\">");

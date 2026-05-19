@@ -372,7 +372,10 @@ pub fn FlowCanvas(
 
 /// Compute the cubic Bezier path between two node boxes plus the
 /// midpoint coordinates used to place the edge condition label.
-fn edge_path_for(from: Option<&FlowCanvasNode>, to: Option<&FlowCanvasNode>) -> (String, f32, f32, f32) {
+fn edge_path_for(
+    from: Option<&FlowCanvasNode>,
+    to: Option<&FlowCanvasNode>,
+) -> (String, f32, f32, f32) {
     let (fx, fy) = match from {
         Some(n) => (n.x + BOX_W / 2.0, n.y + BOX_H),
         None => (VIEW_W / 2.0, VIEW_H * 0.25),
@@ -382,14 +385,8 @@ fn edge_path_for(from: Option<&FlowCanvasNode>, to: Option<&FlowCanvasNode>) -> 
         None => (VIEW_W / 2.0, VIEW_H * 0.75),
     };
     let mid_y = (fy + ty) / 2.0;
-    let path = format!(
-        "M {fx:.1} {fy:.1} C {fx:.1} {my:.1}, {tx:.1} {my:.1}, {tx:.1} {ty:.1}",
-        fx = fx,
-        fy = fy,
-        tx = tx,
-        ty = ty,
-        my = mid_y,
-    );
+    let path =
+        format!("M {fx:.1} {fy:.1} C {fx:.1} {mid_y:.1}, {tx:.1} {mid_y:.1}, {tx:.1} {ty:.1}",);
     let midx = (fx + tx) / 2.0;
     let label_y = mid_y - 14.0;
     (path, midx, mid_y, label_y)

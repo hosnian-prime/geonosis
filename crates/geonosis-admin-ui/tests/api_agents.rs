@@ -84,7 +84,8 @@ async fn update_agent_preserves_parent_subject() {
 
     // Try to change parent_subject — should be preserved
     original["display_name"] = serde_json::json!("Updated Bot");
-    original["parent_subject"] = serde_json::json!({"kind": "user", "user_id": "01JAAAAAAAAAAAAAAAAAAAAAA9"});
+    original["parent_subject"] =
+        serde_json::json!({"kind": "user", "user_id": "01JAAAAAAAAAAAAAAAAAAAAAA9"});
 
     let router2 = test_router(state);
     let resp = router2
@@ -92,7 +93,10 @@ async fn update_agent_preserves_parent_subject() {
         .await
         .unwrap();
     let json = assert_ok_json(resp).await;
-    assert_eq!(json["parent_subject"], original_parent, "parent_subject must not change");
+    assert_eq!(
+        json["parent_subject"], original_parent,
+        "parent_subject must not change"
+    );
     assert_eq!(json["display_name"], "Updated Bot");
     let _ = agent;
 }

@@ -123,14 +123,12 @@ impl Authenticator for OtpAuthenticator {
             OtpAlgorithm::Sha512 => 64,
         };
         if secret.len() < min_key_len {
-            return Ok(AuthnOutput::Failure(FailureKind::Other(
-                format!(
-                    "enrolled OTP secret too short for {:?} (got {} bytes, need {})",
-                    self.config.algorithm,
-                    secret.len(),
-                    min_key_len,
-                ),
-            )));
+            return Ok(AuthnOutput::Failure(FailureKind::Other(format!(
+                "enrolled OTP secret too short for {:?} (got {} bytes, need {})",
+                self.config.algorithm,
+                secret.len(),
+                min_key_len,
+            ))));
         }
 
         let candidate = code.trim();

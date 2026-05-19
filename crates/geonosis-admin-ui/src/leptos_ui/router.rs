@@ -837,11 +837,9 @@ async fn post_user_create(
     };
     state.storage.create_user(user.clone()).await?;
     if let Some(pw) = form.password.filter(|s| !s.is_empty()) {
-        let report = realm.password_policy.validate(
-            &pw,
-            &user.username,
-            user.email.as_deref(),
-        );
+        let report = realm
+            .password_policy
+            .validate(&pw, &user.username, user.email.as_deref());
         if !report.is_ok() {
             return Err(AdminError::PasswordPolicy(report.violations));
         }
@@ -2112,7 +2110,7 @@ async fn post_client_update(
             client.backchannel_logout_url = form
                 .get("backchannel_logout_url")
                 .and_then(|v| v.as_str())
-                .and_then(|s| parse_optional_url(s));
+                .and_then(parse_optional_url);
         }
         _ => {}
     }
@@ -2195,10 +2193,9 @@ async fn post_user_update(
             if password.is_empty() {
                 return Err(AdminError::InvalidInput("password is required".into()));
             }
-            let report =
-                realm
-                    .password_policy
-                    .validate(password, &username, user.email.as_deref());
+            let report = realm
+                .password_policy
+                .validate(password, &username, user.email.as_deref());
             if !report.is_ok() {
                 return Err(AdminError::PasswordPolicy(report.violations));
             }
@@ -2219,10 +2216,7 @@ async fn post_user_update(
         _ => {}
     }
 
-    Ok(
-        Redirect::to(&format!("/admin/realms/{slug}/users/{username}?tab={tab}"))
-            .into_response(),
-    )
+    Ok(Redirect::to(&format!("/admin/realms/{slug}/users/{username}?tab={tab}")).into_response())
 }
 
 async fn post_user_session_revoke(
@@ -2239,10 +2233,10 @@ async fn post_user_session_revoke(
         Some(geonosis_audit::Target::Session { id: sid }),
         serde_json::json!({ "username": username, "reason": "admin" }),
     );
-    Ok(
-        Redirect::to(&format!("/admin/realms/{slug}/users/{username}?tab=sessions"))
-            .into_response(),
-    )
+    Ok(Redirect::to(&format!(
+        "/admin/realms/{slug}/users/{username}?tab=sessions"
+    ))
+    .into_response())
 }
 
 // =========================================================================
@@ -2342,25 +2336,20 @@ async fn post_org_update(
                         realm_id: realm.id,
                         domain: domain.to_ascii_lowercase(),
                         verified: false,
-                        verification_token: Some(
-                            geonosis_core::id::SessionId::new_random().0,
-                        ),
+                        verification_token: Some(geonosis_core::id::SessionId::new_random().0),
                         verified_at: None,
                     };
                     state.storage.upsert_org_domain(d).await?;
                 }
             }
-            return Ok(Redirect::to(&format!(
-                "/admin/realms/{slug}/orgs/{alias}?tab=domains"
-            ))
-            .into_response());
+            return Ok(
+                Redirect::to(&format!("/admin/realms/{slug}/orgs/{alias}?tab=domains"))
+                    .into_response(),
+            );
         }
         "invitations" => {
             // Create invitation form
-            let email = form
-                .get("email")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let email = form.get("email").and_then(|v| v.as_str()).unwrap_or("");
             if !email.is_empty() {
                 let invited_by = form
                     .get("invited_by")
@@ -2374,9 +2363,7 @@ async fn post_org_update(
                     email: email.into(),
                     roles: vec![],
                     invited_by,
-                    token: geonosis_core::Secret::new(
-                        geonosis_core::id::SessionId::new_random().0,
-                    ),
+                    token: geonosis_core::Secret::new(geonosis_core::id::SessionId::new_random().0),
                     expires_at: chrono::Utc::now() + chrono::Duration::days(14),
                     accepted_at: None,
                 };
@@ -2399,10 +2386,7 @@ async fn post_org_update(
         None,
         serde_json::json!({ "alias": alias, "tab": tab }),
     );
-    Ok(Redirect::to(&format!(
-        "/admin/realms/{slug}/orgs/{alias}?tab={tab}"
-    ))
-    .into_response())
+    Ok(Redirect::to(&format!("/admin/realms/{slug}/orgs/{alias}?tab={tab}")).into_response())
 }
 
 async fn post_org_domain_verify(
@@ -2414,10 +2398,7 @@ async fn post_org_domain_verify(
         .storage
         .get_organization_by_alias(realm.id, &alias)
         .await?;
-    let mut domains = state
-        .storage
-        .list_org_domains(realm.id, org.id)
-        .await?;
+    let mut domains = state.storage.list_org_domains(realm.id, org.id).await?;
     let domain_l = domain.to_ascii_lowercase();
     let target = domains
         .iter_mut()
@@ -2427,10 +2408,7 @@ async fn post_org_domain_verify(
     target.verified_at = Some(chrono::Utc::now());
     target.verification_token = None;
     state.storage.upsert_org_domain(target.clone()).await?;
-    Ok(Redirect::to(&format!(
-        "/admin/realms/{slug}/orgs/{alias}?tab=domains"
-    ))
-    .into_response())
+    Ok(Redirect::to(&format!("/admin/realms/{slug}/orgs/{alias}?tab=domains")).into_response())
 }
 
 async fn post_org_domain_remove(
@@ -2446,10 +2424,7 @@ async fn post_org_domain_remove(
         .storage
         .delete_org_domain(realm.id, org.id, &domain.to_ascii_lowercase())
         .await?;
-    Ok(Redirect::to(&format!(
-        "/admin/realms/{slug}/orgs/{alias}?tab=domains"
-    ))
-    .into_response())
+    Ok(Redirect::to(&format!("/admin/realms/{slug}/orgs/{alias}?tab=domains")).into_response())
 }
 
 // =========================================================================
@@ -2462,10 +2437,7 @@ async fn post_agent_update(
     Form(form): Form<serde_json::Value>,
 ) -> Result<Response, AdminError> {
     let realm = realm_by_slug(&state, &slug).await?;
-    let mut agent = state
-        .storage
-        .get_agent_by_alias(realm.id, &alias)
-        .await?;
+    let mut agent = state.storage.get_agent_by_alias(realm.id, &alias).await?;
 
     match tab.as_str() {
         "general" => {
@@ -2510,10 +2482,7 @@ async fn post_agent_update(
         }),
         serde_json::json!({ "alias": alias, "tab": tab }),
     );
-    Ok(Redirect::to(&format!(
-        "/admin/realms/{slug}/agents/{alias}?tab={tab}"
-    ))
-    .into_response())
+    Ok(Redirect::to(&format!("/admin/realms/{slug}/agents/{alias}?tab={tab}")).into_response())
 }
 
 // =========================================================================
@@ -2626,10 +2595,7 @@ async fn post_profile_password(
     let realm = state.storage.get_realm(principal.realm_id).await?;
 
     // Verify current password
-    let current = form
-        .get("current")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let current = form.get("current").and_then(|v| v.as_str()).unwrap_or("");
     let stored_hash = state
         .storage
         .get_password_hash(principal.realm_id, user.id)
@@ -2651,9 +2617,7 @@ async fn post_profile_password(
         ));
     }
     if new_pw.is_empty() {
-        return Err(AdminError::InvalidInput(
-            "new password is required".into(),
-        ));
+        return Err(AdminError::InvalidInput("new password is required".into()));
     }
 
     // Validate against realm password policy
