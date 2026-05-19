@@ -113,7 +113,7 @@ pub fn discovery_document(issuer: Url) -> DiscoveryDocument {
         ],
         require_pushed_authorization_requests: false,
         require_request_uri_registration: false,
-        request_parameter_supported: false,
+        request_parameter_supported: true,
         request_uri_parameter_supported: false,
         frontchannel_logout_supported: true,
         backchannel_logout_supported: true,

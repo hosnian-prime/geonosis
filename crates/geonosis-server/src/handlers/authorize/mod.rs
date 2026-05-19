@@ -13,6 +13,7 @@
 //! which completes the flow, mints the code, and 302s back to `redirect_uri`
 //! with `?code=...&state=...`.
 
+mod jar;
 mod sso;
 
 use std::collections::BTreeMap;
@@ -64,12 +65,34 @@ async fn handle_authorize(
     };
     state.metrics.oidc_authorize.inc(&[&realm.slug, "started"]);
 
-    if params.contains_key("request") {
-        return error_redirect(
-            &params,
-            "request_not_supported",
-            "JAR `request` parameter is not yet supported; use PAR instead",
-        );
+    // JAR (RFC 9101): if `request` param is present, resolve the client
+    // first (client_id MUST be in query per §6.2), then verify + merge.
+    if let Some(request_jwt) = params.remove("request") {
+        let client_id = match params.get("client_id") {
+            Some(id) => id.clone(),
+            None => {
+                return error_redirect(
+                    &params,
+                    "invalid_request",
+                    "client_id required alongside request parameter",
+                );
+            }
+        };
+        let client = match state
+            .storage
+            .get_client_by_client_id(realm.id, &client_id)
+            .await
+        {
+            Ok(c) => c,
+            Err(_) => {
+                return (StatusCode::BAD_REQUEST, "invalid_request: unknown client")
+                    .into_response()
+            }
+        };
+        match jar::resolve_request_object(&state, &client, &request_jwt, params.clone()).await {
+            Ok(merged) => params = merged,
+            Err((code, desc)) => return error_redirect(&params, code, &desc),
+        }
     }
 
     // Resolve PAR `request_uri` if presented (RFC 9126 §4).
