@@ -80,8 +80,12 @@ pub async fn authenticate_client(
                 .get_client_secret_hash(realm_id, client.id)
                 .await
                 .map_err(|_| OAuthError::invalid_client("client has no secret configured"))?;
-            let presented_hash =
-                hex::encode(token_hash(&state.client_secret_hash_key, secret.as_bytes()));
+            let realm_key = geonosis_crypto::derive_realm_key(
+                &state.client_secret_hash_key,
+                &realm_id.to_string(),
+                b"client-secret",
+            );
+            let presented_hash = hex::encode(token_hash(&realm_key, secret.as_bytes()));
             if !ct_eq(stored_hash.as_bytes(), presented_hash.as_bytes()) {
                 return Err(OAuthError::invalid_client("client_secret mismatch"));
             }

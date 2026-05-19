@@ -95,8 +95,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             tracing::warn!("GEONOSIS_DATABASE_URL unset — using in-memory storage (DEV ONLY)");
             (Arc::new(MemoryStorage::new()) as Arc<dyn Storage>, None)
         };
-    // Derive deployment-wide hash keys from the master key. Per-realm
-    // derivation lands in v0.1.x.
+    // Derive deployment-wide base keys from the master key. Per-realm
+    // keys are derived at runtime via `derive_realm_key()` in the
+    // issuer and client_auth paths.
     let refresh_hash_key = derive_subkey(&master, b"geonosis-refresh-hash-v1");
     let client_secret_hash_key = derive_subkey(&master, b"geonosis-client-secret-hash-v1");
 
@@ -145,7 +146,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             geonosis_spi_host::runtime::SandboxConfig::default(),
         )?,
         metrics: Arc::new(geonosis_server::metrics::MetricsState::new()),
-        rate_limiter: Arc::new(geonosis_server::rate_limit::PerRealmRateLimiter::default_v0_1()),
+        rate_limiter: Arc::new(geonosis_server::rate_limit::CompositeRateLimiter::local_only()),
         draining: Arc::new(std::sync::atomic::AtomicBool::new(false)),
     };
 

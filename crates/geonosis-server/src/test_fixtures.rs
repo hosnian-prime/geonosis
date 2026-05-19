@@ -75,7 +75,7 @@ pub async fn fixture_state() -> AppState {
         broker: Arc::new(crate::broker::BrokerRuntime::new()),
         ldap: Arc::new(crate::ldap::LdapRuntime::new()),
         metrics: Arc::new(crate::metrics::MetricsState::new()),
-        rate_limiter: Arc::new(crate::rate_limit::PerRealmRateLimiter::default_v0_1()),
+        rate_limiter: Arc::new(crate::rate_limit::CompositeRateLimiter::local_only()),
         wasm_engine: geonosis_spi_host::runtime::WasmEngine::new(
             geonosis_spi_host::runtime::SandboxConfig::default(),
         )
@@ -266,8 +266,13 @@ pub async fn seed_service_account(state: &AppState, client_id: &str) -> String {
     };
     let cid = client.id;
     state.storage.create_client(client).await.unwrap();
-    let h = hex::encode(geonosis_crypto::hash::token_hash(
+    let realm_key = geonosis_crypto::derive_realm_key(
         &state.client_secret_hash_key,
+        &realm.id.to_string(),
+        b"client-secret",
+    );
+    let h = hex::encode(geonosis_crypto::hash::token_hash(
+        &realm_key,
         secret.as_bytes(),
     ));
     state
@@ -356,8 +361,13 @@ pub async fn seed_password_grant_client(state: &AppState, client_id: &str) -> St
     };
     let cid = client.id;
     state.storage.create_client(client).await.unwrap();
-    let h = hex::encode(geonosis_crypto::hash::token_hash(
+    let realm_key = geonosis_crypto::derive_realm_key(
         &state.client_secret_hash_key,
+        &realm.id.to_string(),
+        b"client-secret",
+    );
+    let h = hex::encode(geonosis_crypto::hash::token_hash(
+        &realm_key,
         secret.as_bytes(),
     ));
     state

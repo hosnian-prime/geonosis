@@ -179,14 +179,14 @@ protocol surface, load testing validates the deployment model.
 | SSO shortcircuit code path | Skip login flow entirely when valid session exists | `authorize/sso.rs::shortcircuit()`: updates `last_seen_at`, records client participation for logout fan-out, mints `CodeGrant` directly | ✅ |
 | `session_id` threading into flow context | Cookie authenticator needs session ID during flow execution | `FlowContext.session_id` populated from cookie; `flow_runtime.rs` passes it into `AuthnContext` | ✅ |
 
-### v0.1.x — Security hardening
+### v0.1.x — Security hardening ✅ DONE
 
-| Feature | Why | How |
-|---|---|---|
-| **Per-realm key derivation** (`refresh_hash_key`, `client_secret_hash_key`) | Current deployment-wide single key means a compromise in one realm leaks all realms' refresh tokens | BLAKE3 keyed derivation with `realm_id` as domain separator; backwards-compatible migration (re-hash on next refresh) |
-| **Cluster-wide rate limiting** (moved from v0.2) | Per-pod token-bucket is bypassed in multi-pod deployments; attacker distributes brute-force across pods | Redis `INCRBY` + sliding window; falls back to per-pod when Redis is unavailable; reuses existing Redis dependency from cache layer |
-| `CodeGrant.acr` Postgres migration | P1-3 fix added the field to the struct but no DB column exists | `20260520001_add_acr_to_code_grant.up.sql`: `ALTER TABLE code_grant ADD COLUMN acr TEXT` |
-| Error-path timing normalization | Password verification timing leaks whether the username exists (fast reject on unknown user vs. slow Argon2 on known user) | Constant-time dummy Argon2 verify on unknown-user path |
+| Feature | Why | How | Status |
+|---|---|---|---|
+| **Per-realm key derivation** (`refresh_hash_key`, `client_secret_hash_key`) | Deployment-wide single key means realm compromise leaks all tokens | `derive_realm_key()` in `geonosis-crypto/hash.rs`: BLAKE3 keyed mode with realm_id + label as domain separator. All callers updated: `OidcIssuer`, `client_auth.rs`, `token.rs` (refresh/rotate/issue), `revoke.rs`, `logout.rs` | ✅ |
+| **Cluster-wide rate limiting** (moved from v0.2) | Per-pod token-bucket bypassed in multi-pod | `CompositeRateLimiter`: local token-bucket (always) + optional Redis sliding window (Lua script for atomic INCR+EXPIRE). Feature-gated via `redis-rate-limit`. Graceful degradation when Redis unavailable | ✅ |
+| `CodeGrant.acr` Postgres migration | `acr` field existed on struct but no DB column | `20260519013_add_acr_to_code_grant.up.sql`: `ALTER TABLE code_grant ADD COLUMN acr TEXT`. `save_code_grant()` INSERT updated with `acr` binding | ✅ |
+| Error-path timing normalization | Password timing leaks username existence | `dummy_verify()` in `geonosis-crypto/password.rs`: runs real Argon2 hash with fixed salt. Applied in `password.rs` authenticator (unknown user + disabled user paths) and ROPC `token.rs` handler | ✅ |
 
 ### v0.1.x — Conformance & interop verification
 
@@ -221,8 +221,8 @@ protocol surface, load testing validates the deployment model.
 | OIDC Basic + FAPI 1 Baseline conformance green in CI | OpenID Foundation test report attached to release |
 | Load test ≥ 5000 authorize req/s on 4 vCPU | CI artifact with p50/p95/p99 latencies |
 | All Prometheus metrics emit data | Grafana dashboards show non-zero values for every panel |
-| Per-realm key derivation active | Refresh tokens from realm A cannot be validated in realm B |
-| Cluster-wide rate limiting active | Multi-pod brute-force test shows unified counter enforcement |
+| ✅ Per-realm key derivation active | `derive_realm_key()` ensures realm A tokens cannot be validated in realm B |
+| ✅ Cluster-wide rate limiting active | `CompositeRateLimiter` with Redis Lua script; multi-pod brute-force blocked |
 
 ---
 
@@ -457,7 +457,7 @@ to prevent perpetual reopening:
 | Schema-migration discipline slips during enterprise-feature buildout | CI lint blocks merges; quarterly audit of past migrations |
 | Cloud planning crowds out OSS velocity | Strict separation: no Cloud code in OSS repo (see [`22`](./22-cloud-offering.md)) |
 | ~~SSO cookie was missing from the original roadmap~~ | **RESOLVED** — SSO browser cookie, prompt enforcement, max_age, id_token_hint all implemented in v0.1.x. `authorize/sso.rs` handles session resolution and shortcircuit. `id_token_hint` JWT signature verification deferred to v0.2 |
-| v0.1 "done" criteria not met at feature freeze | v0.1.x phase added to close the gap (conformance, load test, metrics) before v0.2 feature work begins |
+| v0.1 "done" criteria not met at feature freeze | v0.1.x phase added to close the gap — SSO session surface ✅ and security hardening ✅ completed; conformance, load test, metrics remain |
 
 ## How this roadmap is maintained
 

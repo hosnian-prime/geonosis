@@ -1,15 +1,16 @@
-//! Per-realm token-bucket rate limiter for the hot OIDC endpoints.
+//! Per-realm rate limiter for the hot OIDC endpoints.
 //!
 //! Per `docs/12-security-crypto.md` §"Rate limiting":
-//! - Each realm gets its own token bucket (capacity + refill rate).
-//! - In-process for v0.1; cluster-wide enforcement via Redis-backed
-//!   counters lands in v0.2.
+//! - Each realm gets its own rate limit bucket.
+//! - Two tiers: per-pod token bucket (lock-free, always active) AND
+//!   cluster-wide Redis sliding window (when Redis is available).
 //! - Applied to `/authorize`, `/token`, `/userinfo`, `/par` since
 //!   those are the predictable abuse vectors. Admin endpoints are
 //!   excluded — their callers are operator-owned identities.
 //!
-//! Algorithm: classic continuous token bucket with monotonic-clock
-//! refill. Atomic state per realm so the hot path stays lock-free.
+//! The middleware checks the cluster-wide limiter first (if configured),
+//! then the per-pod limiter. Both must allow the request. When Redis
+//! is unavailable, the system gracefully degrades to per-pod only.
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -164,9 +165,103 @@ fn retry_after_secs(refill_per_sec: u64) -> u32 {
     secs.max(1)
 }
 
+/// Cluster-wide rate limiter using Redis sliding window. When Redis
+/// is unavailable, `try_consume` returns `true` (graceful degradation
+/// to per-pod only). The window is 1 second with a configurable max
+/// count per realm.
+#[cfg(feature = "redis-rate-limit")]
+pub struct ClusterRateLimiter {
+    conn: tokio::sync::Mutex<redis::aio::ConnectionManager>,
+    max_per_window: u64,
+    window_secs: i64,
+}
+
+#[cfg(feature = "redis-rate-limit")]
+impl ClusterRateLimiter {
+    pub fn new(conn: redis::aio::ConnectionManager, max_per_window: u64) -> Self {
+        Self {
+            conn: tokio::sync::Mutex::new(conn),
+            max_per_window,
+            window_secs: 1,
+        }
+    }
+
+    /// Try to consume one token from the cluster-wide bucket.
+    /// Returns `true` if allowed, `false` if the window is exhausted.
+    /// On Redis errors, returns `true` (graceful degradation).
+    ///
+    /// Uses a Lua script to atomically INCR + EXPIRE in a single
+    /// round-trip, preventing the key from persisting forever if the
+    /// process crashes between the two operations.
+    pub async fn try_consume(&self, realm: RealmId) -> bool {
+        let key = format!("geonosis:rl:{realm}");
+        let mut conn = self.conn.lock().await;
+        // Atomic INCR + conditional EXPIRE via Lua script.
+        let script = redis::Script::new(
+            r#"
+            local c = redis.call('INCR', KEYS[1])
+            if c == 1 then
+                redis.call('EXPIRE', KEYS[1], ARGV[1])
+            end
+            return c
+            "#,
+        );
+        let count: u64 = match script
+            .key(&key)
+            .arg(self.window_secs)
+            .invoke_async(&mut *conn)
+            .await
+        {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(error = %e, "Redis rate limit script failed; falling back to per-pod");
+                return true;
+            }
+        };
+        count <= self.max_per_window
+    }
+}
+
+/// Composite rate limiter: cluster-wide (optional) + per-pod (always).
+pub struct CompositeRateLimiter {
+    pub local: PerRealmRateLimiter,
+    #[cfg(feature = "redis-rate-limit")]
+    pub cluster: Option<ClusterRateLimiter>,
+}
+
+impl CompositeRateLimiter {
+    pub fn local_only() -> Self {
+        Self {
+            local: PerRealmRateLimiter::default_v0_1(),
+            #[cfg(feature = "redis-rate-limit")]
+            cluster: None,
+        }
+    }
+
+    #[cfg(feature = "redis-rate-limit")]
+    pub fn with_redis(conn: redis::aio::ConnectionManager, cluster_max: u64) -> Self {
+        Self {
+            local: PerRealmRateLimiter::default_v0_1(),
+            cluster: Some(ClusterRateLimiter::new(conn, cluster_max)),
+        }
+    }
+
+    /// Check both tiers. Cluster-wide is checked first; if it rejects,
+    /// the per-pod bucket is not consumed (preserving local capacity).
+    pub async fn try_consume(&self, realm: RealmId) -> bool {
+        #[cfg(feature = "redis-rate-limit")]
+        if let Some(ref cluster) = self.cluster {
+            if !cluster.try_consume(realm).await {
+                return false;
+            }
+        }
+        self.local.try_consume(realm)
+    }
+}
+
 /// Wrapper around the limiter that axum middleware mounts. Held in
 /// `AppState` so a single shared limiter spans all routes.
-pub type SharedRateLimiter = Arc<PerRealmRateLimiter>;
+pub type SharedRateLimiter = Arc<CompositeRateLimiter>;
 
 /// Axum middleware: extracts realm slug from the path, looks up the
 /// realm to get the realm id, applies the per-realm bucket. 429 with
@@ -187,7 +282,7 @@ pub async fn limit_per_realm(
         // OAuth error so the rate-limit layer never owns 404s.
         Err(_) => return next.run(req).await,
     };
-    if state.rate_limiter.try_consume(realm.id) {
+    if state.rate_limiter.try_consume(realm.id).await {
         return next.run(req).await;
     }
     let retry = retry_after_secs(DEFAULT_REFILL_PER_SEC);

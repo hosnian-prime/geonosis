@@ -21,7 +21,7 @@ pub mod refresh_token;
 pub mod webauthn;
 pub mod wrap;
 
-pub use hash::{pairwise_subject_hash, token_hash};
+pub use hash::{derive_realm_key, pairwise_subject_hash, token_hash};
 pub use jwe::{
     decrypt as jwe_decrypt, encrypt as jwe_encrypt, JweAlg, JweEnc, JweError, JweRecipientKey,
     JweRecipientPrivateKey,
@@ -31,7 +31,7 @@ pub use jwt::{sign_jwt, verify_jwt, JwsHeader, JwtError, JwtVerifyError};
 pub use kms::{
     KeyManagementService, KeyMaterial, KeyState, KeyUsage, KmsError, PrivateKeyRef, SoftwareKms,
 };
-pub use password::{hash_password, verify_password, PasswordError};
+pub use password::{dummy_verify, hash_password, verify_password, PasswordError};
 pub use random::{random_bytes, random_token};
 pub use refresh_token::{refresh_token_hash, RefreshTokenSecret};
 pub use wrap::{MasterKey, WrapError, WrappedSecret};

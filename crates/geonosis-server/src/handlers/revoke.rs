@@ -42,7 +42,12 @@ pub async fn revoke(
     // Try as refresh token first (the only token kind we can revoke
     // server-side in v0.1; access-token revocation requires session
     // termination wired through the storage layer).
-    let id = RefreshTokenId(refresh_token_hash(&token, &state.refresh_hash_key));
+    let realm_key = geonosis_crypto::derive_realm_key(
+        &state.refresh_hash_key,
+        &realm.id.to_string(),
+        b"refresh",
+    );
+    let id = RefreshTokenId(refresh_token_hash(&token, &realm_key));
     if let Ok(rt) = state.storage.get_refresh_token(&id).await {
         let _ = state.storage.revoke_token_family(rt.family_id).await;
         audit_emit::emit_user(

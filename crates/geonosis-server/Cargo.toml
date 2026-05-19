@@ -19,6 +19,7 @@ path = "src/lib.rs"
 
 [features]
 test-fixtures = ["dep:ed25519-dalek", "dep:pkcs8", "dep:rand"]
+redis-rate-limit = ["dep:redis"]
 
 [dependencies]
 geonosis-core = { path = "../geonosis-core" }
@@ -72,6 +73,8 @@ parking_lot.workspace = true
 ed25519-dalek = { workspace = true, optional = true }
 pkcs8 = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
+# Optional Redis dep for cluster-wide rate limiting (enabled via redis-rate-limit feature)
+redis = { workspace = true, optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

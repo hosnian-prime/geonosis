@@ -667,8 +667,8 @@ impl Storage for PostgresStorage {
         sqlx::query(
             "INSERT INTO code_grant (
                 code, realm_id, client_id, user_id, session_id, scope, redirect_uri,
-                code_challenge, nonce, state, amr, auth_time, created_at, expires_at
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)",
+                code_challenge, nonce, state, amr, acr, auth_time, created_at, expires_at
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)",
         )
         .bind(&grant.code.0)
         .bind(grant.realm_id.to_string())
@@ -688,6 +688,7 @@ impl Storage for PostgresStorage {
         .bind(grant.nonce.as_deref())
         .bind(grant.state.as_deref())
         .bind(serde_json::to_value(&grant.amr).map_err(json_err)?)
+        .bind(grant.acr.as_deref())
         .bind(grant.auth_time)
         .bind(grant.created_at)
         .bind(grant.expires_at)

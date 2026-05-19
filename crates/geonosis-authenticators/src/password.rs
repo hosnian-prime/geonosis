@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 
 use geonosis_core::{Amr, CredentialKind};
-use geonosis_crypto::verify_password;
+use geonosis_crypto::{dummy_verify, verify_password};
 
 use crate::brute_force::{check_locked, record_failure, record_success, BruteForceError};
 use crate::context::AuthnContext;
@@ -50,8 +50,19 @@ impl Authenticator for PasswordAuthenticator {
             .await
         {
             Ok(u) if u.enabled => u,
-            Ok(_) => return Ok(AuthnOutput::Failure(FailureKind::UserDisabled)),
-            Err(_) => return Ok(AuthnOutput::Failure(FailureKind::InvalidCredential)),
+            Ok(_) => {
+                // Timing normalization: burn Argon2 time even for
+                // disabled users so the response latency is uniform.
+                dummy_verify(&password);
+                return Ok(AuthnOutput::Failure(FailureKind::UserDisabled));
+            }
+            Err(_) => {
+                // Timing normalization: unknown-user path must cost
+                // the same as a real Argon2 verify to prevent
+                // username-enumeration via latency measurement.
+                dummy_verify(&password);
+                return Ok(AuthnOutput::Failure(FailureKind::InvalidCredential));
+            }
         };
 
         // Brute-force pre-flight. If the account is locked, refuse

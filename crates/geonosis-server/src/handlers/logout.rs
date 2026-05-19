@@ -92,9 +92,14 @@ pub async fn logout_post(
     let mut client_id_hint: Option<String> = None;
 
     if let Some(rt) = form.get("refresh_token") {
+        let realm_key = geonosis_crypto::derive_realm_key(
+            &state.refresh_hash_key,
+            &realm.id.to_string(),
+            b"refresh",
+        );
         let id = geonosis_core::RefreshTokenId(geonosis_crypto::refresh_token_hash(
             rt,
-            &state.refresh_hash_key,
+            &realm_key,
         ));
         if let Ok(t) = state.storage.get_refresh_token(&id).await {
             sub_hint = Some(t.user_id.to_string());

@@ -27,11 +27,13 @@ pub enum OidcIssuerError {
 }
 
 /// OIDC-aware token issuer. Holds a reference to the realm-scoped KMS and
-/// the refresh-token hash key. v0.1 uses a single deployment-wide hash key
-/// (per-realm derivation lands in v0.1.x once master-key derivation is
-/// wired through the server).
+/// the refresh-token hash key. The deployment-wide base key is derived
+/// per-realm using BLAKE3 keyed mode with realm_id as domain separator
+/// (v0.1.x security hardening).
 pub struct OidcIssuer<K: KeyManagementService + ?Sized + 'static> {
     pub kms: Arc<K>,
+    /// Deployment-wide base key — per-realm keys are derived from this
+    /// via `derive_realm_key()` in `refresh_hash_key()`.
     pub refresh_hash_key: [u8; 32],
     pub issuer_base: url::Url,
 }
@@ -142,8 +144,12 @@ impl<K: KeyManagementService + ?Sized + 'static> TokenIssuer for OidcIssuer<K> {
         sign_jwt_compat(&header, &claims, &private).map_err(GrantError::Internal)
     }
 
-    fn refresh_hash_key(&self, _realm: RealmId) -> [u8; 32] {
-        self.refresh_hash_key
+    fn refresh_hash_key(&self, realm: RealmId) -> [u8; 32] {
+        geonosis_crypto::derive_realm_key(
+            &self.refresh_hash_key,
+            &realm.to_string(),
+            b"refresh",
+        )
     }
 }
 

@@ -20,6 +20,22 @@ pub fn token_hash(key: &[u8; 32], secret: &[u8]) -> [u8; 32] {
     *h.finalize().as_bytes()
 }
 
+/// Derive a per-realm key from a deployment-wide base key using BLAKE3
+/// keyed mode with the realm ID as domain separator. This ensures that
+/// a compromise of one realm's derived key does not expose tokens from
+/// other realms.
+///
+/// `label` distinguishes key purposes (e.g. `b"refresh"` vs
+/// `b"client-secret"`) so the same base key yields independent
+/// per-realm keys for each use.
+pub fn derive_realm_key(base_key: &[u8; 32], realm_id: &str, label: &[u8]) -> [u8; 32] {
+    let mut h = Hasher::new_keyed(base_key);
+    h.update(label);
+    h.update(b":");
+    h.update(realm_id.as_bytes());
+    *h.finalize().as_bytes()
+}
+
 /// Constant-time comparison of two byte slices.
 pub fn ct_eq(a: &[u8], b: &[u8]) -> bool {
     constant_time_eq::constant_time_eq(a, b)
@@ -82,6 +98,30 @@ mod tests {
         let a = super::pairwise_subject_hash("client-a", "user-123");
         let b = super::pairwise_subject_hash("client-b", "user-123");
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn realm_key_differs_across_realms() {
+        let base = [42u8; 32];
+        let k1 = super::derive_realm_key(&base, "realm-a", b"refresh");
+        let k2 = super::derive_realm_key(&base, "realm-b", b"refresh");
+        assert_ne!(k1, k2, "different realms must derive different keys");
+    }
+
+    #[test]
+    fn realm_key_differs_across_labels() {
+        let base = [42u8; 32];
+        let k1 = super::derive_realm_key(&base, "realm-a", b"refresh");
+        let k2 = super::derive_realm_key(&base, "realm-a", b"client-secret");
+        assert_ne!(k1, k2, "different labels must derive different keys");
+    }
+
+    #[test]
+    fn realm_key_is_deterministic() {
+        let base = [42u8; 32];
+        let k1 = super::derive_realm_key(&base, "realm-a", b"refresh");
+        let k2 = super::derive_realm_key(&base, "realm-a", b"refresh");
+        assert_eq!(k1, k2);
     }
 
     #[test]

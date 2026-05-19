@@ -244,10 +244,15 @@ async fn handle_refresh(
         .cloned()
         .ok_or_else(|| OAuthError::invalid_request("missing refresh_token"))?;
     let storage_arc: Arc<dyn geonosis_storage::Storage> = state.storage.clone();
+    let realm_key = geonosis_crypto::derive_realm_key(
+        &state.refresh_hash_key,
+        &realm.id.to_string(),
+        b"refresh",
+    );
     let outcome = geonosis_protocol_oauth::validate_refresh(
         &storage_arc,
         &presented,
-        &state.refresh_hash_key,
+        &realm_key,
     )
     .await
     .map_err(|e| match e {
@@ -299,7 +304,7 @@ async fn handle_refresh(
     let new_token = RefreshToken {
         id: RefreshTokenId(refresh_token_hash(
             new_secret.as_str(),
-            &state.refresh_hash_key,
+            &realm_key,
         )),
         family_id: prior.family_id,
         realm_id: prior.realm_id,
@@ -361,19 +366,34 @@ async fn handle_password(
     let scope = parse_scope_string(form.get("scope").map(String::as_str).unwrap_or("openid"))
         .map_err(|e| OAuthError::invalid_request(e.0))?;
 
-    let user: User = state
+    let user: User = match state
         .storage
         .get_user_by_username(realm.id, &username)
         .await
-        .map_err(|_| OAuthError::invalid_grant("invalid username or password"))?;
+    {
+        Ok(u) => u,
+        Err(_) => {
+            // Timing normalization: unknown-user path must cost the
+            // same as a real Argon2 verify.
+            geonosis_crypto::dummy_verify(&password);
+            return Err(OAuthError::invalid_grant("invalid username or password"));
+        }
+    };
     if !user.enabled {
-        return Err(OAuthError::invalid_grant("user disabled"));
+        geonosis_crypto::dummy_verify(&password);
+        return Err(OAuthError::invalid_grant("invalid username or password"));
     }
-    let phc = state
+    let phc = match state
         .storage
         .get_password_hash(realm.id, user.id)
         .await
-        .map_err(|_| OAuthError::invalid_grant("invalid username or password"))?;
+    {
+        Ok(h) => h,
+        Err(_) => {
+            geonosis_crypto::dummy_verify(&password);
+            return Err(OAuthError::invalid_grant("invalid username or password"));
+        }
+    };
     let ok = geonosis_crypto::verify_password(&password, &phc).unwrap_or(false);
     if !ok {
         return Err(OAuthError::invalid_grant("invalid username or password"));
@@ -638,8 +658,13 @@ async fn issue_user_tokens(
 
     let refresh = if client.grants.refresh_token {
         let secret = geonosis_crypto::RefreshTokenSecret::generate();
+        let realm_key = geonosis_crypto::derive_realm_key(
+            &state.refresh_hash_key,
+            &realm.id.to_string(),
+            b"refresh",
+        );
         let token = RefreshToken {
-            id: RefreshTokenId(refresh_token_hash(secret.as_str(), &state.refresh_hash_key)),
+            id: RefreshTokenId(refresh_token_hash(secret.as_str(), &realm_key)),
             family_id: geonosis_protocol_oauth::refresh::new_family(),
             realm_id: realm.id,
             client_id: client.id,

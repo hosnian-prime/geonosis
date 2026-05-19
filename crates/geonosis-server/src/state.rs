@@ -32,11 +32,11 @@ pub struct AppState {
     pub audit: Arc<Publisher>,
     /// Public base URL for issuer / discovery construction (e.g. `https://geonosis.example`).
     pub public_base_url: Url,
-    /// BLAKE3-keyed hash key for refresh-token storage (per-realm derivation
-    /// is the v0.1.x follow-up; this is a single deployment-wide key).
+    /// BLAKE3-keyed base key for refresh-token storage. Per-realm keys
+    /// are derived via `derive_realm_key(base, realm_id, b"refresh")`.
     pub refresh_hash_key: [u8; 32],
-    /// BLAKE3-keyed hash key for client_secret storage (separate domain
-    /// from refresh tokens).
+    /// BLAKE3-keyed base key for client_secret storage. Per-realm keys
+    /// are derived via `derive_realm_key(base, realm_id, b"client-secret")`.
     pub client_secret_hash_key: [u8; 32],
     /// Built-in authenticator runtimes (singletons; per-realm config is
     /// passed through `AuthnContext` at dispatch time).
@@ -52,9 +52,9 @@ pub struct AppState {
     pub ldap: Arc<LdapRuntime>,
     /// Prometheus counter registry mounted on `/metrics`.
     pub metrics: SharedMetrics,
-    /// Per-realm token-bucket rate limiter for the hot OIDC endpoints.
-    /// In-process for v0.1; cluster-wide enforcement via Redis lands
-    /// in v0.2.
+    /// Per-realm rate limiter. v0.1.x supports two tiers: per-pod
+    /// token bucket (always) + cluster-wide Redis sliding window
+    /// (when configured via `redis-rate-limit` feature).
     pub rate_limiter: SharedRateLimiter,
     /// Per-pod drain flag. `POST /-/drain` flips this to `true`; the
     /// readiness probe then returns 503 so the ingress controller can
