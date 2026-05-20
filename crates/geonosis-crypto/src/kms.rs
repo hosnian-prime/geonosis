@@ -148,6 +148,65 @@ impl SoftwareKms {
         Ok(())
     }
 
+    /// Seed the default signing keys (RS256) for a realm. Idempotent:
+    /// skips if the realm already has an active RS256 key.
+    pub fn seed_realm_keys(&self, realm_id: RealmId) -> Result<(), KmsError> {
+        // Skip if realm already has an active RS256 key.
+        {
+            let guard = self.store.read().unwrap();
+            let has_rs256 = guard.values().any(|s| {
+                s.material.realm_id == realm_id
+                    && s.material.alg == JwsAlgorithm::RS256
+                    && s.material.state == KeyState::Active
+            });
+            if has_rs256 {
+                return Ok(());
+            }
+        }
+
+        // Generate RSA-2048 key.
+        use rsa::RsaPrivateKey;
+        let mut rng = rand::rngs::OsRng;
+        let rsa_key = RsaPrivateKey::new(&mut rng, 2048)
+            .map_err(|e| KmsError::Internal(format!("RSA keygen: {e}")))?;
+        let pem = pkcs8::EncodePrivateKey::to_pkcs8_pem(&rsa_key, pkcs8::LineEnding::LF)
+            .map_err(|e| KmsError::Internal(format!("PEM encode: {e}")))?;
+
+        // Derive public JWK params (n, e).
+        use rsa::traits::PublicKeyParts;
+        let pub_key = rsa_key.to_public_key();
+        let n = crate::base64url::encode(pub_key.n().to_bytes_be());
+        let e = crate::base64url::encode(pub_key.e().to_bytes_be());
+
+        let kid = KeyId::new();
+        let mut params = serde_json::Map::new();
+        params.insert("n".into(), serde_json::Value::String(n));
+        params.insert("e".into(), serde_json::Value::String(e));
+
+        let material = KeyMaterial {
+            id: kid,
+            realm_id,
+            usage: KeyUsage::Sig,
+            alg: JwsAlgorithm::RS256,
+            state: KeyState::Active,
+            public_jwk: crate::jwk::Jwk {
+                kid: kid.to_string(),
+                kty: "RSA".into(),
+                r#use: "sig".into(),
+                alg: "RS256".into(),
+                params,
+            },
+            private_ref: PrivateKeyRef::Local(WrappedSecret {
+                nonce: vec![],
+                ciphertext: vec![],
+            }),
+            created_at: Utc::now(),
+            rotated_at: None,
+        };
+        self.register(material, pem.as_bytes())?;
+        Ok(())
+    }
+
     fn get_stored(&self, kid: &KeyId) -> Result<StoredKey, KmsError> {
         let guard = self.store.read().unwrap();
         let entry = guard.get(kid).ok_or(KmsError::NotFound(*kid))?;

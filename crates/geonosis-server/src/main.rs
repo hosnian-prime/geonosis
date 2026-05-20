@@ -176,6 +176,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             for r in &realms {
                 state.providers.seed_v0_1_builtins(r.id);
                 geonosis_authenticators::registry::register_builtins(&state.providers, r.id);
+                if let Err(e) = state.kms.seed_realm_keys(r.id) {
+                    tracing::error!(realm = %r.slug, error = %e, "failed to seed signing keys");
+                }
             }
             tracing::info!(
                 count = realms.len(),

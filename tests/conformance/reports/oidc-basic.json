@@ -1,0 +1,10 @@
+{
+  "suite": "oidc-basic",
+  "issuer": "http://localhost:8080/realms/conformance",
+  "timestamp": "2026-05-20T07:33:35Z",
+  "discovery": "pass",
+  "jwks": "pass",
+  "prompt_none": "pass",
+  "token_reject": "pass",
+  "status": "smoke_pass"
+}

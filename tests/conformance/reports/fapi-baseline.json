@@ -1,0 +1,10 @@
+{
+  "suite": "fapi-baseline",
+  "issuer": "http://localhost:8080/realms/fapi",
+  "timestamp": "2026-05-20T07:34:12Z",
+  "pkce_s256": "pass",
+  "response_type_code": "pass",
+  "id_token_signing": "pass",
+  "pkce_plain_rejected": "pass",
+  "status": "smoke_pass"
+}

@@ -89,6 +89,12 @@ pub async fn create(
     geonosis_storage::seed_default_flows(state.storage.as_ref(), realm.id)
         .await
         .map_err(AdminError::from)?;
+    // Seed the default signing keys (RS256) so the realm can issue
+    // JWTs and serve `/jwks` immediately after creation.
+    state
+        .kms
+        .seed_realm_keys(realm.id)
+        .map_err(|e| AdminError::Storage(format!("key seed: {e}")))?;
     audit_emit::emit(
         &state,
         realm.id,
