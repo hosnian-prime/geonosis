@@ -126,8 +126,8 @@ events, SPI surface, admin API, account console.
 | Feature | Status | Where |
 |---|---|---|
 | Password policy DSL | ✅ | `Realm.password_policy.rules` (`PasswordRule` enum) |
-| OTP policy (TOTP / HOTP, digits, period) | ✅ | `Realm.otp_policy` |
-| WebAuthn policy | ✅ | `Realm.webauthn_policy`, `webauthn_passwordless_policy` |
+| OTP policy (TOTP / HOTP, digits, period) | 🟡 | `Realm.otp_policy` — persisted + read at runtime, but **not validated at enrollment** (v0.2) |
+| WebAuthn policy | 🟡 | `Realm.webauthn_policy`, `webauthn_passwordless_policy` — persisted + read at assertion, but **not validated at credential registration** (v0.2) |
 | CIBA policy | 🚫 | DEFERRED |
 
 ## Realm settings → Events
@@ -276,7 +276,7 @@ events, SPI surface, admin API, account console.
 |---|---|---|
 | Organization entity | ✅ | [`15-organizations.md`](./15-organizations.md) |
 | Members / invitations | ✅ | `OrgMembership`, `OrgInvitation` |
-| Domain claim + verification | ✅ | `OrgDomain` |
+| Domain claim + verification | 🟡 | `OrgDomain` — CRUD exists, but **DNS TXT challenge not performed**; verification is operator-asserted (v0.2) |
 | Per-org IdP binding | ✅ | URL `/orgs/{alias}/idps` |
 | Per-org roles | ✅ | `OrgRole` |
 | Branding (logo, color, banner) | ✅ | `OrganizationBranding` |
@@ -292,8 +292,8 @@ events, SPI surface, admin API, account console.
 | Persisted consent grants | ✅ | `ConsentGrant` entity |
 | Admin consent revocation | ✅ | admin API `/users/{id}/consents` |
 | User self-service consent revocation | ✅ | account console (v0.2 for UI; API in v0.1) |
-| Org-level consent policies | ✅ | `OrgConsentPolicy` — pre-approve, block, or manage scopes per client |
-| Org-managed consent mode (skip user prompt) | ✅ | `OrgConsentMode::OrgManaged` |
+| Org-level consent policies | 🟡 | `OrgConsentPolicy` — CRUD exists, but **not enforced in authorize flow** (v0.2) |
+| Org-managed consent mode (skip user prompt) | 🟡 | `OrgConsentMode::OrgManaged` — stored but **not evaluated at consent screen** (v0.2) |
 | Consent audit events | ✅ | `consent.granted`, `consent.revoked`, `org.consent.policy.*` |
 
 ## Sessions

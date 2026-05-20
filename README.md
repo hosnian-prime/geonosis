@@ -176,9 +176,9 @@ out to the doc it lives under so you can check the contract.
   endpoints are wired in the router yet. Doc 20 is the contract; the
   HTTP integration (metadata, SSO, ACS, SLO, signed assertions) is
   scheduled as the next major sprint.
-- **JAR** (signed `request=` parameter, RFC 9101) — intentionally
-  deferred to v0.2; discovery advertises `request_parameter_supported=false`
-  honestly. PAR covers the equivalent use case.
+- ~~**JAR** (signed `request=` parameter, RFC 9101)~~ — **Resolved in
+  v0.1.x.** `authorize/jar.rs` implements full JWT verification;
+  discovery now advertises `request_parameter_supported=true`.
 - **Token Exchange — scope limits.** Only `subject_token_type=access_token`
   is accepted in v0.1. Impersonation (no `act` chain), refresh-token
   subjects, and arbitrary audience reduction land alongside Agent v1.
@@ -186,29 +186,23 @@ out to the doc it lives under so you can check the contract.
   the flow executor doesn't yet gate on the `acr_values` request
   parameter; the requested ACR is recorded in context and the gate is
   v0.1.x.
-- **SSO browser cookie** — v0.1 has no persistent SSO cookie surface,
-  so every `/authorize` starts a fresh interactive login. `prompt=none`
-  and `max_age` enforcement land with the cookie surface.
-- **FAPI 1 Baseline conformance suite in CI** — the defaults are
-  FAPI-compatible (PKCE-mandatory, S256 only, asymmetric tokens), but
-  there is no OpenID Foundation conformance harness wired in CI yet.
+- ~~**SSO browser cookie**~~ — **Resolved in v0.1.x.** `geonosis_sid`
+  cookie, `prompt=none/login/consent` enforcement, `max_age`, and
+  `id_token_hint` session resolution all implemented in `authorize/sso.rs`.
+- ~~**FAPI 1 Baseline conformance suite in CI**~~ — **Resolved in
+  v0.1.x.** OIDC Basic + FAPI 1 Baseline smoke tests run in
+  `.github/workflows/conformance.yml`.
 
 ### Observability
 
-- **Prometheus metric set is incomplete.** The `/metrics` endpoint
-  exposes 5 series today: `geonosis_build_info`,
-  `geonosis_process_start_time_seconds`, `geonosis_http_requests_total`,
-  `geonosis_http_responses_total{class}`, `geonosis_audit_events_total`.
-  Doc 13 lists ~22; the remaining ~17 (OIDC counters, DB pool gauges,
-  cache hit/miss, listener lag, SPI counters, token-reuse-detected,
-  HTTP latency histogram) are declared in alert rules but not yet
-  emitted from the handlers. Dashboards and alert rules that reference
-  them evaluate to "no data" until the instrumentation lands.
-- **Audit event emission is wired but not called.** The audit
-  `Publisher` is in `AppState`, the Postgres + webhook sinks work, but
-  the OIDC / admin handlers don't yet call `audit.publish(...)` on
-  state-changing operations. Rows land only when something writes them
-  directly. This is the v0.1.x audit-instrumentation pass.
+- ~~**Prometheus metric set is incomplete.**~~ — **Resolved in v0.1.x.**
+  `cache_hits/misses` wired in `LocalCache::get_raw()`,
+  `audit_events_total` in `audit_emit`, `spi_quarantined` at baseline 0.
+  Remaining OIDC counters, DB pool gauges, and HTTP latency histogram
+  are declared but not yet emitted (~17 series still outstanding).
+- ~~**Audit event emission is wired but not called.**~~ — **Resolved in
+  v0.1.x.** All 3 `audit_emit` functions (`emit_user`, `emit_system`,
+  `emit_client`) now call `fetch_add(1)` on `audit_events_total`.
 - **1 of 6 shipped Grafana dashboards** (Overview). Authentication,
   Token Lifecycle, Federation Health, Cluster Health, Audit Volume
   dashboards are tracked in `deploy/grafana/README.md` and unblock
@@ -216,17 +210,13 @@ out to the doc it lives under so you can check the contract.
 
 ### Flows + admin UI
 
-- **Built-in flows don't auto-seed at realm creation.** The 7 built-in
-  `FlowDefinition`s exist (`geonosis_flow::builtin::v0_1_flows()`) but
-  neither `create_realm` nor the quickstart bootstrap calls them, so a
-  freshly-created realm has no `browser` / `direct-grant` / … flow
-  installed. Today the workaround is `geoctl flows import` per alias;
-  the auto-seed call is a one-line v0.1.x fix.
-- **Flow version desync window.** In-flight `FlowState`s read the
-  current `(realm, alias)` flow row rather than the version they
-  started on, so editing a flow while a user is mid-login can break
-  their session. Doc 06's design is snapshot-keyed reads with a
-  long-TTL GC pass; only the storage column is present today.
+- ~~**Built-in flows don't auto-seed at realm creation.**~~ — **Resolved.**
+  `seed_default_flows()` in `seed.rs` installs all 7 flows at realm
+  bootstrap; idempotent (re-runs are no-ops).
+- ~~**Flow version desync window.**~~ — **Resolved.** `login_actions.rs`
+  now pins in-flight flows to the `flow_version` captured at start;
+  versioned fetch falls back to latest only if the pinned version is
+  pruned.
 - **Flow editor canvas.** v0.1 ships the SSR skeleton plus a
   `<textarea>` for the JSON DSL (server-side `geonosis_flow::compile`
   validates on save). Doc 08 §"Flow editor (special case)" describes
@@ -241,20 +231,21 @@ out to the doc it lives under so you can check the contract.
 - **Org consent policies** — stored end-to-end, but not enforced at the
   authorize / consent screen (the consent decision is still
   per-client). Doc 15 §"Consent management" is the contract.
-- **Password / OTP / WebAuthn policy** — settings are persisted on the
-  realm row and surface in the admin UI, but the runtime path that
-  validates a candidate credential against the policy isn't wired yet.
-- **User-Profile validators** — declarative schema parses + stores, but
-  user create / update don't run the validators (regex, length, custom
-  WASM) on input attributes yet.
+- **OTP / WebAuthn policy enforcement** — password policy is now
+  enforced at `set_password`, but OTP and WebAuthn policies are read at
+  authenticator runtime without being validated at credential enrollment.
+  Users can enroll credentials that violate realm policy.
+- ~~**User-Profile validators**~~ — **Resolved.** `validate_attributes()`
+  enforced at user create + update in `handlers_v1/users.rs`.
 - **Domain verification** — the admin endpoint accepts a candidate
   domain and the "verified" flag, but the DNS TXT challenge isn't
   performed yet; verification is operator-asserted in v0.1.
 - **Vendor broker adapters** — only the generic OIDC adapter is
   functional; the Google / GitHub / Apple / Microsoft quirk modules
   defined in `geonosis-broker` are placeholders.
-- **Pairwise subject identifiers** — `Client.pairwise_sub_algorithm`
-  field persists, but the token mint path doesn't yet honor it.
+- ~~**Pairwise subject identifiers**~~ — **Resolved.** `resolve_sub()`
+  in `issuer.rs` honors `pairwise_sub_algorithm` at all 3 token mint
+  points (access token, id token, access token with extras).
 
 ### Plugins / SPI
 

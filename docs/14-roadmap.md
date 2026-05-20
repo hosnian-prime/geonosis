@@ -246,6 +246,7 @@ cookie working, load test passing).
 | **mTLS-bound tokens** | [`03`](./03-protocols-oidc.md) | RFC 8705; per-realm choice |
 | JARM signed response_mode=jwt | [`03`](./03-protocols-oidc.md) | Per-client opt-in |
 | Token Exchange GA (full RFC 8693 surface) | [`03`](./03-protocols-oidc.md) | All token type combinations |
+| ~~Pairwise subject ID enforcement at token mint~~ | [`02`](./02-data-model.md) | **Already implemented in v0.1** — `resolve_sub()` in `issuer.rs` honors `pairwise_sub_algorithm` at all 3 token mint points |
 | Device polling interval per-realm | [`03`](./03-protocols-oidc.md) | Replace v0.1's hard-coded 5 s |
 | Self-service passkey enrollment flow | [`06`](./06-auth-flows.md) | Built-in flow `passkey-enroll` |
 
@@ -266,6 +267,10 @@ cookie working, load test passing).
 | **GDPR self-service** (export + delete) | [`13`](./13-observability.md) | `/account/me/export` (ZIP), `/account/me/delete` (cooling-off + audit anonymize), admin-API equivalents |
 | Phone OTP enrollment in account console | [`08`](./08-admin-ui.md) | Plugin-provided SMS sender (Twilio / MessageBird / SNS) via mapper config |
 | Account-console attribute editing from User Profile schema | [`16`](./16-user-profile.md) | Forms generated from declared schema |
+| ~~User-Profile validator enforcement~~ | [`16`](./16-user-profile.md) | **Already implemented in v0.1** — `validate_attributes()` enforced at user create + update in `handlers_v1/users.rs` |
+| ~~Password policy runtime validation~~ | [`02`](./02-data-model.md) | **Already implemented in v0.1** — `password_policy.validate()` enforced at `set_password` handler |
+| **OTP policy runtime validation at enrollment** | [`02`](./02-data-model.md) | `OtpPolicy` read at authenticator runtime but not validated when user enrolls OTP credential; enrollment can violate realm policy |
+| **WebAuthn policy runtime validation at enrollment** | [`02`](./02-data-model.md) | `WebauthnPolicy` read at assertion time but not validated at credential registration; attestation/authenticator requirements not enforced |
 
 ### v0.2 — Operational
 
@@ -278,6 +283,14 @@ cookie working, load test passing).
 | IP truncation + UA redaction toggles | [`13`](./13-observability.md) | Surfaced in admin |
 | **Per-realm metering counters** | [`22`](./22-cloud-offering.md) | Audit pipeline counters; consumed by managed Cloud |
 | Test-mode realms | [`21`](./21-dx-package.md) | `geoctl realm create --kind test --auto-seed`; flagged in admin UI |
+| **Organization consent policy enforcement** | [`15`](./15-organizations.md) | Org-level consent policies (pre-approve / block / manage scopes) evaluated at authorize time; v0.1 stores `OrgConsentPolicy` but does not enforce it |
+| ~~Built-in flow auto-seeding at realm bootstrap~~ | [`06`](./06-auth-flows.md) | **Already implemented in v0.1** — `seed_default_flows()` in `seed.rs` installs 7 flows at `realm create`; idempotent |
+| ~~Flow version snapshot for in-flight executions~~ | [`06`](./06-auth-flows.md) | **Already implemented in v0.1** — `login_actions.rs` pins in-flight flows to `flow_version` captured at start |
+| **Domain verification (DNS TXT challenge)** | [`15`](./15-organizations.md) | Org domain `verified` flag is operator-asserted in v0.1; automated DNS TXT lookup for self-service domain claiming |
+| **SPI runtime integration tests for remaining 6 interfaces** | [`07`](./07-spi-wasm.md) | Only `authn`, `mapper`, `event` proven end-to-end; `policy`, `user-storage`, `broker-adapter`, `user-profile-validator`, `ui-component`, `host` need integration coverage |
+| **Built-ins-as-plugins seeding** | [`07`](./07-spi-wasm.md) | Built-in authenticators/mappers not seeded as `SpiBinding` rows at bootstrap; operators cannot yet reorder/override via admin UI |
+| **Plugin manifest signing verification** | [`07`](./07-spi-wasm.md) | Signing primitives exist but `geoctl spi install` does not invoke verification; v0.1 accepts unsigned plugins |
+| **WASM module hot reload** | [`07`](./07-spi-wasm.md) | Designed but filesystem watcher + cache invalidator not wired; plugin updates require server restart |
 
 ### v0.2 — SPI ecosystem
 
@@ -443,7 +456,7 @@ to prevent perpetual reopening:
 |---|---|
 | v0.1 | Feature freeze: all v0.1 features implemented; 5-minute quickstart works end-to-end; unit + integration tests green |
 | v0.1.x | Production gate: OIDC Basic + FAPI 1 Baseline conformance passing in CI; SSO cookie works (prompt=none, max_age); load test ≥ 5000 authorize req/s on 4 vCPU; cluster-wide rate limiting active; per-realm key derivation active; all metrics emit data |
-| v0.2 | Account console fully usable for end-user self-service; SCIM 2.0 interop tested against Okta + Entra ID provisioning; `geonosis-verify` crate published; 4 admin SDKs published |
+| v0.2 | Account console fully usable for end-user self-service; SCIM 2.0 interop tested against Okta + Entra ID provisioning; `geonosis-verify` crate published; 4 admin SDKs published; OTP + WebAuthn policies enforced at enrollment; org consent policies enforced at authorize; domain verification via DNS TXT; all 9 SPI interfaces integration-tested; built-ins seeded as `SpiBinding` rows; plugin signing verification active; WASM hot reload wired |
 | v0.3 | Cloud GA in first region; UMA 2.0 + CIBA + OpenID Federation conformance tests passing; plugin marketplace publicly available; migration importer works against a representative incumbent realm export |
 | v1.0 | External security audit passed; HTTP API stable contract; multi-region active-active shipped; Komino candidate replacing Redis in benchmarks |
 
