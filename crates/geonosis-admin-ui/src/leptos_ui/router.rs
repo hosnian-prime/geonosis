@@ -25,7 +25,7 @@ use crate::auth::AdminPrincipal;
 use crate::handlers_v1::extractors::realm_by_slug;
 use crate::leptos_ui::app::PageContext;
 use crate::leptos_ui::components::chrome::{ProfileContext, RealmChoice};
-use crate::leptos_ui::pages::agents::{AgentDetailPage, AgentRow, AgentsPage};
+use crate::leptos_ui::pages::agents::{AgentCreatePage, AgentDetailPage, AgentRow, AgentsPage};
 use crate::leptos_ui::pages::clients::{
     ClientCreatePage, ClientDetailPage, ClientRow, ClientsPage,
 };
@@ -168,7 +168,11 @@ pub fn leptos_router(state: Arc<AdminState>) -> Router {
             post(post_org_domain_remove),
         )
         // ---- Agents ----
-        .route("/admin/realms/:slug/agents", get(page_agents))
+        .route(
+            "/admin/realms/:slug/agents",
+            get(page_agents).post(post_agent_create),
+        )
+        .route("/admin/realms/:slug/agents/new", get(page_agent_new))
         .route("/admin/realms/:slug/agents/:alias", get(page_agent_detail))
         .route(
             "/admin/realms/:slug/agents/:alias/:tab",
@@ -182,7 +186,7 @@ pub fn leptos_router(state: Arc<AdminState>) -> Router {
         .route("/admin/realms/:slug/idps/new", get(page_idp_new))
         .route("/admin/realms/:slug/idps/:alias", get(page_idp_detail))
         .route(
-            "/admin/realms/:slug/idps/:alias/general",
+            "/admin/realms/:slug/idps/:alias/:tab",
             post(post_idp_update),
         )
         // ---- Federation ----
@@ -190,6 +194,10 @@ pub fn leptos_router(state: Arc<AdminState>) -> Router {
         .route(
             "/admin/realms/:slug/federation/:alias",
             get(page_federation_detail),
+        )
+        .route(
+            "/admin/realms/:slug/federation/:alias/:tab",
+            post(post_federation_update),
         )
         // ---- SPI ----
         .route("/admin/realms/:slug/spi", get(page_spi))
@@ -515,6 +523,8 @@ struct GeneralForm {
     #[serde(default)]
     ssl_required: String,
     #[serde(default)]
+    sender_constraint_default: String,
+    #[serde(default)]
     enabled: Option<String>,
     #[serde(default)]
     organizations_enabled: Option<String>,
@@ -538,13 +548,104 @@ async fn post_realm_settings(
                 "all" => geonosis_core::common::SslRequirement::All,
                 _ => geonosis_core::common::SslRequirement::ExternalRequests,
             };
+            realm.sender_constraint_default = match g.sender_constraint_default.as_str() {
+                "dpop" => geonosis_core::common::SenderConstraint::Dpop,
+                "mtls" => geonosis_core::common::SenderConstraint::Mtls,
+                _ => geonosis_core::common::SenderConstraint::None,
+            };
             realm.enabled = g.enabled.is_some();
             realm.organizations_enabled = g.organizations_enabled.is_some();
         }
+        "password" => {
+            let parse_u32 = |key: &str| -> Option<u32> {
+                form.get(key)
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| s.parse().ok())
+            };
+            let has = |key: &str| -> bool { form.get(key).is_some() };
+
+            let mut rules = Vec::new();
+
+            if has("rule_length") {
+                rules.push(geonosis_core::realm::PasswordRule::Length {
+                    min: parse_u32("rule_length_min").unwrap_or(8),
+                });
+            }
+            if has("rule_special") {
+                rules.push(geonosis_core::realm::PasswordRule::SpecialChars {
+                    min: parse_u32("rule_special_min").unwrap_or(1),
+                });
+            }
+            if has("rule_upper") {
+                rules.push(geonosis_core::realm::PasswordRule::UpperCase {
+                    min: parse_u32("rule_upper_min").unwrap_or(1),
+                });
+            }
+            if has("rule_lower") {
+                rules.push(geonosis_core::realm::PasswordRule::LowerCase {
+                    min: parse_u32("rule_lower_min").unwrap_or(1),
+                });
+            }
+            if has("rule_digits") {
+                rules.push(geonosis_core::realm::PasswordRule::Digits {
+                    min: parse_u32("rule_digits_min").unwrap_or(1),
+                });
+            }
+            if has("rule_not_username") {
+                rules.push(geonosis_core::realm::PasswordRule::NotUsername);
+            }
+            if has("rule_not_email") {
+                rules.push(geonosis_core::realm::PasswordRule::NotEmail);
+            }
+            if has("rule_pwned") {
+                rules.push(geonosis_core::realm::PasswordRule::Pwned);
+            }
+            if has("rule_history") {
+                rules.push(geonosis_core::realm::PasswordRule::PasswordHistory {
+                    count: parse_u32("rule_history_count").unwrap_or(3),
+                });
+            }
+            if has("rule_expire") {
+                rules.push(geonosis_core::realm::PasswordRule::Expire {
+                    days: parse_u32("rule_expire_days").unwrap_or(90),
+                });
+            }
+            if has("rule_blacklist") {
+                let pattern = form
+                    .get("rule_blacklist_pattern")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                if !pattern.is_empty() {
+                    rules.push(geonosis_core::realm::PasswordRule::BlacklistRegex { pattern });
+                }
+            }
+
+            // Hash config is always present.
+            let alg = form
+                .get("rule_hash_alg")
+                .and_then(|v| v.as_str())
+                .unwrap_or("argon2id")
+                .to_string();
+            rules.push(geonosis_core::realm::PasswordRule::HashAlgorithm { algorithm: alg });
+            if let Some(iter) = parse_u32("rule_hash_iterations") {
+                rules.push(geonosis_core::realm::PasswordRule::HashIterations { iterations: iter });
+            }
+
+            realm.password_policy.rules = rules;
+        }
+        "acr" => {
+            let json_str = form
+                .get("acr_levels_json")
+                .and_then(|v| v.as_str())
+                .unwrap_or("[]");
+            let levels: Vec<geonosis_core::realm::AcrLevel> =
+                serde_json::from_str(json_str)
+                    .map_err(|e| AdminError::InvalidInput(format!("Invalid ACR JSON: {e}")))?;
+            realm.acr_policy.levels = levels;
+        }
         _ => {
-            // v0.1.x: other tabs accept the form but no-op the write. The
-            // PUT /admin/v1/realms/:slug route still exposes the full
-            // shape — the inline editors land in v0.2.
+            // Remaining tabs: accept the form but no-op the write.
         }
     }
     realm.updated_at = chrono::Utc::now();
@@ -1448,6 +1549,112 @@ async fn page_agent_detail(
     }))
 }
 
+async fn page_agent_new(
+    State(state): State<Arc<AdminState>>,
+    Path(slug): Path<String>,
+    principal: Option<axum::Extension<AdminPrincipal>>,
+) -> Result<Html<String>, AdminError> {
+    let ctx = build_ctx(&state, principal.as_deref()).await;
+    let _ = realm_by_slug(&state, &slug).await?;
+    Ok(render(
+        move || view! { <AgentCreatePage realm_slug=slug ctx=ctx/> },
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+struct AgentCreateForm {
+    alias: String,
+    display_name: String,
+    #[serde(default)]
+    kind: String,
+    #[serde(default)]
+    auth_method: String,
+    #[serde(default)]
+    parent_kind: String,
+    #[serde(default)]
+    parent_id: String,
+    #[serde(default)]
+    model_hint: Option<String>,
+    #[serde(default)]
+    vendor: Option<String>,
+}
+
+async fn post_agent_create(
+    State(state): State<Arc<AdminState>>,
+    Path(slug): Path<String>,
+    Form(form): Form<AgentCreateForm>,
+) -> Result<Response, AdminError> {
+    use geonosis_core::agent::{
+        Agent, AgentAuthMethod, AgentKind, AgentRateLimit,
+    };
+    use geonosis_core::id::AgentId;
+    use geonosis_core::subject::ParentSubject;
+
+    let realm = realm_by_slug(&state, &slug).await?;
+
+    let kind = match form.kind.as_str() {
+        "scraper" => AgentKind::Scraper,
+        "webhook" => AgentKind::Webhook,
+        "batch" => AgentKind::Batch,
+        _ => AgentKind::Assistant,
+    };
+    let auth_method = match form.auth_method.as_str() {
+        "private-key-jwt" => AgentAuthMethod::PrivateKeyJwt,
+        "dpop-bound-key" => AgentAuthMethod::DpopBoundKey,
+        _ => AgentAuthMethod::TokenExchangeOnly,
+    };
+    let parent_subject = match form.parent_kind.as_str() {
+        "service-account" => ParentSubject::ServiceAccount {
+            client_id: form.parent_id.parse().map_err(|_| {
+                AdminError::InvalidInput("Invalid client ID for service account parent.".into())
+            })?,
+        },
+        "organization" => ParentSubject::Organization {
+            organization_id: form.parent_id.parse().map_err(|_| {
+                AdminError::InvalidInput("Invalid organization ID for org parent.".into())
+            })?,
+        },
+        _ => ParentSubject::User {
+            user_id: form.parent_id.parse().map_err(|_| {
+                AdminError::InvalidInput("Invalid user ID for user parent.".into())
+            })?,
+        },
+    };
+
+    let now = chrono::Utc::now();
+    let agent = Agent {
+        id: AgentId::new(),
+        realm_id: realm.id,
+        alias: form.alias.clone(),
+        display_name: form.display_name,
+        kind,
+        model_hint: form.model_hint.filter(|s| !s.is_empty()),
+        vendor: form.vendor.filter(|s| !s.is_empty()),
+        version: None,
+        parent_subject,
+        capabilities: Vec::new(),
+        allowed_scopes: Vec::new(),
+        allowed_audiences: Vec::new(),
+        rate_limit: AgentRateLimit::default(),
+        auth_method,
+        public_jwk: None,
+        created_at: now,
+        expires_at: None,
+        revoked_at: None,
+        enabled: true,
+    };
+
+    state.storage.create_agent(agent.clone()).await?;
+    crate::audit_emit::emit(
+        &state,
+        realm.id,
+        "agent.created",
+        None,
+        serde_json::json!({ "alias": form.alias }),
+    );
+    Ok(Redirect::to(&format!("/admin/realms/{slug}/agents/{}", form.alias)).into_response())
+}
+
 // =========================================================================
 //                                  IdPs
 // =========================================================================
@@ -1632,6 +1839,99 @@ async fn page_federation_detail(
             <LdapDetailPage realm_slug=slug cfg=cfg active_tab=tab ctx=ctx/>
         }
     }))
+}
+
+async fn post_federation_update(
+    State(state): State<Arc<AdminState>>,
+    Path((slug, alias, tab)): Path<(String, String, String)>,
+    Form(form): Form<serde_json::Value>,
+) -> Result<Response, AdminError> {
+    let realm = realm_by_slug(&state, &slug).await?;
+    let mut cfg = state.storage.get_ldap_source(realm.id, &alias).await?;
+
+    let str_val = |key: &str| -> String {
+        form.get(key)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
+    let opt_str = |key: &str| -> Option<String> {
+        let s = str_val(key);
+        if s.is_empty() { None } else { Some(s) }
+    };
+    let parse_u = |key: &str, default: u64| -> u64 {
+        form.get(key)
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(default)
+    };
+    let has = |key: &str| -> bool { form.get(key).is_some() };
+
+    match tab.as_str() {
+        "connection" => {
+            cfg.urls = str_val("urls")
+                .lines()
+                .map(|l| l.trim().to_string())
+                .filter(|l| !l.is_empty())
+                .collect();
+            cfg.base_dn = str_val("base_dn");
+            cfg.bind_dn = opt_str("bind_dn");
+            if let Some(pw) = opt_str("bind_password") {
+                cfg.bind_password = Some(geonosis_core::secret::Secret::new(pw));
+            }
+            cfg.user_filter = str_val("user_filter");
+            cfg.tls = match str_val("tls").as_str() {
+                "starttls" => geonosis_federation_ldap::config::TlsPolicy::StartTls,
+                "ldaps" => geonosis_federation_ldap::config::TlsPolicy::Ldaps,
+                _ => geonosis_federation_ldap::config::TlsPolicy::None,
+            };
+            cfg.page_size = parse_u("page_size", 500) as usize;
+            cfg.pool_size = parse_u("pool_size", 8) as u32;
+            cfg.bind_timeout_ms = parse_u("bind_timeout_ms", 5000);
+            cfg.search_timeout_ms = parse_u("search_timeout_ms", 10000);
+            cfg.enabled = has("enabled");
+        }
+        "mapping" => {
+            cfg.attribute_map.username = str_val("username");
+            cfg.attribute_map.email = opt_str("email");
+            cfg.attribute_map.first_name = opt_str("first_name");
+            cfg.attribute_map.last_name = opt_str("last_name");
+            cfg.attribute_map.uid = str_val("uid");
+            cfg.attribute_map.extras = str_val("extras")
+                .lines()
+                .filter_map(|line| {
+                    let parts: Vec<&str> = line.splitn(2, '=').collect();
+                    if parts.len() == 2 {
+                        Some((parts[0].trim().to_string(), parts[1].trim().to_string()))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+        }
+        "sync" => {
+            cfg.write_policy = match str_val("write_policy").as_str() {
+                "writable" => geonosis_federation_ldap::config::WritePolicy::Writable,
+                _ => geonosis_federation_ldap::config::WritePolicy::ReadOnly,
+            };
+            let json_str = str_val("sync_policy_json");
+            if !json_str.is_empty() {
+                cfg.sync_policy = serde_json::from_str(&json_str)
+                    .map_err(|e| AdminError::InvalidInput(format!("Invalid sync policy JSON: {e}")))?;
+            }
+        }
+        _ => {}
+    }
+
+    state.storage.upsert_ldap_source(cfg).await?;
+    crate::audit_emit::emit(
+        &state,
+        realm.id,
+        "federation.updated",
+        None,
+        serde_json::json!({ "alias": alias, "tab": tab }),
+    );
+    Ok(Redirect::to(&format!("/admin/realms/{slug}/federation/{alias}?tab={tab}")).into_response())
 }
 
 // =========================================================================
@@ -2491,28 +2791,117 @@ async fn post_agent_update(
 
 async fn post_idp_update(
     State(state): State<Arc<AdminState>>,
-    Path((slug, alias)): Path<(String, String)>,
+    Path((slug, alias, tab)): Path<(String, String, String)>,
     Form(form): Form<serde_json::Value>,
 ) -> Result<Response, AdminError> {
+    use geonosis_broker::types::{IdpConfig, OidcIdpConfig, SamlIdpConfig};
+
     let realm = realm_by_slug(&state, &slug).await?;
     let mut idp = state.storage.get_idp_by_alias(realm.id, &alias).await?;
 
-    if let Some(v) = form.get("display_name").and_then(|v| v.as_str()) {
-        idp.display_name = v.into();
-    }
-    idp.enabled = form.get("enabled").is_some();
-    idp.link_only = form.get("link_only").is_some();
+    let str_val = |key: &str| -> String {
+        form.get(key)
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string()
+    };
+    let opt_str = |key: &str| -> Option<String> {
+        let s = str_val(key);
+        if s.is_empty() { None } else { Some(s) }
+    };
+    let has = |key: &str| -> bool { form.get(key).is_some() };
 
-    // update via upsert (same as handlers_v1/idps.rs)
+    match tab.as_str() {
+        "general" => {
+            if let Some(v) = form.get("display_name").and_then(|v| v.as_str()) {
+                idp.display_name = v.into();
+            }
+            idp.enabled = has("enabled");
+            idp.link_only = has("link_only");
+            if let Some(v) = opt_str("first_login_flow_alias") {
+                idp.first_login_flow_alias = v;
+            }
+            idp.post_login_flow_alias = opt_str("post_login_flow_alias");
+            idp.adapter_urn = opt_str("adapter_urn");
+        }
+        "config" => match &idp.config {
+            IdpConfig::Oidc(existing) => {
+                let client_secret = opt_str("client_secret")
+                    .map(geonosis_core::secret::Secret::new)
+                    .or_else(|| existing.client_secret.clone());
+                let client_auth = match str_val("client_auth").as_str() {
+                    "jwt" => geonosis_broker::types::ClientAuthMethod::Jwt,
+                    "none" => geonosis_broker::types::ClientAuthMethod::None,
+                    _ => geonosis_broker::types::ClientAuthMethod::Basic,
+                };
+                let scopes: Vec<String> = str_val("scopes")
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                idp.config = IdpConfig::Oidc(OidcIdpConfig {
+                    issuer: str_val("issuer"),
+                    discovery_url: opt_str("discovery_url"),
+                    authorization_endpoint: opt_str("authorization_endpoint"),
+                    token_endpoint: opt_str("token_endpoint"),
+                    userinfo_endpoint: opt_str("userinfo_endpoint"),
+                    jwks_uri: opt_str("jwks_uri"),
+                    client_id: str_val("client_id"),
+                    client_auth,
+                    client_secret,
+                    client_assertion_key: existing.client_assertion_key.clone(),
+                    scopes,
+                    pkce: has("pkce"),
+                    accept_unsigned_userinfo: has("accept_unsigned_userinfo"),
+                    prompt: opt_str("prompt"),
+                    response_mode: opt_str("response_mode"),
+                });
+            }
+            IdpConfig::Saml(_) => {
+                let parse_binding = |key: &str| -> geonosis_saml_types::SamlBinding {
+                    match str_val(key).as_str() {
+                        "post" => geonosis_saml_types::SamlBinding::HttpPost,
+                        "artifact" => geonosis_saml_types::SamlBinding::Artifact,
+                        _ => geonosis_saml_types::SamlBinding::HttpRedirect,
+                    }
+                };
+                let name_id = match str_val("name_id_format").as_str() {
+                    "email" => geonosis_saml_types::NameIdFormat::EmailAddress,
+                    "persistent" => geonosis_saml_types::NameIdFormat::Persistent,
+                    "transient" => geonosis_saml_types::NameIdFormat::Transient,
+                    "x509" => geonosis_saml_types::NameIdFormat::X509SubjectName,
+                    _ => geonosis_saml_types::NameIdFormat::Unspecified,
+                };
+                let certs: Vec<String> = str_val("signing_cert_pems")
+                    .split("---")
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                idp.config = IdpConfig::Saml(SamlIdpConfig {
+                    entity_id: str_val("entity_id"),
+                    sso_url: str_val("sso_url"),
+                    slo_url: opt_str("slo_url"),
+                    signing_cert_pems: certs,
+                    binding_outbound: parse_binding("binding_outbound"),
+                    binding_inbound: parse_binding("binding_inbound"),
+                    name_id_format: name_id,
+                    want_assertions_signed: has("want_assertions_signed"),
+                    want_responses_signed: has("want_responses_signed"),
+                });
+            }
+        },
+        _ => {}
+    }
+
     state.storage.create_idp(idp.clone()).await?;
     crate::audit_emit::emit(
         &state,
         realm.id,
         "idp.updated",
         None,
-        serde_json::json!({ "alias": alias }),
+        serde_json::json!({ "alias": alias, "tab": tab }),
     );
-    Ok(Redirect::to(&format!("/admin/realms/{slug}/idps/{alias}")).into_response())
+    Ok(Redirect::to(&format!("/admin/realms/{slug}/idps/{alias}?tab={tab}")).into_response())
 }
 
 // =========================================================================

@@ -9,16 +9,16 @@
 
 use leptos::prelude::*;
 
-use geonosis_core::common::SslRequirement;
-use geonosis_core::realm::{AcrRequirement, PasswordRule, Realm};
+use geonosis_core::common::{SenderConstraint, SslRequirement};
+use geonosis_core::realm::{PasswordRule, Realm};
 use geonosis_core::JwsAlgorithm;
 
 use crate::leptos_ui::app::{Page, PageContext};
 use crate::leptos_ui::components::breadcrumb::Crumb;
 use crate::leptos_ui::components::form::{
-    ActionBar, Field, Select, SelectOption, TextInput, Toggle,
+    ActionBar, Field, Select, SelectOption, TextInput, Textarea, Toggle,
 };
-use crate::leptos_ui::components::list_table::ListTable;
+
 use crate::leptos_ui::components::page_header::PageHeader;
 use crate::leptos_ui::components::tabs::{TabBar, TabItem};
 use crate::leptos_ui::components::widgets::{Alert, AlertKind, LinkButton};
@@ -130,6 +130,11 @@ fn tab_general(realm: Realm) -> impl IntoView {
     };
     let enabled = realm.enabled;
     let orgs = realm.organizations_enabled;
+    let sender_constraint_value = match realm.sender_constraint_default {
+        SenderConstraint::None => "none",
+        SenderConstraint::Dpop => "dpop",
+        SenderConstraint::Mtls => "mtls",
+    };
     let action = form_post(&slug, "general");
     view! {
         <form method="post" action=action class="gn-form">
@@ -149,6 +154,14 @@ fn tab_general(realm: Realm) -> impl IntoView {
                     SelectOption::new("none", "None"),
                     SelectOption::new("external-requests", "External requests"),
                     SelectOption::new("all", "All requests"),
+                ]/>
+            </Field>
+            <Field label="Default sender constraint".into() name="sender_constraint_default".into()
+                hint=Some("Bind tokens to proof-of-possession by default.".into())>
+                <Select name="sender_constraint_default".into() value=sender_constraint_value.into() options=vec![
+                    SelectOption::new("none", "None"),
+                    SelectOption::new("dpop", "DPoP (RFC 9449)"),
+                    SelectOption::new("mtls", "Mutual TLS (RFC 8705)"),
                 ]/>
             </Field>
             <Toggle name="enabled".into() label="Realm enabled".into() checked=enabled/>
@@ -268,46 +281,137 @@ fn alg_options() -> Vec<SelectOption> {
 }
 
 fn tab_password(realm: Realm) -> impl IntoView {
-    let described: Vec<(&'static str, String)> = realm
-        .password_policy
-        .rules
+    let rules = &realm.password_policy.rules;
+    let slug = realm.slug.clone();
+    let action = form_post(&slug, "password");
+
+    let length_min = rule_u32(rules, |r| match r {
+        PasswordRule::Length { min } => Some(*min),
+        _ => None,
+    });
+    let special_min = rule_u32(rules, |r| match r {
+        PasswordRule::SpecialChars { min } => Some(*min),
+        _ => None,
+    });
+    let upper_min = rule_u32(rules, |r| match r {
+        PasswordRule::UpperCase { min } => Some(*min),
+        _ => None,
+    });
+    let lower_min = rule_u32(rules, |r| match r {
+        PasswordRule::LowerCase { min } => Some(*min),
+        _ => None,
+    });
+    let digits_min = rule_u32(rules, |r| match r {
+        PasswordRule::Digits { min } => Some(*min),
+        _ => None,
+    });
+    let has_not_username = rules.iter().any(|r| matches!(r, PasswordRule::NotUsername));
+    let has_not_email = rules.iter().any(|r| matches!(r, PasswordRule::NotEmail));
+    let has_pwned = rules.iter().any(|r| matches!(r, PasswordRule::Pwned));
+    let history_count = rule_u32(rules, |r| match r {
+        PasswordRule::PasswordHistory { count } => Some(*count),
+        _ => None,
+    });
+    let expire_days = rule_u32(rules, |r| match r {
+        PasswordRule::Expire { days } => Some(*days),
+        _ => None,
+    });
+    let blacklist_pattern = rules.iter().find_map(|r| match r {
+        PasswordRule::BlacklistRegex { pattern } => Some(pattern.clone()),
+        _ => None,
+    });
+    let hash_alg = rules
         .iter()
-        .map(describe_rule)
-        .collect();
+        .find_map(|r| match r {
+            PasswordRule::HashAlgorithm { algorithm } => Some(algorithm.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| "argon2id".into());
+    let hash_iterations = rule_u32(rules, |r| match r {
+        PasswordRule::HashIterations { iterations } => Some(*iterations),
+        _ => None,
+    });
+
     view! {
-        <div>
+        <form method="post" action=action class="gn-form">
             <p class="gn-text-muted gn-text-sm">
-                "The password policy is enforced on every credential set. Edit the rules array via the admin API; UI inline editor lands in v0.2."
+                "Toggle rules on/off and set their parameters. Only enabled rules are enforced."
             </p>
-            <ListTable headers=vec!["Rule", "Value"]>
-                {described.into_iter().map(|(name, value)| view! {
-                    <tr>
-                        <td data-label="Rule">{name}</td>
-                        <td data-label="Value"><code>{value}</code></td>
-                    </tr>
-                }).collect_view()}
-            </ListTable>
-        </div>
+
+            <Toggle name="rule_length".into() label="Minimum length".into() checked=length_min.is_some()/>
+            <Field label="Min characters".into() name="rule_length_min".into()>
+                <TextInput name="rule_length_min".into() input_type="number".into()
+                    value=length_min.unwrap_or(8).to_string()/>
+            </Field>
+
+            <Toggle name="rule_special".into() label="Require special characters".into() checked=special_min.is_some()/>
+            <Field label="Min special chars".into() name="rule_special_min".into()>
+                <TextInput name="rule_special_min".into() input_type="number".into()
+                    value=special_min.unwrap_or(1).to_string()/>
+            </Field>
+
+            <Toggle name="rule_upper".into() label="Require uppercase".into() checked=upper_min.is_some()/>
+            <Field label="Min uppercase".into() name="rule_upper_min".into()>
+                <TextInput name="rule_upper_min".into() input_type="number".into()
+                    value=upper_min.unwrap_or(1).to_string()/>
+            </Field>
+
+            <Toggle name="rule_lower".into() label="Require lowercase".into() checked=lower_min.is_some()/>
+            <Field label="Min lowercase".into() name="rule_lower_min".into()>
+                <TextInput name="rule_lower_min".into() input_type="number".into()
+                    value=lower_min.unwrap_or(1).to_string()/>
+            </Field>
+
+            <Toggle name="rule_digits".into() label="Require digits".into() checked=digits_min.is_some()/>
+            <Field label="Min digits".into() name="rule_digits_min".into()>
+                <TextInput name="rule_digits_min".into() input_type="number".into()
+                    value=digits_min.unwrap_or(1).to_string()/>
+            </Field>
+
+            <Toggle name="rule_not_username".into() label="Must not match username".into() checked=has_not_username/>
+            <Toggle name="rule_not_email".into() label="Must not match email".into() checked=has_not_email/>
+            <Toggle name="rule_pwned".into() label="Reject pwned passwords (HIBP)".into() checked=has_pwned/>
+
+            <Toggle name="rule_history".into() label="Password history check".into() checked=history_count.is_some()/>
+            <Field label="History depth".into() name="rule_history_count".into()>
+                <TextInput name="rule_history_count".into() input_type="number".into()
+                    value=history_count.unwrap_or(3).to_string()/>
+            </Field>
+
+            <Toggle name="rule_expire".into() label="Password expiration".into() checked=expire_days.is_some()/>
+            <Field label="Max age (days)".into() name="rule_expire_days".into()>
+                <TextInput name="rule_expire_days".into() input_type="number".into()
+                    value=expire_days.unwrap_or(90).to_string()/>
+            </Field>
+
+            <Toggle name="rule_blacklist".into() label="Regex blocklist".into() checked=blacklist_pattern.is_some()/>
+            <Field label="Blocklist pattern".into() name="rule_blacklist_pattern".into()
+                hint=Some("Regular expression that passwords must NOT match.".into())>
+                <TextInput name="rule_blacklist_pattern".into()
+                    value=blacklist_pattern.unwrap_or_default()/>
+            </Field>
+
+            <Field label="Hash algorithm".into() name="rule_hash_alg".into()>
+                <Select name="rule_hash_alg".into() value=hash_alg options=vec![
+                    SelectOption::new("argon2id", "Argon2id"),
+                    SelectOption::new("bcrypt", "bcrypt"),
+                    SelectOption::new("pbkdf2", "PBKDF2"),
+                ]/>
+            </Field>
+            <Field label="Hash iterations".into() name="rule_hash_iterations".into()>
+                <TextInput name="rule_hash_iterations".into() input_type="number".into()
+                    value=hash_iterations.unwrap_or(3).to_string()/>
+            </Field>
+
+            {save_bar(slug)}
+        </form>
     }
 }
 
-fn describe_rule(rule: &PasswordRule) -> (&'static str, String) {
-    match rule {
-        PasswordRule::Length { min } => ("Length", format!("min {min}")),
-        PasswordRule::SpecialChars { min } => ("Special chars", format!("min {min}")),
-        PasswordRule::UpperCase { min } => ("Uppercase", format!("min {min}")),
-        PasswordRule::LowerCase { min } => ("Lowercase", format!("min {min}")),
-        PasswordRule::Digits { min } => ("Digits", format!("min {min}")),
-        PasswordRule::HashIterations { iterations } => ("Hash iterations", iterations.to_string()),
-        PasswordRule::HashAlgorithm { algorithm } => ("Hash algorithm", algorithm.clone()),
-        PasswordRule::NotUsername => ("Not username", "-".into()),
-        PasswordRule::NotEmail => ("Not email", "-".into()),
-        PasswordRule::PasswordHistory { count } => ("Password history", format!("{count} entries")),
-        PasswordRule::Pwned => ("Pwned check", "-".into()),
-        PasswordRule::Expire { days } => ("Expire", format!("{days} days")),
-        PasswordRule::BlacklistRegex { pattern } => ("Regex blocklist", pattern.clone()),
-    }
+fn rule_u32(rules: &[PasswordRule], extractor: impl Fn(&PasswordRule) -> Option<u32>) -> Option<u32> {
+    rules.iter().find_map(extractor)
 }
+
 
 fn tab_brute(realm: Realm) -> impl IntoView {
     let b = realm.brute_force;
@@ -503,56 +607,25 @@ fn tab_events(realm: Realm) -> impl IntoView {
 }
 
 fn tab_acr(realm: Realm) -> impl IntoView {
-    let levels = realm.acr_policy.levels;
-    let is_empty = levels.is_empty();
-    let rows: Vec<(String, String, String)> = levels
-        .into_iter()
-        .map(|l| (l.value, l.display_name, describe_acr(&l.require)))
-        .collect();
+    let slug = realm.slug.clone();
+    let action = form_post(&slug, "acr");
+    let levels_json = serde_json::to_string_pretty(&realm.acr_policy.levels)
+        .unwrap_or_else(|_| "[]".into());
     view! {
-        <div>
+        <form method="post" action=action class="gn-form">
             <p class="gn-text-muted gn-text-sm">
-                "Map ACR values to AMR / authenticator requirements. Inline editor lands in v0.2."
+                "Map ACR values to AMR / authenticator requirements. Each level is an object with "
+                <code>"value"</code>", "<code>"display_name"</code>", and "<code>"require"</code>" fields."
             </p>
-            {if is_empty {
-                view! {
-                    <div class="gn-empty">
-                        <p class="gn-empty__title">"No ACR levels"</p>
-                        <p class="gn-empty__desc">"Define `acr_values` mappings to step-up authentication."</p>
-                    </div>
-                }.into_any()
-            } else {
-                view! {
-                    <ListTable headers=vec!["Value", "Display name", "Requirement"]>
-                        {rows.into_iter().map(|(value, name, req)| view! {
-                            <tr>
-                                <td data-label="Value"><code>{value}</code></td>
-                                <td data-label="Display name">{name}</td>
-                                <td data-label="Requirement"><code>{req}</code></td>
-                            </tr>
-                        }).collect_view()}
-                    </ListTable>
-                }.into_any()
-            }}
-        </div>
+            <Field label="ACR levels (JSON)".into() name="acr_levels_json".into()
+                hint=Some("Array of {\"value\", \"display_name\", \"require\"} objects. Require kinds: any, amr-contains, all-of, any-of, sender-constrained.".into())>
+                <Textarea name="acr_levels_json".into() value=levels_json rows=12 code=true/>
+            </Field>
+            {save_bar(slug)}
+        </form>
     }
 }
 
-fn describe_acr(req: &AcrRequirement) -> String {
-    match req {
-        AcrRequirement::Any => "any".into(),
-        AcrRequirement::AmrContains(v) => format!(
-            "amr-contains({})",
-            v.iter()
-                .map(|a| a.as_token_value())
-                .collect::<Vec<_>>()
-                .join(", ")
-        ),
-        AcrRequirement::AllOf(v) => format!("all-of({})", v.len()),
-        AcrRequirement::AnyOf(v) => format!("any-of({})", v.len()),
-        AcrRequirement::SenderConstrained(_) => "sender-constrained".into(),
-    }
-}
 
 fn tab_org_policy(realm: Realm) -> impl IntoView {
     let p = realm.organization_policy;

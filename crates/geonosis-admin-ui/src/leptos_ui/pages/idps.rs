@@ -6,7 +6,9 @@ use geonosis_broker::types::{IdentityProvider, IdpConfig, IdpKind};
 
 use crate::leptos_ui::app::{Page, PageContext};
 use crate::leptos_ui::components::breadcrumb::Crumb;
-use crate::leptos_ui::components::form::{ActionBar, Field, TextInput, Toggle};
+use crate::leptos_ui::components::form::{
+    ActionBar, Field, Select, SelectOption, TextInput, Textarea, Toggle,
+};
 use crate::leptos_ui::components::list_table::ListTable;
 use crate::leptos_ui::components::page_header::PageHeader;
 use crate::leptos_ui::components::tabs::{TabBar, TabItem};
@@ -161,7 +163,7 @@ pub fn IdpDetailPage(
         .collect::<Vec<_>>();
     let panel = match active_tab.as_str() {
         "general" => render_general(realm_slug.clone(), idp.clone()).into_any(),
-        "config" => render_config(idp.clone()).into_any(),
+        "config" => render_config(realm_slug.clone(), idp.clone()).into_any(),
         "mappers" => view! {
             <EmptyState title="No mappers configured".into()
                 description="Attribute mappers transform external claims into Geonosis user attributes.".into()/>
@@ -207,30 +209,151 @@ fn render_general(realm_slug: String, i: IdentityProvider) -> impl IntoView {
     }
 }
 
-fn render_config(i: IdentityProvider) -> impl IntoView {
-    match &i.config {
+fn render_config(realm_slug: String, i: IdentityProvider) -> impl IntoView {
+    let action = format!("/admin/realms/{realm_slug}/idps/{}/config", i.alias);
+    match i.config.clone() {
         IdpConfig::Oidc(c) => {
-            let body = serde_json::to_string_pretty(c).unwrap_or_default();
+            let scopes_csv = c.scopes.join(", ");
+            let auth_value = match c.client_auth {
+                geonosis_broker::types::ClientAuthMethod::Basic => "basic",
+                geonosis_broker::types::ClientAuthMethod::Jwt => "jwt",
+                geonosis_broker::types::ClientAuthMethod::None => "none",
+            };
+            let discovery = c.discovery_url.clone().unwrap_or_default();
+            let authz_ep = c.authorization_endpoint.clone().unwrap_or_default();
+            let token_ep = c.token_endpoint.clone().unwrap_or_default();
+            let userinfo_ep = c.userinfo_endpoint.clone().unwrap_or_default();
+            let jwks = c.jwks_uri.clone().unwrap_or_default();
+            let prompt = c.prompt.clone().unwrap_or_default();
+            let response_mode = c.response_mode.clone().unwrap_or_default();
             view! {
-                <div class="gn-stack">
-                    <p class="gn-text-muted gn-text-sm">
-                        "OIDC configuration. Inline form lands in v0.2; edit via the admin API for now."
-                    </p>
-                    <pre class="gn-json">{body}</pre>
-                </div>
+                <form method="post" action=action class="gn-form">
+                    <Field label="Issuer".into() name="issuer".into() required=true
+                        hint=Some("OIDC issuer URL (e.g. https://accounts.google.com).".into())>
+                        <TextInput name="issuer".into() input_type="url".into() value=c.issuer.clone() required=true/>
+                    </Field>
+                    <Field label="Discovery URL".into() name="discovery_url".into()
+                        hint=Some("Override .well-known URL. Leave empty to derive from issuer.".into())>
+                        <TextInput name="discovery_url".into() input_type="url".into() value=discovery/>
+                    </Field>
+                    <Field label="Client ID".into() name="client_id".into() required=true>
+                        <TextInput name="client_id".into() value=c.client_id.clone() required=true/>
+                    </Field>
+                    <Field label="Client secret".into() name="client_secret".into()
+                        hint=Some("Leave empty to keep existing secret unchanged.".into())>
+                        <TextInput name="client_secret".into() input_type="password".into()/>
+                    </Field>
+                    <Field label="Client auth method".into() name="client_auth".into()>
+                        <Select name="client_auth".into() value=auth_value.into() options=vec![
+                            SelectOption::new("basic", "Basic (client_secret_basic)"),
+                            SelectOption::new("jwt", "JWT (client_secret_jwt)"),
+                            SelectOption::new("none", "None (public client)"),
+                        ]/>
+                    </Field>
+                    <Field label="Scopes".into() name="scopes".into()
+                        hint=Some("Comma-separated (e.g. openid, profile, email).".into())>
+                        <TextInput name="scopes".into() value=scopes_csv/>
+                    </Field>
+                    <Toggle name="pkce".into() label="Use PKCE".into() checked=c.pkce/>
+                    <Toggle name="accept_unsigned_userinfo".into()
+                        label="Accept unsigned userinfo".into() checked=c.accept_unsigned_userinfo/>
+                    <Field label="Authorization endpoint".into() name="authorization_endpoint".into()
+                        hint=Some("Override. Leave empty to use discovery.".into())>
+                        <TextInput name="authorization_endpoint".into() input_type="url".into() value=authz_ep/>
+                    </Field>
+                    <Field label="Token endpoint".into() name="token_endpoint".into()>
+                        <TextInput name="token_endpoint".into() input_type="url".into() value=token_ep/>
+                    </Field>
+                    <Field label="Userinfo endpoint".into() name="userinfo_endpoint".into()>
+                        <TextInput name="userinfo_endpoint".into() input_type="url".into() value=userinfo_ep/>
+                    </Field>
+                    <Field label="JWKS URI".into() name="jwks_uri".into()>
+                        <TextInput name="jwks_uri".into() input_type="url".into() value=jwks/>
+                    </Field>
+                    <Field label="Prompt".into() name="prompt".into()
+                        hint=Some("OIDC prompt parameter (login, consent, none).".into())>
+                        <TextInput name="prompt".into() value=prompt/>
+                    </Field>
+                    <Field label="Response mode".into() name="response_mode".into()>
+                        <TextInput name="response_mode".into() value=response_mode/>
+                    </Field>
+                    <ActionBar>
+                        <button type="submit" class="gn-btn gn-btn--primary">"Save configuration"</button>
+                    </ActionBar>
+                </form>
             }.into_any()
         }
         IdpConfig::Saml(c) => {
-            let body = serde_json::to_string_pretty(c).unwrap_or_default();
+            let slo = c.slo_url.clone().unwrap_or_default();
+            let certs = c.signing_cert_pems.join("\n---\n");
+            let binding_out = saml_binding_value(&c.binding_outbound);
+            let binding_in = saml_binding_value(&c.binding_inbound);
+            let name_id = saml_nameid_value(&c.name_id_format);
             view! {
-                <div class="gn-stack">
-                    <p class="gn-text-muted gn-text-sm">
-                        "SAML configuration. Edit via the admin API."
-                    </p>
-                    <pre class="gn-json">{body}</pre>
-                </div>
-            }
-            .into_any()
+                <form method="post" action=action class="gn-form">
+                    <Field label="Entity ID".into() name="entity_id".into() required=true>
+                        <TextInput name="entity_id".into() value=c.entity_id.clone() required=true/>
+                    </Field>
+                    <Field label="SSO URL".into() name="sso_url".into() required=true>
+                        <TextInput name="sso_url".into() input_type="url".into() value=c.sso_url.clone() required=true/>
+                    </Field>
+                    <Field label="SLO URL".into() name="slo_url".into()>
+                        <TextInput name="slo_url".into() input_type="url".into() value=slo/>
+                    </Field>
+                    <Field label="Signing certificates (PEM)".into() name="signing_cert_pems".into()
+                        hint=Some("One or more PEM-encoded certificates, separated by ---".into())>
+                        <Textarea name="signing_cert_pems".into() value=certs rows=8 code=true/>
+                    </Field>
+                    <Field label="Outbound binding".into() name="binding_outbound".into()>
+                        <Select name="binding_outbound".into() value=binding_out options=saml_binding_options()/>
+                    </Field>
+                    <Field label="Inbound binding".into() name="binding_inbound".into()>
+                        <Select name="binding_inbound".into() value=binding_in options=saml_binding_options()/>
+                    </Field>
+                    <Field label="NameID format".into() name="name_id_format".into()>
+                        <Select name="name_id_format".into() value=name_id options=vec![
+                            SelectOption::new("unspecified", "Unspecified"),
+                            SelectOption::new("email", "Email address"),
+                            SelectOption::new("persistent", "Persistent"),
+                            SelectOption::new("transient", "Transient"),
+                            SelectOption::new("x509", "X.509 Subject Name"),
+                        ]/>
+                    </Field>
+                    <Toggle name="want_assertions_signed".into()
+                        label="Want assertions signed".into() checked=c.want_assertions_signed/>
+                    <Toggle name="want_responses_signed".into()
+                        label="Want responses signed".into() checked=c.want_responses_signed/>
+                    <ActionBar>
+                        <button type="submit" class="gn-btn gn-btn--primary">"Save configuration"</button>
+                    </ActionBar>
+                </form>
+            }.into_any()
         }
+    }
+}
+
+fn saml_binding_value(b: &geonosis_saml_types::SamlBinding) -> String {
+    match b {
+        geonosis_saml_types::SamlBinding::HttpRedirect => "redirect".into(),
+        geonosis_saml_types::SamlBinding::HttpPost => "post".into(),
+        geonosis_saml_types::SamlBinding::Artifact => "artifact".into(),
+    }
+}
+
+fn saml_binding_options() -> Vec<SelectOption> {
+    vec![
+        SelectOption::new("redirect", "HTTP-Redirect"),
+        SelectOption::new("post", "HTTP-POST"),
+        SelectOption::new("artifact", "Artifact"),
+    ]
+}
+
+fn saml_nameid_value(n: &geonosis_saml_types::NameIdFormat) -> String {
+    match n {
+        geonosis_saml_types::NameIdFormat::Unspecified => "unspecified".into(),
+        geonosis_saml_types::NameIdFormat::EmailAddress => "email".into(),
+        geonosis_saml_types::NameIdFormat::Persistent => "persistent".into(),
+        geonosis_saml_types::NameIdFormat::Transient => "transient".into(),
+        geonosis_saml_types::NameIdFormat::X509SubjectName => "x509".into(),
     }
 }

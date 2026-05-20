@@ -13,7 +13,7 @@ use crate::leptos_ui::components::list_table::ListTable;
 use crate::leptos_ui::components::page_header::PageHeader;
 use crate::leptos_ui::components::tabs::{TabBar, TabItem};
 use crate::leptos_ui::components::widgets::{
-    Alert, AlertKind, Badge, BadgeKind, EmptyState, StateBadge,
+    Alert, AlertKind, Badge, BadgeKind, ButtonKind, EmptyState, LinkButton, StateBadge,
 };
 
 #[derive(Clone, Debug)]
@@ -37,12 +37,16 @@ pub fn AgentsPage(realm_slug: String, rows: Vec<AgentRow>, ctx: PageContext) -> 
             Crumb::link(realm_slug.clone(), format!("/admin/realms/{realm_slug}")),
             Crumb::current("Agents"),
         ]);
+    let create_href = format!("/admin/realms/{realm_slug}/agents/new");
     let is_empty = rows.is_empty();
     view! {
         <Page context=ctx>
             <PageHeader
                 title="Agents".into()
                 subtitle=Some("AI / M2M delegated identities. Capabilities + rate limits per agent.".into())
+                actions=Some(view! {
+                    <LinkButton href=create_href label="+ Create agent".to_string() kind=ButtonKind::Primary/>
+                }.into_any())
             />
             {if is_empty {
                 view! {
@@ -281,5 +285,78 @@ fn agent_auth_value(m: AgentAuthMethod) -> String {
         AgentAuthMethod::PrivateKeyJwt => "private-key-jwt".into(),
         AgentAuthMethod::DpopBoundKey => "dpop-bound-key".into(),
         AgentAuthMethod::TokenExchangeOnly => "token-exchange-only".into(),
+    }
+}
+
+#[component]
+pub fn AgentCreatePage(
+    realm_slug: String,
+    ctx: PageContext,
+    #[prop(default = None)] error: Option<String>,
+) -> impl IntoView {
+    let ctx = ctx
+        .with_title("Create agent")
+        .with_section("agents")
+        .with_realm(realm_slug.clone())
+        .with_crumbs(vec![
+            Crumb::link("Realms", "/admin/realms"),
+            Crumb::link(realm_slug.clone(), format!("/admin/realms/{realm_slug}")),
+            Crumb::link("Agents", format!("/admin/realms/{realm_slug}/agents")),
+            Crumb::current("Create"),
+        ]);
+    let action = format!("/admin/realms/{realm_slug}/agents");
+    let cancel = format!("/admin/realms/{realm_slug}/agents");
+    view! {
+        <Page context=ctx>
+            <PageHeader title="Create agent".into()
+                subtitle=Some("Register an AI or M2M delegated identity with scoped capabilities.".into())/>
+            {error.map(|e| view! { <Alert message=e kind=AlertKind::Danger/> })}
+            <form method="post" action=action class="gn-form">
+                <Field label="Alias".into() name="alias".into() required=true
+                    hint=Some("URL-safe identifier; cannot be changed later.".into())>
+                    <TextInput name="alias".into() required=true placeholder="my-assistant".into()/>
+                </Field>
+                <Field label="Display name".into() name="display_name".into() required=true>
+                    <TextInput name="display_name".into() required=true placeholder="My AI Assistant".into()/>
+                </Field>
+                <Field label="Kind".into() name="kind".into() required=true>
+                    <Select name="kind".into() value="assistant".into() options=vec![
+                        SelectOption::new("assistant", "Assistant"),
+                        SelectOption::new("scraper", "Scraper"),
+                        SelectOption::new("webhook", "Webhook"),
+                        SelectOption::new("batch", "Batch"),
+                    ]/>
+                </Field>
+                <Field label="Auth method".into() name="auth_method".into() required=true>
+                    <Select name="auth_method".into() value="token-exchange-only".into() options=vec![
+                        SelectOption::new("private-key-jwt", "Private Key JWT"),
+                        SelectOption::new("dpop-bound-key", "DPoP Bound Key"),
+                        SelectOption::new("token-exchange-only", "Token Exchange Only"),
+                    ]/>
+                </Field>
+                <Field label="Parent kind".into() name="parent_kind".into() required=true
+                    hint=Some("The entity this agent acts on behalf of. Immutable after creation.".into())>
+                    <Select name="parent_kind".into() value="user".into() options=vec![
+                        SelectOption::new("user", "User"),
+                        SelectOption::new("service-account", "Service Account"),
+                        SelectOption::new("organization", "Organization"),
+                    ]/>
+                </Field>
+                <Field label="Parent ID".into() name="parent_id".into() required=true
+                    hint=Some("User ID, client ID, or organization ID of the parent.".into())>
+                    <TextInput name="parent_id".into() required=true/>
+                </Field>
+                <Field label="Model hint".into() name="model_hint".into()>
+                    <TextInput name="model_hint".into() placeholder="claude-opus-4".into()/>
+                </Field>
+                <Field label="Vendor".into() name="vendor".into()>
+                    <TextInput name="vendor".into() placeholder="anthropic".into()/>
+                </Field>
+                <ActionBar>
+                    <LinkButton href=cancel label="Cancel".to_string()/>
+                    <button type="submit" class="gn-btn gn-btn--primary">"Create agent"</button>
+                </ActionBar>
+            </form>
+        </Page>
     }
 }
