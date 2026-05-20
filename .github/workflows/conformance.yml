@@ -49,6 +49,7 @@ jobs:
           GEONOSIS_BIND: "0.0.0.0:8080"
           GEONOSIS_MIGRATE_ON_BOOT: "true"
           GEONOSIS_BOOTSTRAP_QUICKSTART: "true"
+          GEONOSIS_ADMIN_API_KEY: "conformance-test-key"
         run: |
           ./target/release/geonosis-server &
           for i in $(seq 1 30); do
@@ -58,6 +59,8 @@ jobs:
           curl -sf http://localhost:8080/-/ready || (echo "server not ready"; exit 1)
 
       - name: Seed conformance realm + client
+        env:
+          GEONOSIS_ADMIN_API_KEY: "conformance-test-key"
         run: tests/conformance/seed-conformance-realm.sh http://localhost:8080
 
       - name: Run OIDC Basic RP test
@@ -103,6 +106,7 @@ jobs:
           GEONOSIS_BIND: "0.0.0.0:8080"
           GEONOSIS_MIGRATE_ON_BOOT: "true"
           GEONOSIS_BOOTSTRAP_QUICKSTART: "true"
+          GEONOSIS_ADMIN_API_KEY: "conformance-test-key"
         run: |
           ./target/release/geonosis-server &
           for i in $(seq 1 30); do
@@ -112,6 +116,8 @@ jobs:
           curl -sf http://localhost:8080/-/ready || (echo "server not ready"; exit 1)
 
       - name: Seed FAPI realm + client
+        env:
+          GEONOSIS_ADMIN_API_KEY: "conformance-test-key"
         run: tests/conformance/seed-fapi-realm.sh http://localhost:8080
 
       - name: Run FAPI 1 Baseline test
@@ -158,6 +164,7 @@ jobs:
           GEONOSIS_BIND: "0.0.0.0:8080"
           GEONOSIS_MIGRATE_ON_BOOT: "true"
           GEONOSIS_BOOTSTRAP_QUICKSTART: "true"
+          GEONOSIS_ADMIN_API_KEY: "conformance-test-key"
         run: |
           ./target/release/geonosis-server &
           for i in $(seq 1 30); do
@@ -170,12 +177,14 @@ jobs:
         env:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_OAUTH_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+          GEONOSIS_ADMIN_API_KEY: "conformance-test-key"
         run: tests/conformance/broker-interop-google.sh http://localhost:8080
 
       - name: GitHub broker interop
         env:
           GITHUB_CLIENT_ID: ${{ secrets.GH_OAUTH_CLIENT_ID }}
           GITHUB_CLIENT_SECRET: ${{ secrets.GH_OAUTH_CLIENT_SECRET }}
+          GEONOSIS_ADMIN_API_KEY: "conformance-test-key"
         run: tests/conformance/broker-interop-github.sh http://localhost:8080
 
       - name: Upload interop report

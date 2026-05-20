@@ -4,6 +4,8 @@ set -euo pipefail
 
 BASE="${1:?usage: broker-interop-github.sh <base-url>}"
 ADMIN="${BASE}/admin/v1"
+KEY="${GEONOSIS_ADMIN_API_KEY:?GEONOSIS_ADMIN_API_KEY must be set}"
+AUTH_HEADER="X-Admin-Key: ${KEY}"
 REPORT_DIR="tests/conformance/reports"
 mkdir -p "${REPORT_DIR}"
 
@@ -19,6 +21,7 @@ fi
 
 curl -sf -X POST "${ADMIN}/realms/conformance/identity-providers" \
   -H 'Content-Type: application/json' \
+  -H "${AUTH_HEADER}" \
   -d "{
     \"alias\": \"github\",
     \"provider_id\": \"github\",

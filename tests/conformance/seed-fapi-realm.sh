@@ -5,9 +5,13 @@ set -euo pipefail
 
 BASE="${1:?usage: seed-fapi-realm.sh <base-url>}"
 ADMIN="${BASE}/admin/v1"
+KEY="${GEONOSIS_ADMIN_API_KEY:?GEONOSIS_ADMIN_API_KEY must be set}"
+
+AUTH_HEADER="X-Admin-Key: ${KEY}"
 
 curl -sf -X POST "${ADMIN}/realms" \
   -H 'Content-Type: application/json' \
+  -H "${AUTH_HEADER}" \
   -d '{
     "slug": "fapi",
     "display_name": "FAPI Baseline",
@@ -16,6 +20,7 @@ curl -sf -X POST "${ADMIN}/realms" \
 
 curl -sf -X POST "${ADMIN}/realms/fapi/clients" \
   -H 'Content-Type: application/json' \
+  -H "${AUTH_HEADER}" \
   -d '{
     "client_id": "fapi-conformance-client",
     "kind": "confidential",
@@ -37,6 +42,7 @@ curl -sf -X POST "${ADMIN}/realms/fapi/clients" \
 
 curl -sf -X POST "${ADMIN}/realms/fapi/users" \
   -H 'Content-Type: application/json' \
+  -H "${AUTH_HEADER}" \
   -d '{
     "username": "fapiuser",
     "email": "fapiuser@fapi.local",
@@ -47,6 +53,7 @@ curl -sf -X POST "${ADMIN}/realms/fapi/users" \
 # Set the test user password.
 curl -sf -X PUT "${ADMIN}/realms/fapi/users/fapiuser/password" \
   -H 'Content-Type: application/json' \
+  -H "${AUTH_HEADER}" \
   -d '{"password": "FapiTest123!"}' > /dev/null
 
 echo "fapi realm seeded"

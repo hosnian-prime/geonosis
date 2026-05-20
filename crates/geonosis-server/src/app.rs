@@ -16,6 +16,7 @@ pub fn router(state: AppState) -> Router {
         state.kms.clone(),
         state.public_base_url.clone(),
         state.client_secret_hash_key,
+        state.admin_api_key.clone(),
     )
     .expect("admin state");
     let admin_router = geonosis_admin_ui::router(admin);

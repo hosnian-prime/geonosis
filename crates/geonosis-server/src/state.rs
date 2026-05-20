@@ -63,4 +63,8 @@ pub struct AppState {
     /// trigger a restart. Per `docs/11-deployment-k8s.md` §"Rolling
     /// updates".
     pub draining: Arc<AtomicBool>,
+    /// Optional static API key for headless admin access. Forwarded to
+    /// `AdminState` so the admin auth middleware can accept
+    /// `X-Admin-Key` headers.
+    pub admin_api_key: Option<String>,
 }

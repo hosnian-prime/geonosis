@@ -21,6 +21,7 @@ use geonosis_core::id::{RealmId, SessionId, UserId};
 use geonosis_crypto::base64url;
 use geonosis_crypto::jwt::{verify_jwt, JwsHeader};
 use geonosis_crypto::KeyManagementService;
+use subtle::ConstantTimeEq;
 
 use crate::state::AdminState;
 
@@ -47,6 +48,20 @@ pub async fn require_admin(
     mut req: Request<Body>,
     next: Next,
 ) -> Response {
+    // 0. Try static admin API key (CI / CLI headless access).
+    if let Some(ref expected) = state.admin_api_key {
+        if let Some(provided) = headers.get("x-admin-key").and_then(|v| v.to_str().ok()) {
+            if provided.len() == expected.len()
+                && provided
+                    .as_bytes()
+                    .ct_eq(expected.as_bytes())
+                    .into()
+            {
+                return next.run(req).await;
+            }
+        }
+    }
+
     // 1. Try bearer token (API clients).
     if let Some(token) = bearer_from(&headers) {
         match verify_bearer(&state, &token).await {

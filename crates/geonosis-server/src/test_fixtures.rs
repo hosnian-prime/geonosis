@@ -81,6 +81,7 @@ pub async fn fixture_state() -> AppState {
         )
         .expect("wasm engine bootstrap"),
         draining: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        admin_api_key: None,
     }
 }
 

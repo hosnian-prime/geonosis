@@ -54,6 +54,12 @@ struct Args {
     /// does not.
     #[arg(long, env = "GEONOSIS_BOOTSTRAP_QUICKSTART", default_value_t = false)]
     bootstrap_quickstart: bool,
+
+    /// Static API key for headless admin access (CI, geoctl). When
+    /// set, requests with `X-Admin-Key: <value>` bypass bearer /
+    /// session authentication on `/admin/v1/*` endpoints.
+    #[arg(long, env = "GEONOSIS_ADMIN_API_KEY")]
+    admin_api_key: Option<String>,
 }
 
 #[tokio::main]
@@ -149,6 +155,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         metrics: Arc::new(geonosis_server::metrics::MetricsState::new()),
         rate_limiter: Arc::new(geonosis_server::rate_limit::CompositeRateLimiter::local_only()),
         draining: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        admin_api_key: args.admin_api_key.clone(),
     };
 
     // Wire cache backend into metrics for scrape-time counter reads.

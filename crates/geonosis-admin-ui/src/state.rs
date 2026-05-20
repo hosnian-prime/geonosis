@@ -31,6 +31,10 @@ pub struct AdminState {
     /// the OIDC token endpoint so secrets created by the admin API
     /// are verifiable at the token endpoint.
     pub client_secret_hash_key: [u8; 32],
+    /// Optional static API key for headless admin access (CI, CLI).
+    /// When set, requests with `X-Admin-Key: <value>` bypass bearer
+    /// / session authentication. Set via `GEONOSIS_ADMIN_API_KEY`.
+    pub admin_api_key: Option<String>,
 }
 
 impl AdminState {
@@ -45,6 +49,7 @@ impl AdminState {
             Arc::new(SoftwareKms::new(MasterKey::generate())),
             Url::parse("http://localhost:8080").unwrap(),
             [0u8; 32],
+            None,
         )
     }
 
@@ -58,6 +63,7 @@ impl AdminState {
         kms: Arc<SoftwareKms>,
         public_base_url: Url,
         client_secret_hash_key: [u8; 32],
+        admin_api_key: Option<String>,
     ) -> Result<Self, AdminError> {
         let i18n = Arc::new(I18n::load_embedded().map_err(|e| AdminError::I18n(e.to_string()))?);
         let theme = Arc::new(TemplateOverlay::new());
@@ -69,6 +75,7 @@ impl AdminState {
             kms,
             public_base_url,
             client_secret_hash_key,
+            admin_api_key,
         })
     }
 }
