@@ -24,7 +24,7 @@ curl -sf -X POST "${ADMIN}/realms/fapi/clients" \
   -d '{
     "client_id": "fapi-conformance-client",
     "kind": "confidential",
-    "auth_method": "client_secret_basic",
+    "auth_method": "client-secret-basic",
     "redirect_uris": [
       "https://www.certification.openid.net/test/a/geonosis-fapi/callback",
       "http://localhost:8443/test/a/geonosis-fapi/callback"

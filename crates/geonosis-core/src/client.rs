@@ -82,6 +82,7 @@ impl ClientKind {
 
 /// Allowed grant types for this client.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(default)]
 pub struct GrantPolicy {
     pub authorization_code: bool,
     pub refresh_token: bool,

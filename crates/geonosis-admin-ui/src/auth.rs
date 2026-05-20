@@ -52,10 +52,7 @@ pub async fn require_admin(
     if let Some(ref expected) = state.admin_api_key {
         if let Some(provided) = headers.get("x-admin-key").and_then(|v| v.to_str().ok()) {
             if provided.len() == expected.len()
-                && provided
-                    .as_bytes()
-                    .ct_eq(expected.as_bytes())
-                    .into()
+                && provided.as_bytes().ct_eq(expected.as_bytes()).into()
             {
                 return next.run(req).await;
             }
