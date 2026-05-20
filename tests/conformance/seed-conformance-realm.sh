@@ -44,8 +44,12 @@ curl -sf -X POST "${ADMIN}/realms/conformance/users" \
     "username": "testuser",
     "email": "testuser@conformance.local",
     "email_verified": true,
-    "enabled": true,
-    "password": "ConformanceTest123!"
+    "enabled": true
   }' > /dev/null
+
+# Set the test user password.
+curl -sf -X PUT "${ADMIN}/realms/conformance/users/testuser/password" \
+  -H 'Content-Type: application/json' \
+  -d '{"password": "ConformanceTest123!"}' > /dev/null
 
 echo "conformance realm seeded"

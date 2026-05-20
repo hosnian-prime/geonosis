@@ -41,8 +41,12 @@ curl -sf -X POST "${ADMIN}/realms/fapi/users" \
     "username": "fapiuser",
     "email": "fapiuser@fapi.local",
     "email_verified": true,
-    "enabled": true,
-    "password": "FapiTest123!"
+    "enabled": true
   }' > /dev/null
+
+# Set the test user password.
+curl -sf -X PUT "${ADMIN}/realms/fapi/users/fapiuser/password" \
+  -H 'Content-Type: application/json' \
+  -d '{"password": "FapiTest123!"}' > /dev/null
 
 echo "fapi realm seeded"
